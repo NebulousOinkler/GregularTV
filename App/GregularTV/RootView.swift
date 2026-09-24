@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct RootView: View {
-    @State private var app = AppModel()
+    @State private var app = AppModel.forLaunch()
 
     var body: some View {
         Group {
