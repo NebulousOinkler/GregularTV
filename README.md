@@ -5,7 +5,7 @@
 A Jellyfin client for Apple TV that plays your library as always-on TV channels. See [PLAN.md](PLAN.md) for the design, and [TODO.md](TODO.md) for planned features (custom channels, fixed-time programmes).
 
 ## IMPORTANT NOTE: 
-This is mostly AI coded. Why does this exist? I wanted a better shuffle algorithm than what I found in existing applications and I didn't want to make the rest of the bones just to watch videos from a Jellyfin server. It's mostly for personal use, but it's open source regardless. Have fun!
+This is mostly AI coded. Why does this exist? I wanted a better shuffle algorithm than what I found in existing applications and I didn't want to make the rest of the bones just to watch videos from a Jellyfin server. I wrote the shuffle algorithm myself in python and had it translated to Swift by the LLM. It's mostly for personal use, but it's open source regardless. Have fun!
 
 ## Status
 
