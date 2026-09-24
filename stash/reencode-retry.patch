@@ -1,0 +1,163 @@
+diff -ru old/App/GregularTV/Player/ChannelPlayer.swift new/App/GregularTV/Player/ChannelPlayer.swift
+--- old/App/GregularTV/Player/ChannelPlayer.swift	2026-09-24 00:22:10
++++ new/App/GregularTV/Player/ChannelPlayer.swift	2026-09-24 00:22:10
+@@ -37,6 +37,15 @@
+ ///   live). Each stall on the channel doubles the head start, up to
+ ///   `maxTranscodeHeadStart`. Files that play as-is or are only repackaged
+ ///   start at once.
++/// - **Re-encoding that can't keep up:** when a programme Jellyfin re-encodes
++///   fails or stalls, the retry asks for less work: 720p, then a step lower
++///   on each further failure, for that programme only (shown in Settings as
++///   its fix). The server's processor is the limit, not the connection, so
++///   Auto doesn't re-measure first.
++/// - **Too little left to re-encode:** a programme Jellyfin would re-encode
++///   isn't started with under `minReencodedTimeLeft` to go, since starting a
++///   transcode costs the server a lot for a minute of video. The screen is
++///   blank with "Up next" instead.
+ /// - **Programme fixes** (`ProgrammeFix`, from Settings) try a lower quality
+ ///   for just the programme on now, if it keeps having trouble. Changing
+ ///   channel, changing quality, or the next programme starting puts it back
+@@ -98,6 +107,8 @@
+     static let reencodedForwardBuffer: TimeInterval = 60
+     /// With "Step down quality", buffering this long steps down again.
+     static let stepDownAfterBuffering: TimeInterval = 4
++    /// A re-encoded programme with less than this left isn't started.
++    static let minReencodedTimeLeft: TimeInterval = 180
+ 
+     /// Two players, each with its own video surface. One is on screen
+     /// (`player`); the other is standby, buffering the programme after a
+@@ -304,6 +315,15 @@
+             do {
+                 let loaded = try await load(tuning.airing)
+                 guard !Task.isCancelled else { return release(loaded) }
++                if loaded.reencodesVideo, !tuning.airing.isFiller,
++                   tuning.airing.end.timeIntervalSinceNow < Self.minReencodedTimeLeft {
++                    // Not worth a transcode: blank with "Up next" until the
++                    // break after it, or the next programme if there's none.
++                    release(loaded)
++                    let breakFollows = schedule.commercialBreak(at: tuning.airing.end) != nil
++                    status = .betweenProgrammes(until: breakFollows ? tuning.airing.end : tuning.airing.slotEnd)
++                    return
++                }
+                 current = loaded
+                 streamDescription = loaded.description
+                 player.insert(loaded.item, after: nil)
+@@ -692,13 +712,28 @@
+             onUnauthorized?()
+             return
+         }
++        let failedReencode = current.map { $0.airing == airing && $0.reencodesVideo && !airing.isFiller } ?? false
++        let failedCap = current?.cap
+         unloadEverything()
+         self.airing = airing
+         let delay = min(Self.maxRetryDelay, 5 * pow(2, Double(consecutiveFailures)))
+         consecutiveFailures += 1
+-        // The server may be struggling: in Auto, measure again before the retry.
+-        if quality == .auto { needsMeasurementFirst = true }
++        if failedReencode, let failedCap {
++            // Jellyfin couldn't re-encode fast enough: retry this programme with less work.
++            stepDownAfterReencodeFailure(of: airing, from: failedCap)
++        } else if quality == .auto {
++            // The server or connection may be struggling: measure again before the retry.
++            needsMeasurementFirst = true
++        }
+         status = .failed(message: FriendlyError.message(for: error), retryAt: .now.addingTimeInterval(delay))
++    }
++
++    /// 720p first, then a step lower each time, down to the lowest.
++    private func stepDownAfterReencodeFailure(of airing: Airing, from cap: Int) {
++        let hd720 = StreamingQuality.hd720.fixedBitrate!
++        let lower = cap > hd720 ? hd720 : StreamingQuality.bitrate(below: cap) ?? StreamingQuality.lowestBitrate
++        fixedProgramme = (airing, lower)
++        programmeFix = lower == hd720 ? .hd720 : .stepDown
+     }
+ 
+     private func unloadEverything() {
+diff -ru old/App/GregularTVTests/HeadStartTests.swift new/App/GregularTVTests/HeadStartTests.swift
+--- old/App/GregularTVTests/HeadStartTests.swift	2026-09-24 00:22:10
++++ new/App/GregularTVTests/HeadStartTests.swift	2026-09-24 00:22:10
+@@ -22,9 +22,9 @@
+         #"{ "MediaSources": [{ "Id": "s", "SupportsDirectPlay": false, "TranscodingUrl": "/videos/ep/master.m3u8?TranscodeReasons=\#(reasons)" }], "PlaySessionId": "p" }"#
+     }
+ 
+-    /// A player ten minutes into an hour-long programme.
+-    private func player(reply: String) throws -> ChannelPlayer {
+-        let epoch = ISO8601DateFormatter().string(from: Date.now.addingTimeInterval(-600))
++    /// A player `elapsed` seconds into an hour-long programme.
++    private func player(reply: String, elapsed: TimeInterval = 600) throws -> ChannelPlayer {
++        let epoch = ISO8601DateFormatter().string(from: Date.now.addingTimeInterval(-elapsed))
+         let json = #"[{ "number": 1, "name": "C", "source": { "type": "all" }, "strategy": "derangement", "seed": 1, "epoch": "\#(epoch)" }]"#
+         let items = [MediaItem(id: "ep", kind: .episode, name: "E", duration: 3600)]
+         let schedule = try #require(try ChannelLineup.load(from: Data(json.utf8)).schedules(for: items).first)
+@@ -58,4 +58,21 @@
+         player.stop()
+     }
+ 
++    @Test func aReencodedProgrammeWithTooLittleLeftIsntStarted() async throws {
++        let player = try player(reply: Self.hls(reasons: "VideoCodecNotSupported"), elapsed: 3600 - 120)
++        player.tune()
++        guard case .betweenProgrammes(let until) = try await settledStatus(player) else {
++            Issue.record("Expected Up next, not \(player.status)")
++            return
++        }
++        #expect(abs(until.timeIntervalSinceNow - 120) < 2, "Up next until the programme's slot ends")
++        player.stop()
++    }
++
++    @Test func aRemuxedProgrammeWithLittleLeftStillPlays() async throws {
++        let player = try player(reply: Self.hls(reasons: "ContainerNotSupported"), elapsed: 3600 - 120)
++        player.tune()
++        #expect(try await settledStatus(player) == .playing)
++        player.stop()
++    }
+ }
+diff -ru old/App/GregularTVTests/ProgrammeFixTests.swift new/App/GregularTVTests/ProgrammeFixTests.swift
+--- old/App/GregularTVTests/ProgrammeFixTests.swift	2026-09-24 00:22:10
++++ new/App/GregularTVTests/ProgrammeFixTests.swift	2026-09-24 00:22:10
+@@ -7,8 +7,11 @@
+ /// programme on now, back to standard on a channel change or the next programme.
+ @MainActor @Suite(.serialized)
+ struct ProgrammeFixTests {
+-    /// Plays everything as-is, and records the cap of every PlaybackInfo request.
++    /// Plays everything as-is (or answers with `reply`), and records the cap
++    /// of every PlaybackInfo request.
+     final class Server: HTTPTransport, @unchecked Sendable {
++        let reply: String
++        init(reply: String = HeadStartTests.directPlay) { self.reply = reply }
+         private let lock = NSLock()
+         private var caps: [Int] = []
+         var requestedCaps: [Int] { lock.withLock { caps } }
+@@ -19,7 +22,7 @@
+                 let cap = URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?
+                     .queryItems?.first { $0.name == "maxStreamingBitrate" }?.value.flatMap { Int($0) }
+                 lock.withLock { caps.append(cap ?? 0) }
+-                body = Data(#"{ "MediaSources": [{ "Id": "s", "SupportsDirectPlay": true }], "PlaySessionId": "p" }"#.utf8)
++                body = Data(reply.utf8)
+             }
+             return (body, HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+         }
+@@ -112,4 +115,24 @@
+         player.stop()
+     }
+ 
++    /// Jellyfin re-encodes, from a server that doesn't exist, so every attempt fails.
++    @Test func aReencodeThatFailsRetriesAt720pThenLower() async throws {
++        let server = Server(reply: HeadStartTests.hls(reasons: "VideoCodecNotSupported"))
++        let player = try surfer(server).player
++        func waitForFailure() async throws {
++            for _ in 0..<300 {
++                if case .failed = player.status { return }
++                try await Task.sleep(for: .milliseconds(100))
++            }
++            Issue.record("Expected a failure, not \(player.status)")
++        }
++        player.start()
++        try await waitForFailure()
++        #expect(player.programmeFix == .hd720)
++        try await Task.sleep(for: .seconds(6))   // the retry, 5 s later, fails too
++        try await waitForFailure()
++        #expect(player.programmeFix == .stepDown)
++        #expect(Array(server.requestedCaps.prefix(3)) == [10_000_000, 4_000_000, 1_500_000])
++        player.stop()
++    }
+ }

@@ -1,0 +1,57 @@
+{
+  "commercials": { "library": "Commercials" },
+
+  "channels": [
+    { "number": 1, "name": "All TV", "itemTypes": ["Episode"],
+      "source": { "type": "all" },
+      "strategy": "derangement", "filler": "derangement", "seed": 1, "padTo": 30 },
+
+    { "number": 2, "name": "Comedy", "itemTypes": ["Episode"],
+      "source": { "type": "genre", "anyOf": ["Comedy", "Sitcom"] },
+      "strategy": "derangement", "filler": "derangement", "seed": 2, "padTo": 30 },
+
+    { "number": 3, "name": "Drama", "itemTypes": ["Episode"],
+      "source": { "type": "genre", "anyOf": ["Drama"] },
+      "strategy": "derangement", "filler": "derangement", "seed": 3, "padTo": 30 },
+
+    { "number": 4, "name": "Animation",
+      "source": { "type": "genre", "anyOf": ["Animation", "Anime"] },
+      "strategy": "derangement", "filler": "derangement", "seed": 4, "padTo": 30 },
+
+    { "number": 5, "name": "Sci-Fi", "itemTypes": ["Episode"],
+      "source": { "type": "genre", "anyOf": ["Science Fiction", "Sci-Fi", "Sci-Fi & Fantasy"] },
+      "strategy": "derangement", "filler": "derangement", "seed": 5, "padTo": 30 },
+
+    { "number": 6, "name": "Kids & Family",
+      "source": { "type": "genre", "anyOf": ["Family", "Kids", "Children"] },
+      "strategy": "derangement", "filler": "derangement", "seed": 6, "padTo": 30 },
+
+    { "number": 7, "name": "Documentary",
+      "source": { "type": "genre", "anyOf": ["Documentary"] },
+      "strategy": "derangement", "filler": "derangement", "seed": 7, "padTo": 30 },
+
+    { "number": 8, "name": "Reality", "itemTypes": ["Episode"],
+      "source": { "type": "genre", "anyOf": ["Reality", "Reality-TV"] },
+      "strategy": "derangement", "filler": "derangement", "seed": 8, "padTo": 30 },
+
+    { "number": 10, "name": "Movies", "itemTypes": ["Movie"],
+      "source": { "type": "all" },
+      "strategy": "derangement", "filler": "derangement", "seed": 10, "padTo": 30 },
+
+    { "number": 11, "name": "Action Movies", "itemTypes": ["Movie"],
+      "source": { "type": "genre", "anyOf": ["Action", "Adventure", "Action & Adventure"] },
+      "strategy": "derangement", "filler": "derangement", "seed": 11, "padTo": 30 },
+
+    { "number": 12, "name": "Comedy Movies", "itemTypes": ["Movie"],
+      "source": { "type": "genre", "anyOf": ["Comedy"] },
+      "strategy": "derangement", "filler": "derangement", "seed": 12, "padTo": 30 },
+
+    { "number": 13, "name": "Horror & Thriller", "itemTypes": ["Movie"],
+      "source": { "type": "genre", "anyOf": ["Horror", "Thriller"] },
+      "strategy": "derangement", "filler": "derangement", "seed": 13, "padTo": 30 },
+
+    { "number": 14, "name": "Classics", "itemTypes": ["Movie"],
+      "source": { "type": "years", "to": 1979 },
+      "strategy": "derangement", "filler": "derangement", "seed": 14, "padTo": 30 }
+  ]
+}
