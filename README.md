@@ -20,6 +20,8 @@ With a free Apple ID the app has to be reinstalled every 7 days; a paid develope
 
 The project is ready for TestFlight and App Store uploads: it includes Apple's privacy manifest (`App/GregularTV/PrivacyInfo.xcprivacy`: no tracking, no data collected, `UserDefaults` for the app's own settings only, reason CA92.1) and declares that it uses only exempt encryption (`ITSAppUsesNonExemptEncryption = NO`), so App Store Connect doesn't ask about export compliance for each build. In App Store Connect's privacy questions, the matching answer is **Data Not Collected**.
 
+**Signing for upload.** Debug builds sign automatically (Apple Development). Release builds for a real Apple TV sign manually with **Apple Distribution** and the App Store profile named **Gregular TV App Store**, so archiving doesn't need a registered device. To upload: choose **Any tvOS Device (arm64)**, then *Product › Archive*, then *Distribute App › App Store Connect*. Raise the build number for every upload. The profile expires after a year: renew it on developer.apple.com (*Profiles*), download it and double-click it. If you use a different team or profile name, change `PROVISIONING_PROFILE_SPECIFIER` in the target's Release build settings.
+
 ## Run the tests
 
 Core logic, on the Mac:
