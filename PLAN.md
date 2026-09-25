@@ -171,7 +171,7 @@ A second, optional protocol, `DaypartStrategy`, can wrap strategies ("cartoons 7
   - Time from the epoch is cut into runs of a day (longer only if one programme is longer than a day), rounded up to 30 min.
   - Each run pulls programmes from its own stream and plays them **back to back**; a programme never waits for a boundary. (Until 2026-09-23 runs were split into 2-hour-plus blocks that programmes couldn't cross, which left movie channels with up to two hours of dead air after a film.)
   - Near the end of a run, strategies with `mayReorderToFit` may pass over up to 15 programmes that wouldn't finish in time, to find one that does.
-- **Leftover time:** time left at the end of a run (once a day) joins the last slot, like padding. It's filled with commercials right up to the next programme.
+- **Leftover time:** time left at the end of a run (once a day) joins the last slot, like padding. It's filled with commercials up to the next programme, at most 20 minutes of them (`longestCommercialRun`); any more is blank, with the "Up next" card.
 - **Continuity:** run `r` starts the strategy at position `⌊r × runLength / averageSlot⌋`, an estimate of how many programmes aired before. A sequence may repeat or skip an item where runs meet, once a day. That's the price of never building or replaying the full schedule.
 - **Lookups:**
   - `tune(at:)`, `programme(at:)` and `commercialBreak(at:)` walk from the start of the run: at most a day of programmes, whatever the library size (tested with a 20,000-episode channel).
@@ -205,8 +205,8 @@ A second, optional protocol, `DaypartStrategy`, can wrap strategies ("cartoons 7
 ## 8. UI (SwiftUI on tvOS)
 
 - **Launch:** first run shows the login screen. After that, it goes straight to the last-watched channel, stored as a number in `AppPreferences`. If that channel no longer exists or is empty, it falls back to the lowest-numbered channel that has content.
-- **Watching:** full-screen player. Swipe up/down or click the top/bottom of the touch surface to change channel. A banner shows: channel number and name, title, S/E, progress bar, and "Next: …".
-- **Guide:** press Menu/Select to open an EPG grid. Channels are the rows and time runs left to right, from the current half hour to at least 6 hours ahead (6.5 hours); 3 hours fit on screen and the grid scrolls sideways as focus moves, with channel names pinned on the left and times pinned along the top. Focus moves across programmes, and Select tunes in. The data comes straight from `ChannelSchedule.airings(from:to:)`.
+- **Watching:** full-screen player. Click the left or right edge of the pad to change channel. A light touch shows a banner: channel number and name, title, S/E, progress bar, and the clock. Every button's job is set in one table per screen (`App/GregularTV/Remote/RemoteControls.swift`); README has the current layout.
+- **Guide:** press Menu to open an EPG grid. Channels are the rows and time runs left to right, from the current half hour to at least 6 hours ahead (6.5 hours); 3 hours fit on screen and the grid scrolls sideways as focus moves, with channel names pinned on the left and times pinned along the top. Focus moves across programmes, and Select tunes in. The data comes from `ChannelSchedule.programmes(from:to:)`, one block per programme (a film's mid-roll breaks inside it).
 - **Channel list:** a compact vertical list, the classic "channel selector", overlaid on the video.
 - Artwork loads lazily into the in-memory cache only.
 
@@ -326,6 +326,8 @@ Movie channels round each slot up (`padTo`), which leaves gaps; a 100-minute fil
 - **Best clips:** short MP4s (H.264 video, AAC audio) at a modest bitrate (1080p at 5 Mbps or less). Those play as-is, so they start instantly and cost the server nothing. Large trailers (4K, or high bitrate) either need more bandwidth than a remote connection has or must be re-encoded.
 
 ## 10. Milestones
+
+A record of what was built and checked, in order. Details like the remote controls have changed since; README describes the app as it is now.
 
 1. ✅ **Core package + tests** (no UI): models, `SeededRandom`, `ChannelSchedule`, 4 strategies, and the shared strategy test suite. Runs with `swift test` on the Mac.
 2. ✅ **Jellyfin client:** auth (Quick Connect + password), item queries, `PlaybackInfo`/stream URLs, `SecureStore` and `AppPreferences`. Tested against a mock server, and checked live against Jellyfin 10.11.1 on 2026-09-23: sign-in, a 5,927-item library, all 13 default channels, HLS stream URLs, stopping transcodes, and sign-out. (The Keychain test runs in the app's own tests, since milestone 3.)

@@ -2,10 +2,10 @@ import Foundation
 import GregularTVCore
 import Observation
 
-/// Turns remote input into channel changes: up/down, picking from the list,
-/// and typing a number.
+/// Turns remote input into channel changes: channel up/down, picking from
+/// the list, and typing a number.
 ///
-/// Rapid up/down presses only move a *preview* (the banner shows the target
+/// Rapid channel up/down presses only move a *preview* (the banner shows the target
 /// channel and what's on). The player tunes once presses stop for
 /// `settleDelay`, so flicking past five channels doesn't start five streams
 /// on the server.
