@@ -72,6 +72,8 @@ struct WatchView: View {
             }
             .ignoresSafeArea()
             .opacity(model.hidesVideo ? 0 : 1)
+            .opacity(model.changingChannel ? 0 : 1)
+            .animation(.easeInOut(duration: WatchModel.channelChangeFade), value: model.changingChannel)
             liveTVInput
             // Edge clicks, swipes and light touches, told apart (SwiftUI can't).
             RemoteGestures(map: RemoteControls.watching, isEnabled: model.takesRemoteInput, perform: model.perform)
@@ -195,52 +197,63 @@ struct WatchView: View {
 private struct ChannelBanner: View {
     let model: WatchModel
 
+    /// The channel column's width, the same on every channel.
+    static let channelWidth: CGFloat = 300
+
     var body: some View {
         TimelineView(.periodic(from: .now, by: 1)) { context in
             let banner = model.banner(at: context.date)
+            let programme = banner.programme
+            // Every part keeps its place and size whatever the channel or
+            // programme: long text is cut short, and a missing line keeps its
+            // space, so flicking through channels doesn't reshape the banner.
             HStack(alignment: .top, spacing: 32) {
                 VStack(alignment: .leading) {
                     Text(banner.channelNumber, format: .number)
                         .font(.system(size: 64, weight: .bold, design: .rounded))
                     Text(banner.channelName).font(.headline).foregroundStyle(.secondary)
                 }
-                if let programme = banner.programme {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text(programme.title).font(.title2).bold().lineLimit(1)
-                        if let subtitle = programme.subtitle {
-                            Text(subtitle).font(.headline).foregroundStyle(.secondary).lineLimit(1)
-                        }
-                        PlayheadBar(fraction: programme.progress)
-                        // The status note is centred on the bar, whatever the
-                        // widths either side, so switching end time / time left
-                        // doesn't nudge it.
-                        HStack(alignment: .firstTextBaseline) {
-                            Text(programme.started)
-                            Spacer()
-                            Text(programme.time).monospacedDigit()
-                        }
-                        .overlay {
-                            if let status = programme.status {
-                                Text(status).foregroundStyle(.yellow).lineLimit(1)
-                            }
-                        }
-                        .font(.caption).foregroundStyle(.secondary)
-                        Text(banner.hint)
-                            .font(.caption2).foregroundStyle(.tertiary)
-                            .frame(maxWidth: .infinity, alignment: .trailing)
-                        if !banner.diagnostics.isEmpty {
-                            VStack(alignment: .leading, spacing: 2) {
-                                ForEach(banner.diagnostics, id: \.self) { Text($0) }
-                            }
-                            .font(.caption2.monospaced()).foregroundStyle(.orange)
+                .lineLimit(1)
+                .frame(width: Self.channelWidth, alignment: .leading)
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(programme?.title ?? " ").font(.title2).bold()
+                    Text(programme?.subtitle ?? " ").font(.headline).foregroundStyle(.secondary)
+                    PlayheadBar(fraction: programme?.progress ?? 0)
+                        .opacity(programme == nil ? 0 : 1)
+                    // The status note is centred on the bar, whatever the
+                    // widths either side, so switching end time / time left
+                    // doesn't nudge it.
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(programme?.started ?? " ")
+                        Spacer()
+                        Text(programme?.time ?? " ").monospacedDigit()
+                    }
+                    .overlay {
+                        if let status = programme?.status {
+                            Text(status).foregroundStyle(.yellow)
                         }
                     }
-                    .frame(maxWidth: .infinity, alignment: .leading)   // the bar runs up to the clock
+                    .font(.caption).foregroundStyle(.secondary)
+                    Text(banner.hint)
+                        .font(.caption2).foregroundStyle(.tertiary)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                    if !banner.diagnostics.isEmpty {
+                        VStack(alignment: .leading, spacing: 2) {
+                            ForEach(banner.diagnostics, id: \.self) { Text($0) }
+                        }
+                        .font(.caption2.monospaced()).foregroundStyle(.orange)
+                    }
                 }
-                // The current time, like the clock in Apple's own players.
-                Text(context.date, style: .time)
-                    .font(.title3.monospacedDigit()).bold()
-                    .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .frame(maxWidth: .infinity, alignment: .leading)   // the bar runs up to the clock
+                // The current time, like the clock in Apple's own players, in
+                // a slot as wide as the widest time.
+                ZStack(alignment: .trailing) {
+                    Text(Self.widestTime, style: .time).hidden()
+                    Text(context.date, style: .time)
+                }
+                .font(.title3.monospacedDigit()).bold()
+                .foregroundStyle(.secondary)
             }
             .padding(40)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -248,6 +261,9 @@ private struct ChannelBanner: View {
             .padding(60)
         }
     }
+
+    /// 10:58 PM (or 22:58): as many digits as a time can have.
+    private static let widestTime = Calendar.current.date(bySettingHour: 22, minute: 58, second: 0, of: .now) ?? .now
 }
 
 /// While a commercial plays and the banner's down: a small badge in the top

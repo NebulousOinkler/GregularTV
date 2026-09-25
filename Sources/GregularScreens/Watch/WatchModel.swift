@@ -60,6 +60,8 @@ public final class WatchModel {
     /// Fully black for this long before the programme starts.
     public static let holdBlack: TimeInterval = 0.4
     public static let fadeIn: TimeInterval = 1.2
+    /// The picture's fade out and back in when changing channel.
+    public static let channelChangeFade: TimeInterval = 0.4
 
     public init(surfer: ChannelSurfer) {
         self.surfer = surfer
@@ -310,6 +312,14 @@ public final class WatchModel {
         case .betweenProgrammes, .startingSoon: true
         default: false
         }
+    }
+
+    /// Changing channel: the picture fades out as soon as surfing starts
+    /// (the old channel carries on until the surfer settles) and back in
+    /// once the new channel plays, over `channelChangeFade` each way, rather
+    /// than cutting to black while the new stream loads. The banner stays up.
+    public var changingChannel: Bool {
+        surfer.preview != nil || player.status == .tuning
     }
 
     /// The full-screen card for gaps and failures, if one is showing.
