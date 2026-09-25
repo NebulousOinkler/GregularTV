@@ -1,16 +1,19 @@
 import GregularTVCore
 import SwiftUI
 
-/// The channel selector: every channel with what's on now. Opened by pressing
-/// left while watching. Select tunes. Right, Menu, or 15 s without activity
-/// closes it and stays on the current channel.
+/// The channel selector: every channel with what's on now, or, in a break,
+/// what's up next. Opened from `RemoteControls.watching` (Left, as shipped).
+/// Select tunes. The buttons in `RemoteControls.channelList` (Right or Menu
+/// to close, as shipped), or 15 s without activity, close it and stay on the
+/// current channel.
 struct ChannelListView: View {
     static let idleTimeout: Duration = .seconds(15)
 
     let channels: [ChannelSchedule]
     let currentNumber: Int
     let onSelect: (Int) -> Void
-    let onClose: () -> Void
+    /// Buttons from `RemoteControls.channelList`, and `.close` when idle.
+    let onRemote: (RemoteAction) -> Void
 
     @FocusState private var focusedNumber: Int?
 
@@ -36,10 +39,7 @@ struct ChannelListView: View {
                 .defaultFocus($focusedNumber, currentNumber)
                 .focusSection()
                 // Handled here, on the rows' container, so presses reach them from the focused row.
-                .onExitCommand(perform: onClose)
-                .onMoveCommand { direction in
-                    if direction == .right { onClose() }   // left opened it; right puts it away
-                }
+                .remoteControls(RemoteControls.channelList, perform: onRemote)
                 .task {
                     // Scroll the current channel's row into existence, then focus it.
                     proxy.scrollTo(currentNumber, anchor: .center)
@@ -49,7 +49,7 @@ struct ChannelListView: View {
             }
         }
         .safeAreaInset(edge: .top) {
-            Text("▶ or Menu to close")
+            Text(RemoteControls.hint(for: RemoteControls.channelList))
                 .font(.caption).foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, alignment: .trailing)
                 .padding(.horizontal, 40).padding(.top, 30)
@@ -57,7 +57,7 @@ struct ChannelListView: View {
         .frame(width: 820)
         .frame(maxHeight: .infinity)
         .background(.ultraThinMaterial)
-        .closeWhenIdle(after: Self.idleTimeout, activity: focusedNumber, perform: onClose)
+        .closeWhenIdle(after: Self.idleTimeout, activity: focusedNumber) { onRemote(.close) }
     }
 }
 
@@ -67,7 +67,6 @@ private struct ChannelRow: View {
     let isCurrent: Bool
 
     var body: some View {
-        let airing = schedule.programme(at: date)
         HStack(alignment: .top, spacing: 24) {
             Text(schedule.channel.number, format: .number)
                 .font(.title2.monospacedDigit()).bold()
@@ -78,13 +77,30 @@ private struct ChannelRow: View {
                     Text(schedule.channel.name).font(.headline)
                     if isCurrent { Image(systemName: "play.fill").font(.caption) }
                 }
-                Text(airing.item.displayTitle).font(.body).lineLimit(1)
-                ProgressView(value: min(1, max(0, date.timeIntervalSince(airing.start) / airing.item.duration)))
-                Text("until \(airing.end.formatted(date: .omitted, time: .shortened))")
+                switch schedule.nowShowing(at: date) {
+                case .programme(let airing):
+                    Text(airing.item.displayTitle).font(.body).lineLimit(1)
+                    ProgressView(value: fraction(from: airing.start, to: airing.end))
+                    Text("until \(airing.end.formatted(date: .omitted, time: .shortened))")
+                        .font(.caption).foregroundStyle(.secondary)
+                case .inBreak(let ended, let next):
+                    // The programme is over: say what's next, not what ended.
+                    Text("Up next: \(next.item.displayTitle)").font(.body).lineLimit(1)
+                    ProgressView(value: fraction(from: ended.end, to: next.start)).opacity(0.45)
+                    HStack(spacing: 6) {
+                        BreakStyle.label
+                        Text("· starts \(next.start.formatted(date: .omitted, time: .shortened))")
+                    }
                     .font(.caption).foregroundStyle(.secondary)
+                }
             }
         }
         .padding(.vertical, 8)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func fraction(from start: Date, to end: Date) -> Double {
+        guard end > start else { return 1 }
+        return min(1, max(0, date.timeIntervalSince(start) / end.timeIntervalSince(start)))
     }
 }

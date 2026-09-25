@@ -47,14 +47,18 @@ Every channel's running order comes from one 10-character **schedule code** (lik
 
 ## Commercials
 
-Every programme is followed by a break up to the next half hour, filled with clips from a Jellyfin library named `Commercials` (the name is set in `channels.json`):
+A programme that ends within 10 minutes of the next half hour is followed by a break up to it, filled with clips from a Jellyfin library named `Commercials` (the name is set in `channels.json`). One that would leave a longer gap (a film that runs just past the hour) is followed straight away by the next programme, and the gap after that one is looked at the same way, until a break of 10 minutes or less lines the channel back up with the half hour. So there's never half an hour of commercials.
 - Clips play in the order of the channel's derangement, with the same `a` and `b` as its shows, carrying on from break to break.
-- A gap of a minute or less gets no commercials. When a clip ends, the next only starts if at least half of it will play before the programme; otherwise the rest of the break is blank. A clip still playing when the programme is due is cut off.
+- A gap of a minute or less gets no commercials. When a clip ends, the next only starts if at least half of it will play before the last 15 seconds; otherwise the rest of the break is blank. A clip still playing then is cut off.
+- The last 15 seconds of every break are the "Up next" card: the last commercial fades out quickly into it, then the card fades to black and the programme fades in.
 - Clips are never re-encoded: one Jellyfin would have to re-encode is skipped, and its time is blank. **MP4, H.264/AAC, at 3 Mbps or less** plays everywhere, even over a slow remote connection.
-- The screen is blank during any unfilled time, with an "Up next" card and the banner showing when the next programme starts.
+- The screen is blank during any unfilled time, with an "Up next" card showing when the next programme starts.
+- It's always clear when the programme is over: while commercials play, a small **Commercial break · Back at 9:30 PM** badge sits in the top corner (the banner comes and goes as usual). The channel list shows **Up next: …** with **Commercial break · starts 9:30 PM**, and the guide draws each programme's break as a darker tail on its block.
 - **Settings › Commercials › Play commercials** turns them off: every break is blank. Programme times don't change, so you stay in step with everyone on the same schedule code.
 
 ## Remote controls
+
+**To change what a button does,** edit the tables at the top of `App/GregularTV/Remote/RemoteControls.swift`: one per screen (watching, channel list, guide, Settings), each a list of `button: action`. The hints on screen are written from the same tables. As shipped:
 
 In the Simulator: Return is click, the arrow keys are the arrows, the space bar is Play/Pause, and Escape is Menu, when your simulator view passes it through.
 
@@ -63,7 +67,7 @@ In the Simulator: Return is click, the arrow keys are the arrows, the space bar 
 |---|---|
 | Swipe/click up or down | Channel up/down (the banner previews each channel, and tunes when you stop) |
 | Swipe/click right, or tap the touch surface | Show the info banner (clock, progress, time in). Again while showing: switch between end time and time left |
-| Swipe/click left | Channel list; Select tunes. Right, Menu, or 15 s idle closes it and stays on the current channel |
+| Swipe/click left | Channel list; Select tunes. Right, Menu, or 15 s idle closes it and stays on the current channel. Play/Pause opens Settings |
 | Click (Select) | Programme guide, six hours ahead, scrolling sideways; Select on a programme tunes to its channel. Menu, or 60 s idle, closes it |
 | Click and hold | Settings: streaming quality, trouble with this programme (step down quality, 720p, standard), schedule code, commercials, diagnostics, sign out. In the guide, Play/Pause also opens Settings. Close with Menu, Play/Pause or Done |
 | Play/Pause | Pause; press again to jump back to live |
@@ -85,6 +89,8 @@ xcrun simctl launch booted dev.gregulartv.GregularTV -handoffTest
 
 **Playback diagnostics** are a setting, not a build type: turn on **Show playback diagnostics** in Settings (click and hold while watching) to add a technical line to the banner. It shows quality, whether the server is transcoding and why, buffering, and how far behind live playback is. It's off by default. It never shows the server address, token, user or stream URLs.
 
+**When Jellyfin can't re-encode fast enough** (a slow server converting a file the Apple TV can't play as-is), a programme that fails or stalls is retried with less work: 720p, then a step lower on each further failure, for that programme only (Settings shows it as the programme's fix). A programme Jellyfin would re-encode isn't started with under 3 minutes left; the screen shows "Up next" instead, so the server isn't asked for an expensive transcode for a minute of video.
+
 ## Where to edit things
 
 | I want to… | Edit |
@@ -93,6 +99,8 @@ xcrun simctl launch booted dev.gregulartv.GregularTV -handoffTest
 | Add a shuffle/scheduling algorithm | New file in `Sources/GregularTVCore/Scheduling/Strategies/`, then add it to `StrategyRegistry.all` |
 | Add a way to choose channel content | New type in `Sources/GregularTVCore/Channels/Sources/`, then add it to `ChannelSourceRegistry.all` |
 | Change the order commercials play in | New `GapFiller` in `Sources/GregularTVCore/Scheduling/GapFiller.swift`, then add it to `GapFillerRegistry.all` and set `"filler"` in `channels.json` (see PLAN.md §9a) |
+| Change what the remote's buttons do | The tables at the top of `App/GregularTV/Remote/RemoteControls.swift` (one per screen) |
+| Change how long breaks may be, or the Up next lead | `ChannelSchedule.longestBreak` and `upNextLead` in `Sources/GregularTVCore/Scheduling/ScheduleEngine.swift` |
 | Restyle the icon or Top Shelf image | `scripts/make-artwork.swift`, then run `swift scripts/make-artwork.swift` |
 | Take App Store screenshots | Demo mode (Debug builds only): run `swift scripts/make-demo-video.swift` once, then `python3 scripts/demo-server.py`, and launch the app in a simulator with `-demoServer http://localhost:8765`. It plays public-domain films and made-up shows, with nothing saved to the Keychain. See `App/GregularTV/DemoMode.swift`. |
 

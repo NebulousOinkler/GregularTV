@@ -37,6 +37,15 @@ import Observation
 ///   live). Each stall on the channel doubles the head start, up to
 ///   `maxTranscodeHeadStart`. Files that play as-is or are only repackaged
 ///   start at once.
+/// - **Re-encoding that can't keep up:** when a programme Jellyfin re-encodes
+///   fails or stalls, the retry asks for less work: 720p, then a step lower
+///   on each further failure, for that programme only (shown in Settings as
+///   its fix). The server's processor is the limit, not the connection, so
+///   Auto doesn't re-measure first.
+/// - **Too little left to re-encode:** a programme Jellyfin would re-encode
+///   isn't started with under `minReencodedTimeLeft` to go, since starting a
+///   transcode costs the server a lot for a minute of video. The screen is
+///   blank with "Up next" instead.
 /// - **Programme fixes** (`ProgrammeFix`, from Settings) try a lower quality
 ///   for just the programme on now, if it keeps having trouble. Changing
 ///   channel, changing quality, or the next programme starting puts it back
@@ -98,6 +107,8 @@ final class ChannelPlayer {
     static let reencodedForwardBuffer: TimeInterval = 60
     /// With "Step down quality", buffering this long steps down again.
     static let stepDownAfterBuffering: TimeInterval = 4
+    /// A re-encoded programme with less than this left isn't started.
+    static let minReencodedTimeLeft: TimeInterval = 180
 
     /// Two players, each with its own video surface. One is on screen
     /// (`player`); the other is standby, buffering the programme after a
@@ -304,6 +315,15 @@ final class ChannelPlayer {
             do {
                 let loaded = try await load(tuning.airing)
                 guard !Task.isCancelled else { return release(loaded) }
+                if loaded.reencodesVideo, !tuning.airing.isFiller,
+                   tuning.airing.end.timeIntervalSinceNow < Self.minReencodedTimeLeft {
+                    // Not worth a transcode: blank with "Up next" until the
+                    // break after it, or the next programme if there's none.
+                    release(loaded)
+                    let breakFollows = schedule.commercialBreak(at: tuning.airing.end) != nil
+                    status = .betweenProgrammes(until: breakFollows ? tuning.airing.end : tuning.airing.slotEnd)
+                    return
+                }
                 current = loaded
                 streamDescription = loaded.description
                 player.insert(loaded.item, after: nil)
@@ -311,12 +331,13 @@ final class ChannelPlayer {
                     // Let Jellyfin get ahead: buffer from `start`, paused, then play on time.
                     seek(to: start.timeIntervalSince(tuning.airing.start))
                     status = .startingSoon(at: start)
-                    try? await Task.sleep(for: .seconds(start.timeIntervalSinceNow))
-                    // Don't start into an almost empty buffer: wait a little
-                    // longer for a cushion if Jellyfin was slow to get going.
+                    // Wait for live to reach `start`. Don't start into an almost
+                    // empty buffer: wait a little longer for a cushion if Jellyfin
+                    // was slow to get going. A stream that fails is retried at
+                    // once, not after the head start.
                     let deadline = start.addingTimeInterval(Self.maxCushionWait)
                     while !Task.isCancelled, Date.now < deadline, loaded.item.status != .failed,
-                          Self.bufferedAhead(in: loaded.item) < Self.startCushion {
+                          Date.now < start || Self.bufferedAhead(in: loaded.item) < Self.startCushion {
                         try? await Task.sleep(for: .milliseconds(500))
                     }
                     guard !Task.isCancelled else { return }
@@ -692,13 +713,28 @@ final class ChannelPlayer {
             onUnauthorized?()
             return
         }
+        let failedReencode = current.map { $0.airing == airing && $0.reencodesVideo && !airing.isFiller } ?? false
+        let failedCap = current?.cap
         unloadEverything()
         self.airing = airing
         let delay = min(Self.maxRetryDelay, 5 * pow(2, Double(consecutiveFailures)))
         consecutiveFailures += 1
-        // The server may be struggling: in Auto, measure again before the retry.
-        if quality == .auto { needsMeasurementFirst = true }
+        if failedReencode, let failedCap {
+            // Jellyfin couldn't re-encode fast enough: retry this programme with less work.
+            stepDownAfterReencodeFailure(of: airing, from: failedCap)
+        } else if quality == .auto {
+            // The server or connection may be struggling: measure again before the retry.
+            needsMeasurementFirst = true
+        }
         status = .failed(message: FriendlyError.message(for: error), retryAt: .now.addingTimeInterval(delay))
+    }
+
+    /// 720p first, then a step lower each time, down to the lowest.
+    private func stepDownAfterReencodeFailure(of airing: Airing, from cap: Int) {
+        let hd720 = StreamingQuality.hd720.fixedBitrate!
+        let lower = cap > hd720 ? hd720 : StreamingQuality.bitrate(below: cap) ?? StreamingQuality.lowestBitrate
+        fixedProgramme = (airing, lower)
+        programmeFix = lower == hd720 ? .hd720 : .stepDown
     }
 
     private func unloadEverything() {
