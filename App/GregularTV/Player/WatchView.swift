@@ -6,15 +6,14 @@ import SwiftUI
 /// **Remote controls** are set in one place, `RemoteControls` (in
 /// Remote/RemoteControls.swift): a table per screen of which button does
 /// what. As shipped, while watching:
-/// - **Up/down:** channel up/down (the banner previews each channel as you go).
-/// - **Left:** channel list.
-/// - **Right, or click (Select):** show the info banner. Again while it's
-///   showing: switch between the end time and the time left. (A light tap
-///   does nothing: near the edges it's too easily taken for Up or Down.)
-/// - **Menu (or Back ‹):** back to the programme guide, the app's main screen
-///   (it's open at launch, over the channel playing). In the guide, Menu
-///   first moves up to its Settings button, then leaves the app, as tvOS
-///   expects of a main screen.
+/// - **Click left / right** (the edge of the pad): channel down / up (the
+///   banner previews each channel as you go).
+/// - **Slide left:** channel list (slide right closes it).
+/// - **Slide up:** the info banner, fading in slowly. **Slide down:** hide it at once.
+/// - **Light touch, or click (Select):** show the info banner. Again while
+///   it's showing: switch between the end time and the time left.
+/// - **Menu (or Back ‹):** the programme guide. In the guide, Menu first
+///   moves up to its Settings button, then goes back to the programme.
 /// - **Click and hold:** Settings (quality, schedule code, diagnostics, sign out).
 /// - **Play/Pause:** pause, then press again to jump back to live.
 /// - **Digits** (keyboard only; the Siri Remote has none): type a channel number.
@@ -46,18 +45,19 @@ struct WatchView: View {
     @State private var bannerVisible = true
     /// Goes up each time the viewer asks for the banner, to restart its timer.
     @State private var bannerRequests = 0
+    /// How the banner comes up next time: normally, or slowly (sliding up).
+    @State private var bannerFadeIn: Animation = .default
+    static let slowBannerFadeIn: Animation = .easeInOut(duration: 1.5)
     /// The last press that showed the banner. One press can be reported
-    /// twice (for example as an arrow and a tap, if `.touchTap` is mapped);
-    /// only the first counts.
+    /// twice (for example a click in the centre and the touch that came
+    /// with it); only the first counts.
     @State private var lastInfoPress = Date.distantPast
     static let infoPressGap: TimeInterval = 0.5
-    /// End time or time left, switched by pressing Right or tapping again. Kept while the app runs.
+    /// End time or time left, switched by showing the banner again while it's up. Kept while the app runs.
     @State private var timeDisplay: BannerTimeDisplay = .endTime
     @State private var showingSettings = false
     @State private var showingList = false
-    /// The guide is the app's main screen: it's open at launch, and Menu
-    /// while watching goes back to it.
-    @State private var showingGuide = true
+    @State private var showingGuide = false
     /// Settings was opened from the guide, so closing it goes back there.
     @State private var settingsReturnsToGuide = false
     /// When the guide or list last opened or closed, for ignoring too-quick clicks.
@@ -96,10 +96,10 @@ struct WatchView: View {
             // while a head start buffers, not a frame held on screen.
             .opacity(hidesVideo ? 0 : 1)
             liveTVInput
-            if let tapAction = RemoteControls.watching[.touchTap] {
-                RemoteSurfaceTap(isEnabled: !overlayOpen && !showingSettings) { perform(tapAction) }
-                    .frame(width: 0, height: 0)
-            }
+            // Edge clicks, swipes and light touches, told apart (SwiftUI can't).
+            RemoteGestures(map: RemoteControls.watching, isEnabled: !overlayOpen && !showingSettings,
+                           perform: perform)
+                .frame(width: 0, height: 0)
 
             if showsCard {
                 StatusCard(player: player)
@@ -171,6 +171,7 @@ struct WatchView: View {
             player.diagnosticsEnabled = showsDiagnostics
             #if DEBUG
             if DebugOptions.opensChannelList { show(.channelList) }
+            if DebugOptions.opensGuide { show(.guide) }
             #endif
         }
         .onDisappear {
@@ -206,7 +207,8 @@ struct WatchView: View {
         // re-tune. Not for each clip in a commercial break.
         .task(id: BannerTrigger(airing: player.airing?.isFiller == true ? nil : player.airing,
                                 tuneCount: player.tuneCount, requests: bannerRequests)) {
-            withAnimation { bannerVisible = true }
+            withAnimation(bannerFadeIn) { bannerVisible = true }
+            bannerFadeIn = .default
             try? await Task.sleep(for: .seconds(6))
             withAnimation { bannerVisible = false }
         }
@@ -225,12 +227,12 @@ struct WatchView: View {
             .focusable(!overlayOpen)
             .focused($watchingHasFocus)
             .focusEffectDisabled()
-            .remoteControls(RemoteControls.watching, takesClicks: true, perform: perform)
+            // Before the remote table's handlers, as it was before they moved into it.
             .onKeyPress(characters: .decimalDigits) { press in
                 press.characters.forEach(surfer.type(digit:))
                 return .handled
             }
-        // Menu goes back to the guide, the main screen; Menu there leaves the app.
+            .remoteControls(RemoteControls.watching, takesClicks: true, takesArrows: false, perform: perform)
     }
 
     private var changedRecently: Bool {
@@ -243,6 +245,16 @@ struct WatchView: View {
         case .channelUp: surfer.channelUp()
         case .channelDown: surfer.channelDown()
         case .showInfo: showInfo()
+        case .showInfoSlowly:
+            guard !bannerIsShowing else { return bannerRequests += 1 }   // already up: just keep it there
+            bannerFadeIn = Self.slowBannerFadeIn
+            bannerRequests += 1
+        case .hideInfo:
+            // At once, no animation. (While paused, buffering or between
+            // programmes the banner stays: it's saying something.)
+            var instantly = Transaction()
+            instantly.disablesAnimations = true
+            withTransaction(instantly) { bannerVisible = false }
         case .pauseOrJumpToLive: player.togglePause()
         case .openChannelList: show(.channelList)
         case .openGuide: show(.guide)
@@ -506,7 +518,11 @@ private struct BreakBadge: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             Spacer()
         }
-        .padding(60)
+        // Tucked into the corner, outside the usual safe margins: it's small
+        // and only there to say it's a break.
+        .padding(.leading, 40)
+        .padding(.top, 28)
+        .ignoresSafeArea()
         .allowsHitTesting(false)
     }
 }

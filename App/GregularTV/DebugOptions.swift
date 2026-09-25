@@ -12,7 +12,7 @@ import GregularTVCore
 ///     xcrun simctl launch booted dev.gregulartv.GregularTV -handoffTest
 ///
 /// `-openChannelList`: opens the channel list on launch, to check its focus
-/// handling without arrow keys.
+/// handling without arrow keys. `-openGuide` does the same for the guide.
 ///
 /// `-pretendCommercials`: borrows a dozen real videos from the library as
 /// 30–120 second "commercials", so breaks can be tested before a real
@@ -23,6 +23,11 @@ enum DebugOptions {
 
     static var opensChannelList: Bool {
         ProcessInfo.processInfo.arguments.contains("-openChannelList")
+    }
+
+    /// `-openGuide`: opens the guide on launch, to check it without a Menu button.
+    static var opensGuide: Bool {
+        ProcessInfo.processInfo.arguments.contains("-openGuide")
     }
 
     static func apply(to channels: [ChannelSchedule], items: [MediaItem], fillerPool: [MediaItem]) -> [ChannelSchedule] {

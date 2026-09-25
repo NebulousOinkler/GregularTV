@@ -5,9 +5,22 @@ import Testing
 struct RemoteControlsTests {
     @Test func hintsAreWrittenFromTheTables() {
         #expect(RemoteControls.hint(for: RemoteControls.watching)
-                == "▲▼ channels · ▶ or click: info · Play/Pause: pause · ◀: channel list · Menu: guide · hold click: Settings")
+                == "click ◀▶: channels · slide ▲ or click or touch: info · slide ▼: hide info · Play/Pause: pause · slide ◀: channel list · Menu: guide · hold click: Settings")
+        #expect(RemoteControls.hint(for: RemoteControls.channelList) == "Play/Pause: Settings · slide ▶ or Menu: close")
         #expect(RemoteControls.hint(for: RemoteControls.guide) == "Play/Pause: Settings · Menu: back")
-        #expect(RemoteControls.hint(for: [.left: .channelUp, .menu: .close]) == "◀: channel up · Menu: close")
+        #expect(RemoteControls.hint(for: [.clickLeft: .channelUp, .menu: .close]) == "click ◀: channel up · Menu: close")
+    }
+
+    @Test func clicksAndSwipesShareAnArrowDirection() {
+        #expect(RemoteButton.clickLeft.direction == .left && RemoteButton.swipeLeft.direction == .left)
+        #expect(RemoteButton.click.direction == nil && RemoteButton.touchTap.direction == nil)
+    }
+
+    @Test func watchingTellsClicksFromSwipes() {
+        let map = RemoteControls.watching
+        #expect(map[.clickLeft] == .channelDown && map[.clickRight] == .channelUp)
+        #expect(map[.swipeLeft] == .openChannelList && map[.swipeUp] == .showInfoSlowly && map[.swipeDown] == .hideInfo)
+        #expect(map[.touchTap] == .showInfo && map[.clickAndHold] == .openSettings)
     }
 
     @Test func everyMenuCanBeClosedFromTheRemote() {
