@@ -2,6 +2,7 @@ import Foundation
 import GregularCore
 import GregularJellyfin
 import Testing
+@testable import GregularScreens
 @testable import GregularTV
 
 /// Remote-input logic: up/down with preview and settle, wrapping, and number

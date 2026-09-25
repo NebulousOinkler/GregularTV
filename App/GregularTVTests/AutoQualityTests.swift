@@ -2,6 +2,7 @@ import Foundation
 import GregularCore
 import GregularJellyfin
 import Testing
+@testable import GregularScreens
 @testable import GregularTV
 
 /// Speed tests: Auto never delays playback for one, and they never run
