@@ -201,6 +201,9 @@ struct WatchView: View {
                                 tuneCount: player.tuneCount, requests: bannerRequests)) {
             withAnimation { bannerVisible = true }
             try? await Task.sleep(for: .seconds(6))
+            // Restarted (another touch, a new programme or a re-tune): the
+            // new timer decides. Hiding here would undo it straight away.
+            guard !Task.isCancelled else { return }
             withAnimation { bannerVisible = false }
         }
     }
