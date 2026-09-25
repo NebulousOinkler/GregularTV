@@ -36,8 +36,14 @@ public final class WatchModel {
     /// Settable, for a sheet that the viewer can also close by itself.
     public var showingSettings = false
     /// Black over everything but the guide and list, and how long its
-    /// current change takes (fading in, or out).
-    public private(set) var curtain = Curtain(closed: false, fade: 0)
+    /// current change takes (fading in, or out). The sound fades with it, so
+    /// the end of a commercial isn't heard over the black.
+    public private(set) var curtain = Curtain(closed: false, fade: 0) {
+        didSet {
+            guard curtain != oldValue else { return }
+            fadeSound(to: curtain.closed ? 0 : 1, over: curtain.fade)
+        }
+    }
 
     /// Goes up each time the viewer asks for the banner, to restart its timer.
     private var bannerRequests = 0
@@ -46,6 +52,7 @@ public final class WatchModel {
     /// When the guide or list last opened or closed, for ignoring too-quick clicks.
     private var lastOverlayChange = Date.distantPast
     /// The break the banner is showing, worked out once per airing.
+    @ObservationIgnored private var soundFade: Task<Void, Never>?
     @ObservationIgnored private var breakCache: (airing: Airing, span: DateInterval?, after: MediaItem?)?
 
     /// Opening or closing the guide, list or Settings within this long of the
@@ -394,6 +401,20 @@ public final class WatchModel {
             break   // stays as it is until there's something to show
         default:
             if curtain.closed { curtain = Curtain(closed: false, fade: Self.fadeIn) }
+        }
+    }
+
+    /// Ramps the player's volume to `target` over `seconds`, replacing any ramp under way.
+    private func fadeSound(to target: Float, over seconds: TimeInterval) {
+        soundFade?.cancel()
+        let from = player.volume
+        let steps = max(1, Int(seconds / 0.05))
+        soundFade = Task { [player] in
+            for step in 1...steps {
+                if seconds > 0 { try? await Task.sleep(for: .seconds(seconds / Double(steps))) }
+                guard !Task.isCancelled else { return }
+                player.volume = from + (target - from) * Float(step) / Float(steps)
+            }
         }
     }
 

@@ -22,6 +22,7 @@ import GregularCore
     private(set) var queue: [Item] = []
     private(set) var seeks: [TimeInterval] = []
     var pausesAtItemEnd = false
+    var volume: Float = 1
     private(set) var state: PlayerDeckState = .paused
     var position: TimeInterval = 0
 
