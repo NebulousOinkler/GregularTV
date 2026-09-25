@@ -57,24 +57,17 @@ Enforcement:
 
 ## 4. Architecture
 
-Two targets. The logic lives in a Swift package so it's testable with `swift test` on the Mac, without a simulator.
+Three parts, each depending only on the ones before it. The logic and the Jellyfin connection are a Swift package, so they're testable with `swift test` on the Mac, without a simulator.
 
 ```
 jellyfin_tv/
-├─ Package.swift                    # GregularTVCore (tvOS 17+, macOS for tests)
-├─ Sources/GregularTVCore/
-│  ├─ Model/                        # MediaItem, Channel, Airing (+ Tuning)
-│  ├─ Jellyfin/
-│  │  ├─ HTTPTransport.swift        # the ONLY real network path (ephemeral, no cache/cookies)
-│  │  ├─ JellyfinAPI.swift          # request building, auth header, errors
-│  │  ├─ JellyfinServer.swift       # pre-login: server check, Quick Connect, password → Credentials
-│  │  ├─ JellyfinClient.swift       # signed in: libraries, playback sources, speed test, stop transcode, sign out
-│  │  ├─ LibraryQuery.swift         # paged /Items → [MediaItem], series genres inherited
-│  │  ├─ Playback.swift             # DeviceProfile, PlaybackSource (+ reencodesVideo)
-│  │  ├─ StreamingQuality.swift     # quality caps, Auto's bitrate rule
-│  │  └─ ServerAddress.swift, ClientIdentity.swift, JellyfinJSON.swift
+├─ Package.swift                    # GregularCore, GregularJellyfin (tvOS 17+, macOS for tests)
+├─ Sources/GregularCore/            # 1. THE LOGIC: Foundation only
+│  ├─ Model/                        # MediaItem, Channel, Airing (+ Tuning, Onscreen)
+│  ├─ Services/MediaServices.swift  # what a media server must provide: MediaLibrary, StreamSource,
+│  │                                # MediaStream, MediaServiceFailure
 │  ├─ Scheduling/
-│  │  ├─ ScheduleEngine.swift       # ChannelSchedule: day-long runs, slots, breaks, tune(at:), airings(from:to:)
+│  │  ├─ ScheduleEngine.swift       # ChannelSchedule: day-long runs, slots, breaks, mid-rolls, tune(at:)
 │  │  ├─ ScheduleStrategy.swift     # protocol (see §5)
 │  │  ├─ StrategyRegistry.swift     # the one list of programme strategies
 │  │  ├─ Strategies/                # DerangedShows (default), RandomShuffle, SequentialBySeries,
@@ -91,23 +84,36 @@ jellyfin_tv/
 │  │  ├─ Sources/BasicSources.swift # all, genre, series, years, tag
 │  │  └─ ChannelNavigator.swift     # channel up/down, typed numbers
 │  ├─ Guide/GuideWindow.swift       # the guide's time window and cells
-│  ├─ Privacy/
-│  │  ├─ SecureStore.swift          # Keychain (server, token, user ID, device ID)
-│  │  └─ AppPreferences.swift       # the only UserDefaults: 5 client settings
+│  ├─ Playback/StreamingQuality.swift  # quality caps, Auto's bitrate rule, step-down ladder
+│  ├─ Preferences/AppPreferences.swift # the only UserDefaults: 5 client settings
 │  └─ Resources/channels.json       # the channel line-up
-├─ Tests/GregularTVCoreTests/         # schedule, strategies, commercials, guide, Jellyfin client, privacy
-├─ scripts/                         # privacy-check.sh (runs in the build), make-artwork.swift
-└─ App/ (Xcode tvOS target "GregularTV", shown as Gregular TV)
+├─ Sources/GregularJellyfin/        # 2. THE JELLYFIN CONNECTION: Foundation, GregularCore, Security
+│  ├─ HTTPTransport.swift           # the ONLY real network path (ephemeral, no cache/cookies)
+│  ├─ JellyfinAPI.swift             # request building, auth header, JellyfinError
+│  ├─ JellyfinServer.swift          # pre-login: server check, Quick Connect, password → Credentials
+│  ├─ JellyfinClient.swift          # signed in: libraries, playback sources, speed test, stop transcode,
+│  │                                # sign out; conforms to MediaLibrary and StreamSource
+│  ├─ LibraryQuery.swift            # paged /Items → [MediaItem] (Jellyfin types → MediaItem.Kind)
+│  ├─ Playback.swift                # DeviceProfile, PlaybackSource (→ MediaStream)
+│  ├─ SecureStore.swift             # Credentials, Keychain (server, token, user ID, device ID)
+│  └─ ServerAddress.swift, ClientIdentity.swift, JellyfinJSON.swift
+├─ Tests/GregularCoreTests/         # schedule, strategies, commercials, guide, privacy, layers
+├─ Tests/GregularJellyfinTests/     # Jellyfin client and sign-in (against a mock server), privacy
+├─ scripts/                         # privacy-check.sh (runs in the build), layer-check.sh, make-artwork.swift
+└─ App/ (Xcode tvOS target "GregularTV", shown as Gregular TV)   # 3. THE APPLE TV APP
    ├─ GregularTVApp.swift, RootView.swift, AppModel.swift   # launch, sign-in state, settings
    ├─ Login/          LoginView, LoginModel (Quick Connect or password)
    ├─ Player/         ChannelPlayer (AVQueuePlayer ×2), ChannelSurfer, WatchView (banner, cards),
    │                  ChannelListView, SettingsView, VideoSurface, PlaybackDiagnostics
+   ├─ Remote/         RemoteControls (the button tables), RemoteGestures (clicks, slides, touches)
    ├─ Guide/          GuideView (scrolling EPG grid)
-   ├─ DebugOptions.swift            # launch arguments, Debug builds only
-   └─ GregularTVTests/  app-hosted tests (Keychain, player, commercials, surfing)
+   ├─ DebugOptions.swift, DemoMode.swift   # launch arguments and demo mode, Debug builds only
+   └─ GregularTVTests/  app-hosted tests (Keychain, player, commercials, surfing, remote)
 ```
 
-Dependency direction: `App → GregularTVCore`. Inside the core, `Scheduling` knows nothing about networking. Strategies only see `[MediaItem]` and an RNG.
+**Dependencies.** `GregularJellyfin → GregularCore`, and the app → both. The logic knows nothing about Jellyfin, networking, AVFoundation or UI: it defines what it needs from a server (`MediaLibrary` for programmes and commercials, `StreamSource` for playable streams and the speed test) and works with any implementation. In the app, only `AppModel` (which signs in and hands the client on as those interfaces), `DemoMode` and the `Login` screens know it's Jellyfin; the player, guide, Settings and remote see only Core. `scripts/layer-check.sh` enforces this, and runs as a test. Inside the logic, `Scheduling` knows nothing about where items come from; strategies only see `[MediaItem]` and an RNG.
+
+**Reusing it, for example for radio.** A radio app would keep `GregularCore` (channels, shuffles, commercials, the guide maths) and `GregularJellyfin`, add music kinds to `MediaItem.Kind` and map Jellyfin's audio types to them in `LibraryQuery`, and bring its own player and screens, which would use `StreamSource` exactly as `ChannelPlayer` does.
 
 ## 5. The extension point: schedule strategies
 
@@ -387,5 +393,5 @@ A record of what was built and checked, in order. Details like the remote contro
 - **Channel editing:** hand-edit `channels.json`, which ships with a generic default line-up (§9).
 
 **Prerequisites**
-- ✅ Xcode 27 with the licence accepted, the tvOS 27 SDK, and the tvOS 27 simulator runtime (verified 2026-09-23). `GregularTVCore` tests pass on macOS and on the Apple TV 4K simulator.
+- ✅ Xcode 27 with the licence accepted, the tvOS 27 SDK, and the tvOS 27 simulator runtime (verified 2026-09-23). `GregularCore` and `GregularJellyfin` tests pass on macOS and on the Apple TV 4K simulator.
 - A reachable Jellyfin server (10.9 or later) for milestone 2 onward. A throwaway Docker instance with a few sample files works well for development.

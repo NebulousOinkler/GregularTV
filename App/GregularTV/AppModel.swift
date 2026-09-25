@@ -1,8 +1,15 @@
 import Foundation
-import GregularTVCore
+import GregularCore
+import GregularJellyfin
 import Observation
 
 /// The app's top-level state: signed out, loading the library, or watching.
+///
+/// This is where the three parts meet. It signs in to Jellyfin
+/// (`GregularJellyfin`), then hands the client on only as Core's interfaces:
+/// a `MediaLibrary` to load programmes and commercials, and a `StreamSource`
+/// to the player. Nothing below it (the player, the guide, Settings) knows
+/// which server it's talking to.
 ///
 /// The library and schedules live only in this object's memory. On relaunch
 /// they're fetched again (PLAN.md §3).
@@ -90,7 +97,7 @@ final class AppModel {
         preferences.playsCommercials = plays
         guard case .watching(let surfer) = phase, let client else { return }
         surfer.player.stop()
-        phase = watch(library: library, commercials: commercials, client: client,
+        phase = watch(library: library, commercials: commercials, streams: client,
                       preferring: surfer.player.schedule.channel.number)
     }
 
@@ -101,7 +108,7 @@ final class AppModel {
         preferences.scheduleCode = code
         guard case .watching(let surfer) = phase, let client else { return }
         surfer.player.stop()
-        phase = watch(library: library, commercials: commercials, client: client,
+        phase = watch(library: library, commercials: commercials, streams: client,
                       preferring: surfer.player.schedule.channel.number)
     }
 
@@ -120,7 +127,7 @@ final class AppModel {
     /// The clips from the commercials library named in `channels.json`. If
     /// there's no such library, or it can't be read, the result is empty:
     /// the "Up next" card fills the gaps and everything else works as usual.
-    private func loadCommercials(client: JellyfinClient) async -> [MediaItem] {
+    private func loadCommercials(from source: any MediaLibrary) async -> [MediaItem] {
         #if DEBUG
         if DebugOptions.usesPretendCommercials {
             commercialsStatus = "Using pretend commercials (debug option)."
@@ -133,7 +140,7 @@ final class AppModel {
         }
         let found: [MediaItem]?
         do {
-            found = try await client.fetchLibrary(named: name)
+            found = try await source.fetchCollection(named: name)
         } catch {
             commercialsStatus = "Couldn't load the \u{201C}\(name)\u{201D} library, so breaks show the Up Next card."
             return []
@@ -159,7 +166,7 @@ final class AppModel {
     /// Builds every channel's schedule from the library and the schedule code,
     /// and starts watching: the preferred channel, or the lowest-numbered one
     /// if that one is gone or empty.
-    private func watch(library: [MediaItem], commercials: [MediaItem], client: JellyfinClient,
+    private func watch(library: [MediaItem], commercials: [MediaItem], streams: any StreamSource,
                        preferring preferred: Int?) -> Phase {
         guard var channels = try? ChannelLineup.bundled()
             .schedules(for: library, fillerPool: commercials, code: scheduleCode, playsCommercials: playsCommercials)
@@ -176,7 +183,7 @@ final class AppModel {
             return .failed("None of the channels in channels.json match anything in your library.")
         }
         preferences.lastChannelNumber = number
-        let surfer = ChannelSurfer(channels: channels, startingWith: channel, client: client, preferences: preferences)
+        let surfer = ChannelSurfer(channels: channels, startingWith: channel, streams: streams, preferences: preferences)
         surfer.player.onUnauthorized = { [weak self] in self?.sessionExpired() }
         return .watching(surfer)
     }
@@ -197,9 +204,9 @@ final class AppModel {
         self.client = client
         do {
             try? await client.registerCapabilities()
-            library = try await client.fetchLibrary()
-            commercials = await loadCommercials(client: client)
-            phase = watch(library: library, commercials: commercials, client: client,
+            library = try await client.fetchProgrammes()
+            commercials = await loadCommercials(from: client)
+            phase = watch(library: library, commercials: commercials, streams: client,
                           preferring: preferences.lastChannelNumber)
         } catch JellyfinError.unauthorized {
             sessionExpired()

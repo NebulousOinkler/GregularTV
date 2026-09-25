@@ -14,9 +14,9 @@ FORBIDDEN='UserDefaults|@AppStorage|@SceneStorage|NSUbiquitousKeyValueStore|Clou
 
 # file: reason
 ALLOWED='
-Sources/GregularTVCore/Privacy/SecureStore.swift
-Sources/GregularTVCore/Privacy/AppPreferences.swift
-Sources/GregularTVCore/Jellyfin/HTTPTransport.swift
+Sources/GregularJellyfin/SecureStore.swift
+Sources/GregularCore/Preferences/AppPreferences.swift
+Sources/GregularJellyfin/HTTPTransport.swift
 '
 #   SecureStore.swift:    Keychain; the only credential storage (server URL, token, user ID, device ID).
 #   AppPreferences.swift: UserDefaults; last channel number and streaming quality only.

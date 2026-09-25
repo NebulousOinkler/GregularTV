@@ -1,5 +1,6 @@
 import Foundation
-import GregularTVCore
+import GregularCore
+import GregularJellyfin
 import Testing
 @testable import GregularTV
 
@@ -26,7 +27,7 @@ struct ChannelSurferTests {
         let client = JellyfinClient(
             credentials: Credentials(serverURL: URL(string: "https://tv.invalid")!, userID: "u", accessToken: "t"),
             identity: ClientIdentity(deviceID: "test"), transport: OfflineTransport())
-        return ChannelSurfer(channels: channels, startingWith: channels[0], client: client, preferences: preferences)
+        return ChannelSurfer(channels: channels, startingWith: channels[0], streams: client, preferences: preferences)
     }
 
     private func settle() async throws {
@@ -107,7 +108,7 @@ struct ChannelPlayerAuthTests {
         let client = JellyfinClient(
             credentials: Credentials(serverURL: URL(string: "https://tv.invalid")!, userID: "u", accessToken: "t"),
             identity: ClientIdentity(deviceID: "test"), transport: RevokedTransport())
-        let player = ChannelPlayer(schedule: schedule, client: client, quality: .maximum)
+        let player = ChannelPlayer(schedule: schedule, streams: client, quality: .maximum)
 
         var called = false
         player.onUnauthorized = { called = true }

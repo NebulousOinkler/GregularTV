@@ -1,4 +1,4 @@
-import GregularTVCore
+import GregularCore
 import SwiftUI
 
 /// The programme guide: channels down the side, from the current half hour

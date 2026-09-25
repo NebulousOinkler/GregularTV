@@ -1,4 +1,5 @@
-import GregularTVCore
+import GregularCore
+import GregularJellyfin
 import SwiftUI
 
 struct LoginView: View {

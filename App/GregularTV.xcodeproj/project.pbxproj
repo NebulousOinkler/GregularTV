@@ -7,7 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		5DC6E38EC18FAA932A196971 /* GregularTVCore in Frameworks */ = {isa = PBXBuildFile; productRef = 39239ABE91B67D192800D71C /* GregularTVCore */; };
+		5DC6E38EC18FAA932A196971 /* GregularCore in Frameworks */ = {isa = PBXBuildFile; productRef = 39239ABE91B67D192800D71C /* GregularCore */; };
+		A1C0DE5E0000000000000001 /* GregularJellyfin in Frameworks */ = {isa = PBXBuildFile; productRef = A1C0DE5E0000000000000002 /* GregularJellyfin */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -56,7 +57,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				5DC6E38EC18FAA932A196971 /* GregularTVCore in Frameworks */,
+				5DC6E38EC18FAA932A196971 /* GregularCore in Frameworks */,
+				A1C0DE5E0000000000000001 /* GregularJellyfin in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -109,7 +111,8 @@
 			);
 			name = GregularTV;
 			packageProductDependencies = (
-				39239ABE91B67D192800D71C /* GregularTVCore */,
+				39239ABE91B67D192800D71C /* GregularCore */,
+				A1C0DE5E0000000000000002 /* GregularJellyfin */,
 			);
 			productName = GregularTV;
 			productReference = 81918909E83595C8F4212CCC /* GregularTV.app */;
@@ -410,9 +413,13 @@
 /* End XCLocalSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		39239ABE91B67D192800D71C /* GregularTVCore */ = {
+		39239ABE91B67D192800D71C /* GregularCore */ = {
 			isa = XCSwiftPackageProductDependency;
-			productName = GregularTVCore;
+			productName = GregularCore;
+		};
+		A1C0DE5E0000000000000002 /* GregularJellyfin */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = GregularJellyfin;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

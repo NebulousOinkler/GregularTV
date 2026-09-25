@@ -1,6 +1,6 @@
 #if DEBUG
 import Foundation
-import GregularTVCore
+import GregularCore
 
 /// Launch arguments for testing. Compiled into Debug builds only.
 ///
