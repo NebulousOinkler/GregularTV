@@ -7,12 +7,11 @@ import SwiftUI
 /// the channel names pinned on the left and the times pinned along the top.
 /// Each block's break (commercials or blank airtime after the programme) is a
 /// darker tail at its right edge.
-/// The app's main screen: open at launch, over the channel playing, and
-/// reached from watching with `RemoteControls.watching` (Menu, as shipped).
+/// Opened from watching with `RemoteControls.watching` (Menu, as shipped).
 /// Select tunes to the channel. The buttons in `RemoteControls.guide` act on
 /// it: as shipped, Play/Pause opens Settings, and Menu steps back, first to
-/// the Settings button, then out of the app. 60 s without activity closes it
-/// and stays on the current channel.
+/// the Settings button, then back to the programme playing. 60 s without
+/// activity closes it and stays on the current channel.
 struct GuideView: View {
     static let idleTimeout: Duration = .seconds(60)
 
@@ -64,12 +63,8 @@ struct GuideView: View {
             }
             .padding(.horizontal, 80)
             .padding(.vertical, 50)
-            // On the Settings button, a button mapped to `.stepBack` is left to
-            // tvOS: the guide is the main screen, so Menu there leaves the app.
-            .remoteControls(focusedID == Self.settingsFocusID
-                            ? RemoteControls.guide.filter { $0.value != .stepBack }
-                            : RemoteControls.guide) { action in
-                if action == .stepBack { focusedID = Self.settingsFocusID } else { onRemote(action) }
+            .remoteControls(RemoteControls.guide) { action in
+                if action == .stepBack { stepBack() } else { onRemote(action) }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -116,6 +111,16 @@ struct GuideView: View {
     static let settingsFocusID = "settings"
 
 
+    /// Menu, as shipped: from a programme up to the Settings button
+    /// (highlighted, not pressed), and from there back to the programme playing.
+    private func stepBack() {
+        if focusedID == Self.settingsFocusID {
+            onRemote(.close)
+        } else {
+            focusedID = Self.settingsFocusID
+        }
+    }
+
     static func id(_ schedule: ChannelSchedule, _ cell: GuideCell) -> String {
         "\(schedule.channel.number)|\(cell.id)"
     }
@@ -142,21 +147,22 @@ struct GuideView: View {
         return HStack(alignment: .top) {
             VStack(alignment: .leading, spacing: 8) {
                 if let (schedule, cell) = focused {
-                    Text("\(schedule.channel.number) · \(schedule.channel.name)")
-                        .font(.headline).foregroundStyle(.secondary)
+                    // In its break, said on the channel line, so the header
+                    // keeps its three lines and never reaches the time ruler.
+                    HStack(spacing: 6) {
+                        Text("\(schedule.channel.number) · \(schedule.channel.name)")
+                        if let span = cell.breakSpan, span.start <= now, now < span.end {
+                            Text("· Programme ended ·")
+                            BreakStyle.label
+                            Text("until \(span.end.formatted(date: .omitted, time: .shortened))")
+                        }
+                    }
+                    .font(.headline).foregroundStyle(.secondary).lineLimit(1)
                     Text(cell.programme.item.displayTitle).font(.title2).bold().lineLimit(1)
                     Text([cell.programme.item.displaySubtitle,
                           "\(cell.programme.start.formatted(date: .omitted, time: .shortened)) – \(cell.programme.end.formatted(date: .omitted, time: .shortened))"]
                             .compactMap { $0 }.joined(separator: " · "))
                         .font(.headline).foregroundStyle(.secondary).lineLimit(1)
-                    if let span = cell.breakSpan, span.start <= now, now < span.end {
-                        HStack(spacing: 6) {
-                            Text("Programme ended ·")
-                            BreakStyle.label
-                            Text("until \(span.end.formatted(date: .omitted, time: .shortened))")
-                        }
-                        .font(.headline).foregroundStyle(.secondary).lineLimit(1)
-                    }
                 } else {
                     Text("Guide").font(.title2).bold()
                 }

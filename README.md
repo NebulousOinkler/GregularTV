@@ -60,16 +60,18 @@ A programme that ends within 10 minutes of the next half hour is followed by a b
 
 **To change what a button does,** edit the tables at the top of `App/GregularTV/Remote/RemoteControls.swift`: one per screen (watching, channel list, guide, Settings), each a list of `button: action`. The hints on screen are written from the same tables. As shipped:
 
-In the Simulator: Return is click, the arrow keys are the arrows, the space bar is Play/Pause, and Escape is Menu, when your simulator view passes it through.
+The app starts on the channel you last watched. "Click" means pressing the pad down; "slide" means moving a finger across it; a "light touch" is touching it without clicking. In the Simulator, the arrow keys are clicks on the edge of the pad, Return is a click, the space bar is Play/Pause and Escape is Menu; the Simulator can't slide or touch.
 
+If light touches near the edge of the pad change the channel, set the Apple TV's **Settings › Remotes and Devices › Clickpad** to **Click Only**: with "Click and Touch", tvOS itself turns a touch on the edge into a click there.
 
 | Input | Action |
 |---|---|
-| Swipe/click up or down | Channel up/down (the banner previews each channel, and tunes when you stop) |
-| Swipe/click right | Show the info banner (clock, progress, time in). Again while showing: switch between end time and time left |
-| Swipe/click left | Channel list; Select tunes. Right, Menu, or 15 s idle closes it and stays on the current channel. Play/Pause opens Settings |
-| Click (Select) | Show the info banner, like Right. A light tap on the touch surface does nothing, so it can't be mistaken for a channel change |
-| Menu (or Back ‹) | Back to the programme guide, the app's main screen (open at launch, over the channel playing): six hours ahead, scrolling sideways; Select on a programme tunes to its channel, and 60 s idle closes it. In the guide, Menu first moves up to its Settings button (highlighted, not opened), then leaves the app, as tvOS expects |
+| Click left / right (edge of the pad) | Channel down / up (the banner previews each channel, and tunes when you stop) |
+| Slide left | Channel list; Select tunes. Slide right, Menu, or 15 s idle closes it and stays on the current channel. Play/Pause opens Settings |
+| Slide up | Show the info banner, fading in slowly |
+| Light touch, or click (centre) | Show the info banner (clock, progress, time in). Again while showing: switch between end time and time left |
+| Slide down | Hide the banner at once |
+| Menu (or Back ‹) | Programme guide, six hours ahead, scrolling sideways; Select on a programme tunes to its channel, and 60 s idle closes it. In the guide, Menu first moves up to its Settings button (highlighted, not opened), then goes back to the programme. Menu never leaves the app: use the TV (Home) button |
 | Click and hold | Settings: streaming quality, trouble with this programme (step down quality, 720p, standard), schedule code, commercials, diagnostics, sign out. In the guide, Play/Pause also opens Settings. Close with Menu, Play/Pause or Done |
 | Play/Pause | Pause; press again to jump back to live |
 | Digits (keyboard only) | Type a channel number |
@@ -82,6 +84,7 @@ Debug builds accept launch arguments. Release builds leave them out entirely.
 |---|---|
 | `-handoffTest` | Shifts every channel so the current programme ends about 50 s after launch, to test the hand-off to the next programme quickly. |
 | `-openChannelList` | Opens the channel list on launch, to check its focus handling without arrow keys. |
+| `-openGuide` | Opens the guide on launch, to check it without a Menu button. |
 | `-pretendCommercials` | Uses a dozen library videos, cut to 30–120 s, as commercials, to test breaks without a `Commercials` library. |
 
 ```bash
