@@ -80,13 +80,13 @@ private struct ChannelRow: View {
                 switch schedule.nowShowing(at: date) {
                 case .programme(let airing):
                     Text(airing.item.displayTitle).font(.body).lineLimit(1)
-                    ProgressView(value: fraction(from: airing.start, to: airing.end))
+                    RowProgressBar(fraction: fraction(from: airing.start, to: airing.end))
                     Text("until \(airing.end.formatted(date: .omitted, time: .shortened))")
                         .font(.caption).foregroundStyle(.secondary)
                 case .inBreak(let ended, let next):
                     // The programme is over: say what's next, not what ended.
                     Text("Up next: \(next.item.displayTitle)").font(.body).lineLimit(1)
-                    ProgressView(value: fraction(from: ended.end, to: next.start)).opacity(0.45)
+                    RowProgressBar(fraction: fraction(from: ended.end, to: next.start)).opacity(0.45)
                     HStack(spacing: 6) {
                         BreakStyle.label
                         Text("· starts \(next.start.formatted(date: .omitted, time: .shortened))")
@@ -102,5 +102,27 @@ private struct ChannelRow: View {
     private func fraction(from start: Date, to end: Date) -> Double {
         guard end > start else { return 1 }
         return min(1, max(0, date.timeIntervalSince(start) / end.timeIntervalSince(start)))
+    }
+}
+
+/// A plain progress bar in solid colours: white on a row, dark on the
+/// highlighted (white) row. The system `ProgressView` restyled its
+/// translucent track as each row gained and lost focus, which flashed while
+/// scrolling; this changes colour once, with no animation.
+private struct RowProgressBar: View {
+    let fraction: Double
+    @Environment(\.isFocused) private var isFocused
+
+    var body: some View {
+        let ink = isFocused ? Color.black.opacity(0.8) : Color.white
+        GeometryReader { geometry in
+            ZStack(alignment: .leading) {
+                Capsule().fill(ink.opacity(0.2))
+                Capsule().fill(ink).frame(width: max(geometry.size.width * fraction, 6))
+            }
+        }
+        .frame(height: 6)
+        .padding(.vertical, 4)
+        .transaction { $0.animation = nil }
     }
 }
