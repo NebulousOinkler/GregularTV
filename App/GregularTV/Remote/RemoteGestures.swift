@@ -1,3 +1,4 @@
+import GameController
 import GregularScreens
 import SwiftUI
 import UIKit
@@ -9,13 +10,14 @@ import UIKit.UIGestureRecognizerSubclass
 /// SwiftUI reports a click on the edge of the pad and a swipe across it as
 /// the same arrow (`onMoveCommand`), and doesn't see light touches at all. So
 /// this attaches UIKit recognizers to the window while the view is on screen:
-/// - edge clicks: taps of the arrow press types, but only real clicks. With
-///   the remote's "Click and Touch" setting, tvOS also turns a light tap on
-///   the edge into the same arrow press. A real click presses while the
-///   finger is on the pad; a tap's press comes just after the finger lifts.
-///   So a press with no finger down, straight after a touch ended, is taken
-///   as the light touch it was (a keyboard's arrow keys, with no touch at
-///   all, still count as clicks);
+/// - edge clicks, as soon as they go down. Most Siri Remotes report a click
+///   anywhere on the pad as a centre click, so a centre click with the finger
+///   near an edge (from the GameController framework's pad position) is that
+///   edge's click. Arrow presses count too (a remote with a ring, or a
+///   keyboard's arrow keys), but only real clicks: with the remote's "Click
+///   and Touch" setting, tvOS turns a light tap on the edge into an arrow
+///   press just after the finger lifts, so a press with no finger down,
+///   straight after a touch ended, is taken as the light touch it was;
 /// - swipes: swipe recognizers for indirect (remote) touches;
 /// - a light touch: a tap of an indirect touch, ignored if an edge click came
 ///   with it (clicking the edge also touches the pad).
@@ -65,16 +67,25 @@ struct RemoteGestures: UIViewRepresentable {
 
         func attach(to window: UIWindow) {
             guard recognizers.isEmpty else { return }
+            _ = PadEdgeClick.padPosition()   // switches remotes to absolute pad positions
             let clicks: [(RemoteButton, UIPress.PressType)] = [
                 (.clickUp, .upArrow), (.clickDown, .downArrow), (.clickLeft, .leftArrow), (.clickRight, .rightArrow),
             ]
             for (button, press) in clicks {
-                let tap = UITapGestureRecognizer(target: self, action: #selector(edgeClicked(_:)))
-                tap.allowedPressTypes = [NSNumber(value: press.rawValue)]
-                tap.allowedTouchTypes = []
-                tap.delegate = self
-                add(tap, as: button, to: window)
+                let click = EdgeClick(target: self, action: #selector(edgeClicked(_:)))
+                click.allowedPressTypes = [NSNumber(value: press.rawValue)]
+                click.allowedTouchTypes = []
+                click.delegate = self
+                add(click, as: button, to: window)
             }
+            // Most Siri Remotes report a click anywhere on the pad as a centre
+            // click; where the finger is says which edge it was.
+            let padClick = PadEdgeClick(target: self, action: #selector(padEdgeClicked(_:)))
+            padClick.allowedPressTypes = [NSNumber(value: UIPress.PressType.select.rawValue)]
+            padClick.allowedTouchTypes = []
+            padClick.cancelsTouchesInView = false
+            window.addGestureRecognizer(padClick)
+            recognizers.append(padClick)
             let swipes: [(RemoteButton, UISwipeGestureRecognizer.Direction)] = [
                 (.swipeUp, .up), (.swipeDown, .down), (.swipeLeft, .left), (.swipeRight, .right),
             ]
@@ -128,6 +139,12 @@ struct RemoteGestures: UIViewRepresentable {
             fire(recognizer)
         }
 
+        @objc private func padEdgeClicked(_ recognizer: PadEdgeClick) {
+            guard isEnabled, let button = recognizer.button, let action = map[button] else { return }
+            lastEdgeClick = .now
+            perform(action)
+        }
+
         @objc private func swiped(_ recognizer: UIGestureRecognizer) {
             fire(recognizer)
         }
@@ -138,6 +155,55 @@ struct RemoteGestures: UIViewRepresentable {
                 guard Date.now.timeIntervalSince(self.lastEdgeClick) > Self.clickTouchOverlap else { return }
                 self.fire(recognizer)
             }
+        }
+    }
+
+    /// An edge click, recognized as soon as the press goes down: a tap
+    /// recognizer waits for the click to finish, which can be long after,
+    /// with a thumb still resting on the pad.
+    final class EdgeClick: UIGestureRecognizer {
+        override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent) {
+            state = .ended
+        }
+
+        override func pressesCancelled(_ presses: Set<UIPress>, with event: UIPressesEvent) {
+            state = .failed
+        }
+    }
+
+    /// A centre-type click with the finger near an edge of the pad: recognized
+    /// as that edge's click. A click in the middle fails, so it stays a
+    /// centre click (click and hold for Settings).
+    final class PadEdgeClick: UIGestureRecognizer {
+        /// How far from the middle (0) towards an edge (1) counts as the edge.
+        static let edge: Float = 0.5
+        private(set) var button: RemoteButton?
+
+        override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent) {
+            button = Self.edgeUnderFinger()
+            state = button == nil ? .failed : .ended
+        }
+
+        override func pressesCancelled(_ presses: Set<UIPress>, with event: UIPressesEvent) {
+            state = .failed
+        }
+
+        /// Where the finger is on the remote's pad, from -1 to 1 each way
+        /// (up is positive). Nil without a finger on it, or on a remote that can't tell.
+        static func padPosition() -> (x: Float, y: Float)? {
+            for controller in GCController.controllers() {
+                guard let pad = controller.microGamepad else { continue }
+                pad.reportsAbsoluteDpadValues = true
+                let x = pad.dpad.xAxis.value, y = pad.dpad.yAxis.value
+                if x != 0 || y != 0 { return (x, y) }
+            }
+            return nil
+        }
+
+        private static func edgeUnderFinger() -> RemoteButton? {
+            guard let (x, y) = padPosition(), max(abs(x), abs(y)) >= edge else { return nil }
+            if abs(x) >= abs(y) { return x > 0 ? .clickRight : .clickLeft }
+            return y > 0 ? .clickUp : .clickDown
         }
     }
 
