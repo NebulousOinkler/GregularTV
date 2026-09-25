@@ -7,42 +7,51 @@ import SwiftUI
 // can have several buttons. The hints on screen (the banner, the channel list,
 // the guide, Settings) are written from these tables, so they stay correct.
 //
-// Buttons: .up .down .left .right .click .clickAndHold .touchTap .playPause .menu
-// Actions: .channelUp .channelDown .showInfo .pauseOrJumpToLive
-//          .openChannelList .openGuide .openSettings .close .stepBack
+// Buttons:
+//   .clickUp .clickDown .clickLeft .clickRight   pressing the edge of the click pad
+//   .swipeUp .swipeDown .swipeLeft .swipeRight   sliding a finger across the touch surface
+//   .click .clickAndHold                          the centre (or the touch surface)
+//   .touchTap                                     a light touch, without clicking
+//   .playPause .menu
+// Actions: .channelUp .channelDown .showInfo .showInfoSlowly .hideInfo
+//          .pauseOrJumpToLive .openChannelList .openGuide .openSettings
+//          .close .stepBack
 //
 // Fixed, not in the tables:
-// - In the channel list, guide and Settings, the arrows always move the
-//   highlight and a click always chooses the highlighted item. An arrow you
-//   map there does its action *as well*, so only map one that has nowhere to
-//   go (like Right in the channel list, whose rows are one column).
-// - `.clickAndHold` and `.touchTap` only work while watching.
-// - `.touchTap` isn't used as shipped: a light tap near the top or bottom of
-//   the touch surface also counts as Up or Down, so it was easy to change
-//   channel when you meant to show the banner.
-// - The guide is the app's main screen. Menu (or Back ‹) goes back to it
-//   while watching, and from the guide leaves the app, as tvOS expects: Apple
-//   asks that Menu on an app's main screen always goes to the Home screen.
-//   Keep a way to leave from the guide if you change these.
+// - Clicks and swipes are told apart only while watching. In the channel
+//   list, guide and Settings, tvOS reports both as the same arrow, so
+//   `.clickRight` and `.swipeRight` there are the same thing. Arrows there
+//   always move the highlight too, so only map one that has nowhere to go
+//   (like right in the channel list, whose rows are one column), and a click
+//   always chooses the highlighted item.
+// - `.clickAndHold`, `.touchTap` and the swipes only work while watching.
+// - With the Apple TV's *Settings › Remotes and Devices › Clickpad* set to
+//   "Click and Touch", a light touch on the edge of the pad counts as a click
+//   there. Set it to "Click Only" to keep light touches for `.touchTap`.
+// - While watching, Menu (or Back ‹) opens the guide, and never leaves the
+//   app: the TV (Home) button does. (Apple asks that Menu on an app's main
+//   screen goes to the Home screen; delete `.menu` from `watching` for that.)
 // - Digits on a keyboard always type a channel number.
 
 enum RemoteControls {
-    /// Watching live TV, with nothing open.
+    /// Watching live TV, with nothing open. The app starts here.
     static let watching: [RemoteButton: RemoteAction] = [
-        .up: .channelUp,
-        .down: .channelDown,
-        .left: .openChannelList,
-        .right: .showInfo,
+        .clickLeft: .channelDown,
+        .clickRight: .channelUp,
+        .swipeLeft: .openChannelList,
+        .swipeUp: .showInfoSlowly,
+        .swipeDown: .hideInfo,
+        .touchTap: .showInfo,
         .click: .showInfo,
         .clickAndHold: .openSettings,
         .playPause: .pauseOrJumpToLive,
         .menu: .openGuide,
     ]
 
-    /// The channel list (opened with Left while watching).
+    /// The channel list (opened by sliding left while watching).
     static let channelList: [RemoteButton: RemoteAction] = [
         .menu: .close,
-        .right: .close,
+        .swipeRight: .close,
         .playPause: .openSettings,
     ]
 
@@ -61,11 +70,13 @@ enum RemoteControls {
 
 // MARK: - Buttons and actions
 
-/// The Siri Remote's buttons. In the simulator, the keyboard's arrow keys,
-/// Return (click), Escape (Menu) and Space (Play/Pause) act the same.
+/// The Siri Remote's buttons. In the simulator, the keyboard's arrow keys
+/// are clicks on the edge of the pad, Return is a click, Escape is Menu and
+/// Space is Play/Pause; the simulator has no swipes or light touches.
 enum RemoteButton: Hashable, CaseIterable {
-    case up, down, left, right
-    /// Clicking the touch surface, or the centre of the click pad.
+    case clickUp, clickDown, clickLeft, clickRight
+    case swipeUp, swipeDown, swipeLeft, swipeRight
+    /// Clicking the centre of the click pad, or the touch surface.
     case click
     /// Holding a click for over half a second.
     case clickAndHold
@@ -78,15 +89,30 @@ enum RemoteButton: Hashable, CaseIterable {
     /// How hints show the button.
     var symbol: String {
         switch self {
-        case .up: "▲"
-        case .down: "▼"
-        case .left: "◀"
-        case .right: "▶"
+        case .clickUp: "click ▲"
+        case .clickDown: "click ▼"
+        case .clickLeft: "click ◀"
+        case .clickRight: "click ▶"
+        case .swipeUp: "slide ▲"
+        case .swipeDown: "slide ▼"
+        case .swipeLeft: "slide ◀"
+        case .swipeRight: "slide ▶"
         case .click: "click"
         case .clickAndHold: "hold click"
-        case .touchTap: "tap"
+        case .touchTap: "touch"
         case .playPause: "Play/Pause"
         case .menu: "Menu"
+        }
+    }
+
+    /// The arrow direction, for the edge clicks and swipes.
+    var direction: MoveCommandDirection? {
+        switch self {
+        case .clickUp, .swipeUp: .up
+        case .clickDown, .swipeDown: .down
+        case .clickLeft, .swipeLeft: .left
+        case .clickRight, .swipeRight: .right
+        default: nil
         }
     }
 }
@@ -97,6 +123,10 @@ enum RemoteAction: Hashable, CaseIterable {
     case channelDown
     /// The info banner; again while it's up, switch end time / time left.
     case showInfo
+    /// The info banner, fading in slowly.
+    case showInfoSlowly
+    /// Put the banner away at once.
+    case hideInfo
     /// Pause, or if paused, jump back to live.
     case pauseOrJumpToLive
     case openChannelList
@@ -105,7 +135,7 @@ enum RemoteAction: Hashable, CaseIterable {
     /// Close whatever's open (the channel list, guide or Settings).
     case close
     /// One step back. In the guide: from the programmes to the Settings
-    /// button (highlighted, not pressed), then out of the app. Elsewhere, `.close`.
+    /// button (highlighted, not pressed), then back to watching. Elsewhere, `.close`.
     case stepBack
 
     /// How hints describe the action.
@@ -113,7 +143,8 @@ enum RemoteAction: Hashable, CaseIterable {
         switch self {
         case .channelUp: "channel up"
         case .channelDown: "channel down"
-        case .showInfo: "info"
+        case .showInfo, .showInfoSlowly: "info"
+        case .hideInfo: "hide info"
         case .pauseOrJumpToLive: "pause"
         case .openChannelList: "channel list"
         case .openGuide: "guide"
@@ -126,15 +157,28 @@ enum RemoteAction: Hashable, CaseIterable {
 
 extension RemoteControls {
     /// A one-line hint from a table, such as
-    /// "▲▼ channels · ▶ or click: info · ◀: channel list".
+    /// "click ◀▶: channels · slide ◀: channel list · click or touch: info".
     static func hint(for map: [RemoteButton: RemoteAction]) -> String {
-        // The usual pairing reads better as one.
-        let paired = map[.up] == .channelUp && map[.down] == .channelDown
-        var parts = paired ? ["▲▼ channels"] : []
+        // The usual pairings read better as one.
+        let pairs: [(RemoteButton, RemoteButton, String)] = [
+            (.clickDown, .clickUp, "click ▼▲"), (.clickLeft, .clickRight, "click ◀▶"),
+            (.swipeDown, .swipeUp, "slide ▼▲"), (.swipeLeft, .swipeRight, "slide ◀▶"),
+        ]
+        let paired = pairs.filter { map[$0.0] == .channelDown && map[$0.1] == .channelUp }
+        let pairedButtons = Set(paired.flatMap { [$0.0, $0.1] })
+        var parts = paired.isEmpty ? [] : [paired.map(\.2).joined(separator: " or ") + ": channels"]
+        // Labels shared by several actions (info) are listed once.
+        var labels: [String] = []
+        var buttonsByLabel: [String: [RemoteButton]] = [:]
         for action in RemoteAction.allCases {
-            let buttons = RemoteButton.allCases.filter { map[$0] == action && !(paired && [.up, .down].contains($0)) }
+            let buttons = RemoteButton.allCases.filter { map[$0] == action && !pairedButtons.contains($0) }
             guard !buttons.isEmpty else { continue }
-            parts.append(buttons.map(\.symbol).joined(separator: " or ") + ": " + action.label)
+            if buttonsByLabel[action.label] == nil { labels.append(action.label) }
+            buttonsByLabel[action.label, default: []] += buttons
+        }
+        for label in labels {
+            let buttons = RemoteButton.allCases.filter { buttonsByLabel[label]!.contains($0) }
+            parts.append(buttons.map(\.symbol).joined(separator: " or ") + ": " + label)
         }
         return parts.joined(separator: " · ")
     }
@@ -145,18 +189,22 @@ extension RemoteControls {
 extension View {
     /// Sends the table's buttons to `perform` while this view (or something
     /// inside it) has focus. Buttons not in the table keep their usual tvOS behaviour.
-    /// `.touchTap` is handled separately, by `RemoteSurfaceTap`.
+    /// Edge clicks, swipes and `.touchTap` while watching are handled
+    /// separately, by `RemoteGestures`, which can tell them apart.
     /// - Parameter takesClicks: whether `.click` and `.clickAndHold` apply. Only
     ///   for a view with no buttons inside, since it would take their clicks.
-    func remoteControls(_ map: [RemoteButton: RemoteAction], takesClicks: Bool = false,
+    /// - Parameter takesArrows: whether edge clicks and swipes are handled here,
+    ///   as SwiftUI's arrows (which can't tell a click from a swipe).
+    func remoteControls(_ map: [RemoteButton: RemoteAction], takesClicks: Bool = false, takesArrows: Bool = true,
                         perform: @escaping (RemoteAction) -> Void) -> some View {
-        modifier(RemoteControlsModifier(map: map, takesClicks: takesClicks, perform: perform))
+        modifier(RemoteControlsModifier(map: map, takesClicks: takesClicks, takesArrows: takesArrows, perform: perform))
     }
 }
 
 private struct RemoteControlsModifier: ViewModifier {
     let map: [RemoteButton: RemoteAction]
     let takesClicks: Bool
+    let takesArrows: Bool
     let perform: (RemoteAction) -> Void
 
     func body(content: Content) -> some View {
@@ -174,18 +222,13 @@ private struct RemoteControlsModifier: ViewModifier {
     }
 
     private var hasArrows: Bool {
-        [.up, .down, .left, .right].contains { map[$0] != nil }
+        takesArrows && map.keys.contains { $0.direction != nil }
     }
 
+    /// An arrow here is a click or a swipe: whichever is mapped (the click if both).
     private func move(_ direction: MoveCommandDirection) {
-        let button: RemoteButton? = switch direction {
-        case .up: .up
-        case .down: .down
-        case .left: .left
-        case .right: .right
-        @unknown default: nil
-        }
-        if let button, let action = map[button] { perform(action) }
+        let action = RemoteButton.allCases.lazy.filter { $0.direction == direction }.compactMap { map[$0] }.first
+        if let action { perform(action) }
     }
 
     private func handler(for button: RemoteButton) -> (() -> Void)? {
