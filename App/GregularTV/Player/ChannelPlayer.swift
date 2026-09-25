@@ -16,8 +16,10 @@ import Observation
 ///   AVPlayerItem can never move between players, so it stays where it
 ///   loaded.) So the server works on at most two streams, or three in the
 ///   last 30 seconds of a commercial: this clip, the next one, and the programme.
-/// - **Commercials** are only ever played as-is or remuxed. One that would
-///   need re-encoding is skipped, and its time is blank.
+/// - **Commercials** are only ever played as-is or remuxed, with no bitrate
+///   cap, so a clip's bitrate never makes it re-encoded. One that would need
+///   re-encoding anyway (a video codec the Apple TV can't play) is skipped,
+///   and its time is blank.
 /// - **Gaps:** time with nothing scheduled (a gap of a minute or less, the
 ///   end of a break, a skipped commercial, or every break with commercials
 ///   off) is a blank screen with an "Up next" card. The next item is still
@@ -179,8 +181,7 @@ final class ChannelPlayer {
     private var nextIsOnStandby = false
     /// Swaps to `standby` right on the programme's start time.
     private var standbyHandoff: Task<Void, Never>?
-    /// Commercials that would need re-encoding at the current quality, found
-    /// this session. In memory only; cleared when the quality changes.
+    /// Commercials that would need re-encoding, found this session. In memory only.
     private var skippedCommercialIDs: Set<String> = []
     /// Failures since video last actually played, on this channel. Sets the retry backoff.
     private var consecutiveFailures = 0
@@ -277,7 +278,6 @@ final class ChannelPlayer {
         guard quality != self.quality else { return }
         self.quality = quality
         clearProgrammeFix()
-        skippedCommercialIDs = []   // a different cap may play them without re-encoding
         // Any speed test belongs to Auto: stop it, and forget its result.
         cancelMeasurement()
         autoBitrate = nil
@@ -637,14 +637,15 @@ final class ChannelPlayer {
     }
 
     /// Commercials never make the server re-encode video, and never start a
-    /// speed test. They play the original file if it fits the connection
-    /// (the current quality cap; Auto uses its last measurement), as-is or at
-    /// most remuxed, which costs the server almost nothing. A clip that would
-    /// need re-encoding is skipped (`SkippedCommercial`): its time is blank.
-    /// It's remembered for the rest of the session, so it isn't asked about again.
+    /// speed test. They play the original file, as-is or at most remuxed,
+    /// which costs the server almost nothing. They're asked for with no
+    /// bitrate cap (the quality setting doesn't apply), so a clip is never
+    /// re-encoded just for its bitrate. A clip that would need re-encoding
+    /// anyway is skipped (`SkippedCommercial`): its time is blank. It's
+    /// remembered for the rest of the session, so it isn't asked about again.
     private func commercialSource(for item: MediaItem) async throws -> (PlaybackSource, cap: Int) {
         guard !skippedCommercialIDs.contains(item.id) else { throw SkippedCommercial() }
-        let cap = quality.fixedBitrate ?? autoBitrate?.bitsPerSecond ?? StreamingQuality.fallbackAutoBitrate
+        let cap = StreamingQuality.maximumBitrate
         let source = try await client.playbackSource(for: item.id, maxBitrate: cap)
         guard !source.reencodesVideo else {
             skippedCommercialIDs.insert(item.id)   // nothing to stop: a transcode only starts when the stream is requested
