@@ -331,6 +331,11 @@ public struct ChannelSchedule: Sendable {
     /// or none, and the rest of its leftover goes after it.
     public static let shortestPart: Int64 = 15 * 60_000
 
+    /// The most commercials in one break (milliseconds). A longer break (after
+    /// an episode that ends well before the half hour, a short film, or at the
+    /// end of a day) is blank after this, with the "Up next" card.
+    public static let longestCommercialRun: Int64 = 20 * 60_000
+
     /// The end of every break is blank for this long (milliseconds), with the
     /// "Up next" card, before the next programme: no commercial plays into it.
     public static let upNextLead: Int64 = 15_000
@@ -344,11 +349,13 @@ public struct ChannelSchedule: Sendable {
     /// - A gap of a minute or less gets none (`shortestBreak`).
     /// - The last 15 seconds before the programme (or the film's next part)
     ///   get none either (`upNextLead`): they're blank, with the "Up next" card.
+    /// - No more than 20 minutes of commercials (`longestCommercialRun`); any
+    ///   more of the break is blank, with the "Up next" card.
     /// - Clips play back to back. When one ends, the next only starts if at
-    ///   least half of it will play before those last 15 seconds. Otherwise it
-    ///   waits to open the next break, and the rest of this gap is blank.
-    /// - A clip still playing when the last 15 seconds begin is cut off
-    ///   (`end` is the cut).
+    ///   least half of it will play before commercials stop (the last 15
+    ///   seconds, or 20 minutes in). Otherwise it waits to open the next
+    ///   break, and the rest of this gap is blank.
+    /// - A clip still playing when commercials stop is cut off (`end` is the cut).
     private func airingsInSlot(_ item: MediaItem, slotStart: Int64, slotEnd: Int64,
                                    commercials: inout CommercialQueue) -> [Airing] {
         let length = Self.milliseconds(of: item.duration)
@@ -407,7 +414,7 @@ public struct ChannelSchedule: Sendable {
     /// The clips for one break, from `start` to the programme at `end`.
     private func clips(from start: Int64, to end: Int64, commercials: inout CommercialQueue) -> [Piece] {
         guard end - start > Self.shortestBreak else { return [] }
-        let commercialsEnd = end - Self.upNextLead
+        let commercialsEnd = min(end - Self.upNextLead, start + Self.longestCommercialRun)
         var result: [Piece] = []
         var t = start
         while t < commercialsEnd, let clip = commercials.peek() {

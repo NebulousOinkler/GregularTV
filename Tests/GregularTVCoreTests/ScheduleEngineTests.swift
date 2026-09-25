@@ -179,6 +179,26 @@ struct ScheduleEngineTests {
         #expect(slotEnd.timeIntervalSince(epoch).truncatingRemainder(dividingBy: 1800) == 0)
     }
 
+    @Test func noBreakHasMoreThanTwentyMinutesOfCommercials() throws {
+        // A 5-minute episode leaves 25 minutes: 20 of commercials, then blank until the half hour.
+        let s = try withCommercials(Fixtures.series("Short", seasons: 1, episodes: 4, minutes: 5))
+        let slot = s.airings(from: epoch, to: epoch.addingTimeInterval(30 * 60 - 1))
+        let clips = slot.filter(\.isFiller)
+        let lastClip = try #require(clips.last)
+        #expect(lastClip.end <= epoch.addingTimeInterval(25 * 60), "Commercials stop 20 minutes into the break")
+        #expect(lastClip.end > epoch.addingTimeInterval(24 * 60), "…and fill it until then")
+        #expect(lastClip.slotEnd == epoch.addingTimeInterval(30 * 60), "Blank to the next programme")
+        #expect(s.tune(at: epoch.addingTimeInterval(27 * 60)).isInPadding, "The Up next card, not a commercial")
+        // Across a day of mixed programmes, no run of commercials passes 20 minutes.
+        let mixed = try withCommercials(Fixtures.library + [Fixtures.movie("Tiny", minutes: 3)], strategy: RandomShuffle.id)
+        let day = mixed.airings(from: epoch, to: epoch.addingTimeInterval(24 * 3600))
+        var run: TimeInterval = 0
+        for airing in day {
+            run = airing.isFiller ? run + airing.length : 0
+            #expect(run <= 20 * 60)
+        }
+    }
+
     @Test func withCommercialsOffAFilmsMidRollsAreTheSameButBlank() throws {
         let film = Fixtures.movie("Film", minutes: 92)
         let on = try withCommercials([film])
