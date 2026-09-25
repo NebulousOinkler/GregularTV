@@ -164,10 +164,10 @@ struct GapFillerTests {
         #expect(s.programme(at: epoch.addingTimeInterval(22 * 60 + 5)).item.id == "Show-s1e1")
     }
 
-    @Test func guideListingsCanLeaveOutFillers() throws {
-        let airings = try schedule().airings(from: epoch, to: epoch.addingTimeInterval(90 * 60), includingFillers: false)
-        #expect(airings.count == 3)
-        #expect(airings.allSatisfy { !$0.isFiller })
+    @Test func guideListingsLeaveOutFillers() throws {
+        let programmes = try schedule().programmes(from: epoch, to: epoch.addingTimeInterval(90 * 60))
+        #expect(programmes.count == 3)
+        #expect(programmes.allSatisfy { !$0.isFiller })
     }
 
     @Test func sameGapIsFilledTheSameWayEveryTime() throws {
