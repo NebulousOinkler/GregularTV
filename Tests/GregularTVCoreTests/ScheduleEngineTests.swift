@@ -114,11 +114,55 @@ struct ScheduleEngineTests {
 
     // MARK: Padding and gaps
 
-    @Test func paddingAlignsStartsToBoundary() throws {
-        for airing in try schedule(padTo: 30).airings(from: later, to: later.addingTimeInterval(24 * 3600)) {
-            #expect(airing.start.timeIntervalSince(epoch).truncatingRemainder(dividingBy: 1800) == 0)
-            #expect(airing.end <= airing.slotEnd)
+    @Test func paddingRoundsUpOnlyGapsOfTenMinutesOrLess() throws {
+        let day = try schedule(padTo: 30).airings(from: later, to: later.addingTimeInterval(24 * 3600))
+        var sawBackToBack = false
+        for airing in day.dropLast() {   // (the run's last slot also takes its leftover)
+            let gap = airing.slotEnd.timeIntervalSince(airing.end)
+            if gap > 0 {
+                // Rounded up to the half hour, by no more than ten minutes.
+                #expect(airing.slotEnd.timeIntervalSince(epoch).truncatingRemainder(dividingBy: 1800) == 0)
+                #expect(gap <= 600)
+            } else {
+                sawBackToBack = true
+                // Too far from the half hour: the next programme starts at once.
+                let past = airing.end.timeIntervalSince(epoch).truncatingRemainder(dividingBy: 1800)
+                #expect(past == 0 || 1800 - past > 600)
+            }
         }
+        #expect(sawBackToBack, "Some programme in a day ends too far before the half hour")
+    }
+
+    @Test func aFilmJustPastTheHourIsFollowedByTheNextProgrammeNotABreak() throws {
+        // 92 minutes: 28 minutes short of the next half hour, so no break;
+        // 22-minute episodes follow until one ends within 10 minutes of a boundary.
+        let film = Fixtures.movie("Long", minutes: 92)
+        let s = try schedule([film] + Fixtures.series("Short", seasons: 1, episodes: 20), strategy: SequentialBySeries.id, padTo: 30)
+        let day = s.airings(from: epoch, to: epoch.addingTimeInterval(24 * 3600))
+        let filmAiring = try #require(day.first { $0.item.id == film.id })
+        #expect(filmAiring.slotEnd == filmAiring.end)
+        // 92 + 22 = 114: 6 minutes short of 2 hours, so that break is filled.
+        let after = try #require(day.first { $0.start == filmAiring.end })
+        #expect(after.slotEnd.timeIntervalSince(after.end) == 6 * 60)
+    }
+
+    @Test func nowShowingTellsProgrammesFromBreaks() throws {
+        // A 22-minute episode padded to 30 minutes: minutes 22–30 are a break.
+        let s = try schedule([Fixtures.episode("Solo", s: 1, e: 1)], padTo: 30)
+        let programme = s.programme(at: epoch)
+        #expect(s.nowShowing(at: epoch.addingTimeInterval(22 * 60 - 1)) == .programme(programme))
+        let inBreak = s.nowShowing(at: epoch.addingTimeInterval(22 * 60))
+        guard case .inBreak(let ended, let next) = inBreak else {
+            Issue.record("Expected a break, not \(inBreak)")
+            return
+        }
+        #expect(ended == programme)
+        #expect(next.start == epoch.addingTimeInterval(30 * 60) && !next.isFiller)
+        #expect(inBreak.breakSpan == DateInterval(start: programme.end, end: next.start))
+        #expect(s.nowShowing(at: next.start) == .programme(next))
+        // No padding: never a break.
+        let plain = try schedule([Fixtures.episode("Solo", s: 1, e: 1)])
+        #expect(plain.nowShowing(at: epoch.addingTimeInterval(22 * 60)).breakSpan == nil)
     }
 
     @Test func tuningDuringPaddingIsFlagged() throws {

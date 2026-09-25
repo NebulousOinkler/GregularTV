@@ -22,9 +22,9 @@ struct HeadStartTests {
         #"{ "MediaSources": [{ "Id": "s", "SupportsDirectPlay": false, "TranscodingUrl": "/videos/ep/master.m3u8?TranscodeReasons=\#(reasons)" }], "PlaySessionId": "p" }"#
     }
 
-    /// A player ten minutes into an hour-long programme.
-    private func player(reply: String) throws -> ChannelPlayer {
-        let epoch = ISO8601DateFormatter().string(from: Date.now.addingTimeInterval(-600))
+    /// A player `elapsed` seconds into an hour-long programme.
+    private func player(reply: String, elapsed: TimeInterval = 600) throws -> ChannelPlayer {
+        let epoch = ISO8601DateFormatter().string(from: Date.now.addingTimeInterval(-elapsed))
         let json = #"[{ "number": 1, "name": "C", "source": { "type": "all" }, "strategy": "derangement", "seed": 1, "epoch": "\#(epoch)" }]"#
         let items = [MediaItem(id: "ep", kind: .episode, name: "E", duration: 3600)]
         let schedule = try #require(try ChannelLineup.load(from: Data(json.utf8)).schedules(for: items).first)
@@ -58,4 +58,21 @@ struct HeadStartTests {
         player.stop()
     }
 
+    @Test func aReencodedProgrammeWithTooLittleLeftIsntStarted() async throws {
+        let player = try player(reply: Self.hls(reasons: "VideoCodecNotSupported"), elapsed: 3600 - 120)
+        player.tune()
+        guard case .betweenProgrammes(let until) = try await settledStatus(player) else {
+            Issue.record("Expected Up next, not \(player.status)")
+            return
+        }
+        #expect(abs(until.timeIntervalSinceNow - 120) < 2, "Up next until the programme's slot ends")
+        player.stop()
+    }
+
+    @Test func aRemuxedProgrammeWithLittleLeftStillPlays() async throws {
+        let player = try player(reply: Self.hls(reasons: "ContainerNotSupported"), elapsed: 3600 - 120)
+        player.tune()
+        #expect(try await settledStatus(player) == .playing)
+        player.stop()
+    }
 }

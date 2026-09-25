@@ -89,11 +89,13 @@ struct GapFillerTests {
             #expect(a.end <= b.start, "Never runs into the next programme")
             // At least half of every clip plays.
             #expect(a.length * 2 >= a.item.duration)
-            // Stopped early only when the next clip couldn't get halfway (clips are at most 90 s).
-            #expect(b.start.timeIntervalSince(a.end) < 45)
+            // The last 15 s are always blank, for Up next. Beyond that, stopped
+            // early only when the next clip couldn't get halfway (clips are at most 90 s).
+            let blank = b.start.timeIntervalSince(a.end)
+            #expect(blank >= 15 && blank < 15 + 45)
             if a.length < a.item.duration {
                 sawACut = true
-                #expect(a.end == b.start, "A cut clip is cut exactly at the programme")
+                #expect(blank == 15, "A cut clip is cut exactly 15 s before the programme")
                 #expect(!s.tune(at: a.end.addingTimeInterval(-1)).isInPadding)
             }
         }
@@ -101,9 +103,10 @@ struct GapFillerTests {
     }
 
     @Test func aClipOnlyStartsIfMoreThanHalfOfItWillPlay() throws {
-        // A 21-minute episode in a 30-minute slot leaves a 9-minute gap, filled with one clip length.
-        // 5-minute clips: the second gets 4 of its 5 minutes, so it starts and is cut.
-        // 10-minute clips: 9 of 10, cut. 20-minute clips: 9 of 20 is under half, so the gap stays blank.
+        // A 21-minute episode in a 30-minute slot leaves a 9-minute gap, less the
+        // 15 s kept for Up next: 525 s of commercials, filled with one clip length.
+        // 5-minute clips: the second gets 225 of its 300 s, so it starts and is cut.
+        // 10-minute clips: 525 of 600 s, cut. 20-minute clips: under half, so the gap stays blank.
         func fillers(clip minutes: Double) throws -> [Airing] {
             let clip = MediaItem(id: "long", kind: .video, name: "Long", duration: minutes * 60)
             let channel = Channel(number: 1, name: "T", source: AllItemsSource(), strategyID: RandomShuffle.id,
@@ -112,10 +115,10 @@ struct GapFillerTests {
             let s = try #require(ChannelSchedule(channel: channel, items: [show], fillerPool: [clip]))
             return s.airings(from: epoch, to: epoch.addingTimeInterval(30 * 60 - 1)).filter(\.isFiller)
         }
-        #expect(try fillers(clip: 5).map(\.length) == [300, 240])
-        #expect(try fillers(clip: 10).map(\.length) == [540])
+        #expect(try fillers(clip: 5).map(\.length) == [300, 225])
+        #expect(try fillers(clip: 10).map(\.length) == [525])
         #expect(try fillers(clip: 20).isEmpty)
-        #expect(try fillers(clip: 18).map(\.length) == [540], "Exactly half left: it still plays")
+        #expect(try fillers(clip: 17.5).map(\.length) == [525], "Exactly half left: it still plays")
     }
 
     @Test func theOrderCarriesOnFromBreakToBreak() throws {
@@ -141,6 +144,17 @@ struct GapFillerTests {
         #expect(try clipCount(gapSeconds: 45) == 0)
         #expect(try clipCount(gapSeconds: 60) == 0)
         #expect(try clipCount(gapSeconds: 61) > 0)
+    }
+
+    @Test func theLast15SecondsOfEveryBreakAreBlankForUpNext() throws {
+        let s = try schedule()
+        let day = s.airings(from: epoch, to: epoch.addingTimeInterval(24 * 3600))
+        for (a, b) in zip(day, day.dropFirst()) where a.isFiller && !b.isFiller {
+            #expect(a.end <= b.start.addingTimeInterval(-15))
+            // Tuning in then: no clip to play, so the player shows Up next.
+            #expect(s.tune(at: b.start.addingTimeInterval(-10)).isInPadding)
+            #expect(s.commercialBreak(at: b.start.addingTimeInterval(-10))?.end == b.start)
+        }
     }
 
     @Test func tuningDuringTheGapLandsOnAClip() throws {
