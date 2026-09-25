@@ -52,6 +52,8 @@ struct RemoteGestures: UIViewRepresentable {
         var perform: (RemoteAction) -> Void = { _ in }
         private var isEnabled = true
         private var recognizers: [UIGestureRecognizer] = []
+        /// Watches for the remote connecting, to switch it to exact pad positions.
+        private var remoteConnected: NSObjectProtocol?
         private var buttons: [ObjectIdentifier: RemoteButton] = [:]
         /// When an edge click last came, so the touch that came with it isn't also a light touch.
         private var lastEdgeClick = Date.distantPast
@@ -67,7 +69,14 @@ struct RemoteGestures: UIViewRepresentable {
 
         func attach(to window: UIWindow) {
             guard recognizers.isEmpty else { return }
-            _ = PadEdgeClick.padPosition()   // switches remotes to absolute pad positions
+            // The remote only shows up once it's first touched: set it up then,
+            // before its click lands, or the first edge click reads as a centre one.
+            GCController.controllers().forEach(PadEdgeClick.useExactPositions)
+            remoteConnected = NotificationCenter.default.addObserver(
+                forName: .GCControllerDidConnect, object: nil, queue: .main
+            ) { note in
+                (note.object as? GCController).map(PadEdgeClick.useExactPositions)
+            }
             let clicks: [(RemoteButton, UIPress.PressType)] = [
                 (.clickUp, .upArrow), (.clickDown, .downArrow), (.clickLeft, .leftArrow), (.clickRight, .rightArrow),
             ]
@@ -121,6 +130,8 @@ struct RemoteGestures: UIViewRepresentable {
         }
 
         func detach() {
+            remoteConnected.map(NotificationCenter.default.removeObserver)
+            remoteConnected = nil
             for recognizer in recognizers { recognizer.view?.removeGestureRecognizer(recognizer) }
             recognizers = []
             buttons = [:]
@@ -192,12 +203,16 @@ struct RemoteGestures: UIViewRepresentable {
         /// (up is positive). Nil without a finger on it, or on a remote that can't tell.
         static func padPosition() -> (x: Float, y: Float)? {
             for controller in GCController.controllers() {
-                guard let pad = controller.microGamepad else { continue }
-                pad.reportsAbsoluteDpadValues = true
+                guard let pad = controller.microGamepad, pad.reportsAbsoluteDpadValues else { continue }
                 let x = pad.dpad.xAxis.value, y = pad.dpad.yAxis.value
                 if x != 0 || y != 0 { return (x, y) }
             }
             return nil
+        }
+
+        /// Makes `controller`'s pad report where the finger is, rather than how it moved.
+        nonisolated static func useExactPositions(_ controller: GCController) {
+            controller.microGamepad?.reportsAbsoluteDpadValues = true
         }
 
         private static func edgeUnderFinger() -> RemoteButton? {
