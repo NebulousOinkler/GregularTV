@@ -107,9 +107,6 @@ public struct ChannelSchedule: Sendable {
         self.clipsPerRun = Double(runLength) * max(0, 1 - averageLength / averageSlotLength) / averageClip
     }
 
-    /// Number of distinct programmes the channel can play.
-    public var itemCount: Int { content.items.count }
-
     /// How long each run of this channel's schedule is.
     public var runDuration: TimeInterval { TimeInterval(runLength) / 1000 }
 
@@ -175,16 +172,17 @@ public struct ChannelSchedule: Sendable {
         return DateInterval(start: airings[first].start, end: airings[last].slotEnd)
     }
 
-    /// Every airing that overlaps `start..<end`, in order. The first one may
-    /// have started before `start`. Leave out filler clips for guide listings.
-    public func airings(from start: Date, to end: Date, includingFillers: Bool = true) -> [Airing] {
+    /// Every airing (programme parts and filler clips) that overlaps
+    /// `start..<end`, in order. The first one may have started before `start`.
+    /// For listings of whole programmes, use `programmes(from:to:)`.
+    public func airings(from start: Date, to end: Date) -> [Airing] {
         guard start < end else { return [] }
         var walker = SlotWalker(self, startingAt: runIndex(containing: start))
         var result: [Airing] = []
         while true {
             let airings = walker.nextSlot()
             guard airings[0].start < end else { break }
-            result += airings.filter { (includingFillers || !$0.isFiller) && $0.slotEnd > start && $0.start < end }
+            result += airings.filter { $0.slotEnd > start && $0.start < end }
         }
         return result
     }
