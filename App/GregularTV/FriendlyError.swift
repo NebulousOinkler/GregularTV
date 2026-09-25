@@ -1,6 +1,6 @@
 import AVFoundation
 import Foundation
-import GregularTVCore
+import GregularCore
 
 /// Turns any error into a short, plain message for the screen.
 ///
@@ -10,8 +10,8 @@ import GregularTVCore
 enum FriendlyError {
     static func message(for error: (any Error)?) -> String {
         guard let error else { return "Something went wrong." }
-        // Our own errors are already written for people.
-        if let jellyfin = error as? JellyfinError { return jellyfin.localizedDescription }
+        // The media server's own errors are already written for people.
+        if let failure = error as? any MediaServiceFailure { return failure.localizedDescription }
         if let stall = error as? StallError { return stall.localizedDescription }
         if let url = error as? URLError { return message(for: url) }
         if error is DecodingError { return "Your server sent a reply the app didn't understand. Is it a Jellyfin server?" }

@@ -1,4 +1,4 @@
-import GregularTVCore
+import GregularCore
 import SwiftUI
 
 /// Full-screen live TV with the info banner, channel list and settings.

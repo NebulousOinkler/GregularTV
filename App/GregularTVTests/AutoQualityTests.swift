@@ -1,5 +1,6 @@
 import Foundation
-import GregularTVCore
+import GregularCore
+import GregularJellyfin
 import Testing
 @testable import GregularTV
 
@@ -38,7 +39,7 @@ struct AutoQualityTests {
         let client = JellyfinClient(
             credentials: Credentials(serverURL: URL(string: "https://tv.invalid")!, userID: "u", accessToken: "t"),
             identity: ClientIdentity(deviceID: "test"), transport: server)
-        return ChannelPlayer(schedule: schedule, client: client, quality: quality)
+        return ChannelPlayer(schedule: schedule, streams: client, quality: quality)
     }
 
     private func waitForPlaybackInfo(_ server: RecordingServer) async throws {

@@ -6,7 +6,7 @@ Planned features, not built yet. Each has a plan so it can be picked up later.
 
 **Goal:** make a new channel from the Apple TV itself, without editing `channels.json` and rebuilding the app.
 
-**Today:** the line-up is `Sources/GregularTVCore/Resources/channels.json`, bundled into the app. A channel is a number, a name, a content rule (`ChannelSource`: all, genre, series, years, tag), item types, a strategy, a seed, `padTo` and a filler.
+**Today:** the line-up is `Sources/GregularCore/Resources/channels.json`, bundled into the app. A channel is a number, a name, a content rule (`ChannelSource`: all, genre, series, years, tag), item types, a strategy, a seed, `padTo` and a filler.
 
 **Plan**
 1. **Editor screen.** Add *Settings › Channels › Add Channel*, a short form:

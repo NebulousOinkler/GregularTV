@@ -1,5 +1,6 @@
 import Foundation
-import GregularTVCore
+import GregularCore
+import GregularJellyfin
 import Observation
 
 /// Sign-in steps: enter the server address, then use Quick Connect or a
