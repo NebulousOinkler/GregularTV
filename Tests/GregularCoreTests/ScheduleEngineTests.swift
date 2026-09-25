@@ -139,6 +139,16 @@ struct ScheduleEngineTests {
         #expect(slot.dropFirst().allSatisfy { $0.isFiller }, "16 minutes of commercials after it")
     }
 
+    @Test(arguments: [(44.0, 0), (59, 0), (65, 2), (70, 1), (75, 1), (82, 0), (95, 2)])
+    func episodesOfAnHourOrMoreGetMidRollsLikeFilms(minutes: Double, midRolls: Int) throws {
+        let s = try withCommercials(Fixtures.series("Epic", seasons: 1, episodes: 3, minutes: minutes))
+        let programme = s.programme(at: epoch)
+        let parts = s.airings(from: epoch, to: programme.slotEnd.addingTimeInterval(-1)).filter { !$0.isFiller }
+        #expect(parts.count == midRolls + 1)
+        #expect(abs(parts.map(\.length).reduce(0, +) - minutes * 60) < 0.01, "The whole episode plays")
+        #expect(parts.allSatisfy { $0.programmeStart == epoch })
+    }
+
     /// The parts and breaks of the first film's slot.
     private func filmSlot(minutes: Double) throws -> (parts: [Airing], breaks: [DateInterval], slotEnd: Date) {
         let film = Fixtures.movie("Film", minutes: minutes)

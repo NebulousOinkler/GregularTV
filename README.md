@@ -48,7 +48,7 @@ Every channel's running order comes from one 10-character **schedule code** (lik
 ## Commercials
 
 Every programme starts on the half hour. The time from its end to the next half hour is commercials, from a Jellyfin library named `Commercials` (the name is set in `channels.json`):
-- **After a TV episode:** all of it, after the episode.
+- **After a TV episode:** all of it, after the episode. An episode an hour or longer is treated like a film, below.
 - **In a film:** a film's leftover can be up to half an hour. Up to 10 minutes goes after the film. More is shared out evenly between the break after it and one or two **mid-roll** breaks inside it (halfway, or at a third and two thirds), each 10 minutes at most: one mid-roll for up to 20 minutes, two beyond that. At least 15 minutes of film plays between breaks, so a short film gets fewer mid-rolls (none under 30 minutes) and the rest goes after it. The film stops at the break and carries on from the same point after it.
 - Clips play in the order of the channel's derangement, with the same `a` and `b` as its shows, carrying on from break to break.
 - **At most 20 minutes of commercials in one break.** A longer break (after an episode that ends well before the half hour, a short film, or at the end of a day) is blank after that, with the "Up next" card, and the programme still starts on time.
@@ -109,7 +109,7 @@ xcrun simctl launch booted dev.gregulartv.GregularTV -handoffTest
 | Add a way to choose channel content | New type in `Sources/GregularCore/Channels/Sources/`, then add it to `ChannelSourceRegistry.all` |
 | Change the order commercials play in | New `GapFiller` in `Sources/GregularCore/Scheduling/GapFiller.swift`, then add it to `GapFillerRegistry.all` and set `"filler"` in `channels.json` (see PLAN.md §9a) |
 | Change what the remote's buttons do | The tables at the top of `Sources/GregularScreens/Remote/RemoteControls.swift` (one per screen) |
-| Change how long a mid-roll may be, how many a film gets, or the Up next lead | `ChannelSchedule.longestMidRoll`, `maxMidRolls` and `upNextLead` in `Sources/GregularCore/Scheduling/ScheduleEngine.swift` |
+| Change how long a mid-roll may be, how many a film gets, how long an episode must be to get them, or the Up next lead | `ChannelSchedule.longestMidRoll`, `maxMidRolls`, `longEpisode` and `upNextLead` in `Sources/GregularCore/Scheduling/ScheduleEngine.swift` |
 | Restyle the icon or Top Shelf image | `scripts/make-artwork.swift`, then run `swift scripts/make-artwork.swift` |
 | Take App Store screenshots | Demo mode (Debug builds only): run `swift scripts/make-demo-video.swift` once, then `python3 scripts/demo-server.py`, and launch the app in a simulator with `-demoServer http://localhost:8765`. It plays public-domain films and made-up shows, with nothing saved to the Keychain. See `App/GregularTV/DemoMode.swift`. |
 
