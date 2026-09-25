@@ -53,6 +53,29 @@ struct WatchModelTests {
         model.player.stop()
     }
 
+    @Test func thePictureFadesOutWhileChangingChannelAndBackOnceItPlays() async throws {
+        let model = try await playing()
+        #expect(!model.changingChannel)
+        model.perform(.channelUp)
+        #expect(model.changingChannel, "Fades as soon as surfing starts")
+        #expect(model.bannerIsShowing, "The banner previews the channel meanwhile")
+        try await Task.sleep(for: ChannelSurfer.settleDelay + .milliseconds(100))
+        try await Fixture.settle(model.player)
+        #expect(model.player.schedule.channel.number == 2)
+        #expect(!model.changingChannel, "Back once the new channel plays")
+        model.player.stop()
+    }
+
+    @Test func surfingBackToTheSameChannelBringsThePictureBack() async throws {
+        let model = try await playing()
+        model.perform(.channelUp)
+        model.perform(.channelDown)
+        try await Task.sleep(for: ChannelSurfer.settleDelay + .milliseconds(100))
+        #expect(model.player.schedule.channel.number == 1)
+        #expect(!model.changingChannel)
+        model.player.stop()
+    }
+
     @Test func touchingWhileTheBannerIsUpSwitchesTheTime() async throws {
         let model = try await playing()
         let before = try #require(model.banner(at: .now).programme?.time)
