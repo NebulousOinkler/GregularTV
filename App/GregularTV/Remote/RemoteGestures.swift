@@ -1,3 +1,4 @@
+import GregularScreens
 import SwiftUI
 import UIKit
 import UIKit.UIGestureRecognizerSubclass

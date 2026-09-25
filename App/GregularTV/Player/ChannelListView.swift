@@ -1,4 +1,5 @@
 import GregularCore
+import GregularScreens
 import SwiftUI
 
 /// The channel selector: every channel with what's on now, or, in a break,

@@ -1,5 +1,4 @@
-import GregularCore
-import GregularJellyfin
+import GregularScreens
 import SwiftUI
 
 struct LoginView: View {
@@ -8,9 +7,11 @@ struct LoginView: View {
     /// Shown above the form, for example "Your sign-in has expired".
     private let notice: String?
 
-    init(identity: ClientIdentity, notice: String? = nil, onSignedIn: @escaping (Credentials) async -> Void) {
+    /// - Parameter model: from `AppModel.makeLoginModel()`, which signs in
+    ///   with it and knows which server kind it's talking to.
+    init(model: LoginModel, notice: String? = nil) {
         self.notice = notice
-        _model = State(initialValue: LoginModel(identity: identity, onSignedIn: onSignedIn))
+        _model = State(initialValue: model)
     }
 
     var body: some View {

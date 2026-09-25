@@ -1,3 +1,4 @@
+import GregularScreens
 import SwiftUI
 
 struct RootView: View {
@@ -9,7 +10,7 @@ struct RootView: View {
             case .launching:
                 BrandedWait(message: nil)
             case .signedOut:
-                LoginView(identity: app.identity, notice: app.signedOutReason) { await app.didSignIn($0) }
+                LoginView(model: app.makeLoginModel(), notice: app.signedOutReason)
             case .loading:
                 BrandedWait(message: "Loading your library…")
             case .watching(let surfer):

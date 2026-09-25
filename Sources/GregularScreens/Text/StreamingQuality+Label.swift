@@ -3,8 +3,8 @@ import GregularCore
 extension StreamingQuality {
     /// How Settings names each option. The resolutions are what Jellyfin
     /// typically picks for a video at that bitrate, so they're approximate.
-    /// (Kept in the app: another app, such as radio, would name them its own way.)
-    var label: String {
+    /// (Kept out of Core: a radio app would name them its own way.)
+    public var label: String {
         switch self {
         case .auto: "Auto"
         case .maximum: "Maximum (original quality)"

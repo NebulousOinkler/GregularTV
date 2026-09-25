@@ -10,50 +10,50 @@ import Observation
 /// `settleDelay`, so flicking past five channels doesn't start five streams
 /// on the server.
 @MainActor @Observable
-final class ChannelSurfer {
-    static let settleDelay: Duration = .milliseconds(700)
-    static let digitTimeout: Duration = .milliseconds(1500)
+public final class ChannelSurfer {
+    public static let settleDelay: Duration = .milliseconds(700)
+    public static let digitTimeout: Duration = .milliseconds(1500)
 
-    let player: ChannelPlayer
-    let channels: [ChannelSchedule]
-    let navigator: ChannelNavigator
+    public let player: ChannelPlayer
+    public let channels: [ChannelSchedule]
+    public let navigator: ChannelNavigator
 
     /// The channel being previewed while the user is still surfing.
-    private(set) var preview: ChannelSchedule?
+    public private(set) var preview: ChannelSchedule?
     /// Digits typed so far, for example "1" while waiting for a second digit.
-    private(set) var typedDigits = ""
+    public private(set) var typedDigits = ""
     /// A short message such as "No channel 9", cleared after a moment.
-    private(set) var notice: String?
+    public private(set) var notice: String?
 
     private let preferences: AppPreferences
     private var settleTask: Task<Void, Never>?
     private var digitTask: Task<Void, Never>?
     private var noticeTask: Task<Void, Never>?
 
-    init(channels: [ChannelSchedule], startingWith channel: ChannelSchedule,
-         streams: any StreamSource, preferences: AppPreferences) {
+    public init(channels: [ChannelSchedule], startingWith channel: ChannelSchedule,
+         streams: any StreamSource, preferences: AppPreferences, decks: [any PlayerDeck]) {
         self.channels = channels
         self.preferences = preferences
         navigator = ChannelNavigator(numbers: channels.map(\.channel.number))
-        player = ChannelPlayer(schedule: channel, streams: streams, quality: preferences.streamingQuality)
+        player = ChannelPlayer(schedule: channel, streams: streams, quality: preferences.streamingQuality, decks: decks)
     }
 
     /// The channel the banner should show: the preview while surfing,
     /// otherwise what's playing.
-    var displayedChannel: ChannelSchedule { preview ?? player.schedule }
+    public var displayedChannel: ChannelSchedule { preview ?? player.schedule }
 
     // MARK: - Input
 
-    func channelUp() {
+    public func channelUp() {
         surf(to: navigator.channel(after: displayedChannel.channel.number))
     }
 
-    func channelDown() {
+    public func channelDown() {
         surf(to: navigator.channel(before: displayedChannel.channel.number))
     }
 
     /// Picking a channel from the list tunes straight away.
-    func tune(to number: Int) {
+    public func tune(to number: Int) {
         guard let schedule = schedule(number) else {
             show(notice: "No channel \(number)")
             return
@@ -67,7 +67,7 @@ final class ChannelSurfer {
 
     /// A digit from a keyboard. Tunes when enough digits are typed for the
     /// highest channel number, or after a short pause.
-    func type(digit: Character) {
+    public func type(digit: Character) {
         guard digit.isWholeNumber else { return }
         typedDigits.append(digit)
         digitTask?.cancel()
