@@ -41,6 +41,11 @@ import GregularScreens
     func removeAll() { player.removeAllItems() }
     func advance() { player.advanceToNextItem() }
 
+    var volume: Float {
+        get { player.volume }
+        set { player.volume = newValue }
+    }
+
     var pausesAtItemEnd: Bool {
         get { player.actionAtItemEnd == .pause }
         set { player.actionAtItemEnd = newValue ? .pause : .advance }

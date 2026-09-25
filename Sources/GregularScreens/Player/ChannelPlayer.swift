@@ -124,6 +124,10 @@ public final class ChannelPlayer {
     /// break (`afterBreak`) until they swap.
     public let decks: [any PlayerDeck]
     public private(set) var activeIndex = 0
+    /// Sound level on both decks, 0 to 1, for fading the sound with the picture.
+    public var volume: Float = 1 {
+        didSet { for deck in decks { deck.volume = volume } }
+    }
     /// The deck on screen.
     public var player: any PlayerDeck { decks[activeIndex] }
     private var standby: any PlayerDeck { decks[1 - activeIndex] }
@@ -356,7 +360,7 @@ public final class ChannelPlayer {
                     if loaded.item.hasFailed {
                         return fail(loaded.item.failure, airing: tuning.airing)
                     }
-                } else {
+                } else if !Self.startsLate(tuning.airing) {
                     // Measure the offset *after* loading, so time spent waiting for
                     // the server doesn't leave us behind live.
                     seek(to: Date.now.timeIntervalSince(tuning.airing.start), in: tuning.airing)
@@ -431,6 +435,16 @@ public final class ChannelPlayer {
                 release(current)
                 self.current?.unreleased = nil
             }
+            status = .betweenProgrammes(until: next?.airing.start ?? current.airing.slotEnd)
+            return
+        }
+        // A break's last commercial, still going at its scheduled end (it
+        // started late, after a slow load or buffering): stop it there, so the
+        // Up next card gets its full time before the programme.
+        if current.airing.isFiller, now >= current.airing.end, now < current.airing.slotEnd,
+           current.airing.slotEnd.timeIntervalSince(current.airing.end) > 1 {
+            player.pause()
+            isBuffering = false
             status = .betweenProgrammes(until: next?.airing.start ?? current.airing.slotEnd)
             return
         }
@@ -600,6 +614,16 @@ public final class ChannelPlayer {
     }
 
     // MARK: - Helpers
+
+    /// `-breakEndTest late` (Debug builds): a commercial joined mid-way plays
+    /// from its beginning, so it runs late.
+    private static func startsLate(_ airing: Airing) -> Bool {
+        #if DEBUG
+        airing.isFiller && DebugOptions.startsCommercialsLate
+        #else
+        false
+        #endif
+    }
 
     /// Where to start a re-encoded programme: a head start past live that
     /// doubles with each failure on this channel. Nil if the programme ends
