@@ -16,6 +16,11 @@ import Observation
 ///   AVPlayerItem can never move between players, so it stays where it
 ///   loaded.) So the server works on at most two streams, or three in the
 ///   last 30 seconds of a commercial: this clip, the next one, and the programme.
+/// - **Mid-roll breaks:** a film split by commercials airs as parts of the
+///   same item (`Airing.mediaOffset`). Each part is a separate load that
+///   starts where the last part stopped and ends at its cut, so a mid-roll is
+///   an ordinary break: the part after it preloads in `standby` like any
+///   programme after a break. A programme fix covers every part of the film.
 /// - **Commercials** are only ever played as-is or remuxed, with no bitrate
 ///   cap, so a clip's bitrate never makes it re-encoded. One that would need
 ///   re-encoding anyway (a video codec the Apple TV can't play) is skipped,
@@ -126,7 +131,7 @@ final class ChannelPlayer {
     private(set) var airing: Airing? {
         didSet {
             // A fix is for one programme: the next one plays as standard.
-            if let airing, !airing.isFiller, let fixed = fixedProgramme, fixed.airing != airing {
+            if let airing, !airing.isFiller, let fixed = fixedProgramme, !fixed.airing.isSameProgramme(as: airing) {
                 clearProgrammeFix()
             }
         }
@@ -329,7 +334,7 @@ final class ChannelPlayer {
                 player.insert(loaded.item, after: nil)
                 if loaded.reencodesVideo, let start = headStartTarget(in: tuning.airing) {
                     // Let Jellyfin get ahead: buffer from `start`, paused, then play on time.
-                    seek(to: start.timeIntervalSince(tuning.airing.start))
+                    seek(to: start.timeIntervalSince(tuning.airing.start), in: tuning.airing)
                     status = .startingSoon(at: start)
                     // Wait for live to reach `start`. Don't start into an almost
                     // empty buffer: wait a little longer for a cushion if Jellyfin
@@ -347,7 +352,7 @@ final class ChannelPlayer {
                 } else {
                     // Measure the offset *after* loading, so time spent waiting for
                     // the server doesn't leave us behind live.
-                    seek(to: Date.now.timeIntervalSince(tuning.airing.start))
+                    seek(to: Date.now.timeIntervalSince(tuning.airing.start), in: tuning.airing)
                 }
                 player.play()
                 status = .playing
@@ -428,7 +433,7 @@ final class ChannelPlayer {
         isBuffering = player.timeControlStatus == .waitingToPlayAtSpecifiedRate
 
         // "Step down quality": buffering for a few seconds steps down again.
-        if programmeFix == .stepDown, isBuffering, let fixed = fixedProgramme, fixed.airing == current.airing {
+        if programmeFix == .stepDown, isBuffering, let fixed = fixedProgramme, fixed.airing.isSameProgramme(as: current.airing) {
             let since = bufferingSince ?? now
             bufferingSince = since
             if now.timeIntervalSince(since) > Self.stepDownAfterBuffering,
@@ -453,13 +458,13 @@ final class ChannelPlayer {
         }
         if diagnosticsEnabled {
             diagnostics = PlaybackDiagnostics(player: player,
-                                              behindLive: now.timeIntervalSince(current.airing.start) - position,
+                                              behindLive: now.timeIntervalSince(current.airing.start) - (position - current.airing.mediaOffset),
                                               transcodeReasons: current.transcodeReasons,
                                               preloaded: (nextIsOnStandby ? next : afterBreak)?.item)
         }
 
         // A long buffering stall left us well behind live, so jump back.
-        let behindLive = now.timeIntervalSince(current.airing.start) - position
+        let behindLive = now.timeIntervalSince(current.airing.start) - (position - current.airing.mediaOffset)
         if player.timeControlStatus == .playing, behindLive > Self.maxDriftBehindLive {
             tune()
             return
@@ -552,7 +557,7 @@ final class ChannelPlayer {
         activeIndex = 1 - activeIndex
         // Normally on the dot; if the heartbeat got here late, catch up.
         let late = Date.now.timeIntervalSince(next.airing.start)
-        if late > 2 { seek(to: late) }
+        if late > 2 { seek(to: late, in: next.airing) }
         player.play()
         old.pause()
         old.removeAllItems()
@@ -611,14 +616,22 @@ final class ChannelPlayer {
                                             : try await programmeSource(for: airing)
         let method = source.method == .directPlay ? "direct play" : "streamed by Jellyfin"
         let label = airing.isFiller ? "Commercial"
-            : fixedProgramme?.airing == airing ? "This programme only"
+            : fixedProgramme.map({ $0.airing.isSameProgramme(as: airing) }) == true ? "This programme only"
             : quality == .auto ? "Auto" : quality.label
         let reasons = source.transcodeReasons.isEmpty ? nil : source.transcodeReasons.joined(separator: ",")
         let item = AVPlayerItem(url: source.url)
         // Stop at the scheduled length, so programmes and commercials keep to
         // the schedule even when a file runs a little longer than Jellyfin says,
         // and a commercial still playing is cut off when the next programme starts.
-        item.forwardPlaybackEndTime = CMTime(seconds: airing.length, preferredTimescale: 600)
+        item.forwardPlaybackEndTime = CMTime(seconds: airing.mediaOffset + airing.length, preferredTimescale: 600)
+        // A later part of a film split by mid-roll breaks starts where the
+        // last part stopped, even when it's queued and starts by itself.
+        // (No completion handler: that's allowed before the item is ready.)
+        if airing.mediaOffset > 0 {
+            item.seek(to: CMTime(seconds: airing.mediaOffset, preferredTimescale: 600),
+                      toleranceBefore: .zero, toleranceAfter: CMTime(seconds: 1, preferredTimescale: 600),
+                      completionHandler: nil)
+        }
         if source.reencodesVideo { item.preferredForwardBufferDuration = Self.reencodedForwardBuffer }
         return LoadedAiring(airing: airing,
                             item: item,
@@ -631,7 +644,7 @@ final class ChannelPlayer {
 
     /// Programmes use the viewer's quality setting, or the programme fix's cap.
     private func programmeSource(for airing: Airing) async throws -> (PlaybackSource, cap: Int) {
-        let fixedCap = fixedProgramme.flatMap { $0.airing == airing ? $0.cap : nil }
+        let fixedCap = fixedProgramme.flatMap { $0.airing.isSameProgramme(as: airing) ? $0.cap : nil }
         let cap = if let fixedCap { fixedCap } else { await maxBitrate() }
         return (try await client.playbackSource(for: airing.item.id, maxBitrate: cap), cap)
     }
@@ -702,9 +715,11 @@ final class ChannelPlayer {
         (Double(bitsPerSecond) / 1_000_000).formatted(.number.precision(.fractionLength(0...1))) + " Mbps"
     }
 
-    private func seek(to offset: TimeInterval) {
+    /// Seeks the player on screen to `seconds` into `airing`. For a later
+    /// part of a split film, that's past where the part starts in the file.
+    private func seek(to seconds: TimeInterval, in airing: Airing) {
         let tolerance = CMTime(seconds: 2, preferredTimescale: 600)
-        player.seek(to: CMTime(seconds: max(0, offset), preferredTimescale: 600),
+        player.seek(to: CMTime(seconds: airing.mediaOffset + max(0, seconds), preferredTimescale: 600),
                     toleranceBefore: tolerance, toleranceAfter: tolerance)
     }
 

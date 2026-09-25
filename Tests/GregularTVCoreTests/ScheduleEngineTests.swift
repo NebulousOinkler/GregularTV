@@ -114,53 +114,96 @@ struct ScheduleEngineTests {
 
     // MARK: Padding and gaps
 
-    @Test func episodesAlwaysGetABreakFilmsOnlyTenMinutesOrLess() throws {
-        let day = try schedule(padTo: 30).airings(from: later, to: later.addingTimeInterval(24 * 3600))
-        var sawBackToBack = false
-        for airing in day.dropLast() {   // (the run's last slot also takes its leftover)
-            let onTheHalfHour = airing.slotEnd.timeIntervalSince(epoch).truncatingRemainder(dividingBy: 1800) == 0
-            let gap = airing.slotEnd.timeIntervalSince(airing.end)
-            if airing.item.kind == .episode {
-                // Always up to the next half hour, however long that is.
-                #expect(onTheHalfHour && gap < 1800)
-            } else if gap > 0 {
-                // A film: rounded up to the half hour by no more than ten minutes.
-                #expect(onTheHalfHour && gap <= 600)
-            } else {
-                sawBackToBack = true
-                // Too far from the half hour: the next programme starts at once.
-                let past = airing.end.timeIntervalSince(epoch).truncatingRemainder(dividingBy: 1800)
-                #expect(past == 0 || 1800 - past > 600)
+    /// A padded channel with commercials, so films get mid-rolls.
+    private func withCommercials(_ items: [MediaItem], strategy: String = SequentialBySeries.id) throws -> ChannelSchedule {
+        let ads = (0..<6).map { MediaItem(id: "ad\($0)", kind: .video, name: "Ad \($0)", duration: 30 + Double($0) * 15) }
+        let channel = Channel(number: 1, name: "T", source: AllItemsSource(), strategyID: strategy,
+                              seed: 42, padToMinutes: 30, fillerID: DerangedCommercials.id)
+        return try #require(ChannelSchedule(channel: channel, items: items, fillerPool: ads))
+    }
+
+    @Test func everyProgrammeStartsOnTheHalfHour() throws {
+        for s in [try schedule(padTo: 30), try withCommercials(Fixtures.library, strategy: RandomShuffle.id)] {
+            for programme in s.programmes(from: later, to: later.addingTimeInterval(24 * 3600)) {
+                #expect(programme.start.timeIntervalSince(epoch).truncatingRemainder(dividingBy: 1800) == 0)
+                #expect(programme.slotEnd.timeIntervalSince(programme.end) < 1800)
             }
         }
-        #expect(sawBackToBack, "Some film in a day ends too far before the half hour")
     }
 
-    @Test func anEpisodeAfterAFilmBringsTheChannelBackToTheHalfHour() throws {
-        // 92 minutes, then a 10-minute episode from 1:32: it ends at 1:42,
-        // 18 minutes short of 2:00, and still gets a break up to 2:00.
-        let film = Fixtures.movie("Long", minutes: 92)
-        let s = try schedule([film] + Fixtures.series("Short", seasons: 1, episodes: 20, minutes: 10),
-                             strategy: SequentialBySeries.id, padTo: 30)
-        let day = s.airings(from: epoch, to: epoch.addingTimeInterval(24 * 3600))
-        let filmAiring = try #require(day.first { $0.item.id == film.id })
-        #expect(filmAiring.slotEnd == filmAiring.end, "28 minutes is too long a break after a film")
-        let episode = try #require(day.first { $0.start == filmAiring.end })
-        #expect(episode.slotEnd.timeIntervalSince(episode.end) == 18 * 60)
-        #expect(episode.slotEnd.timeIntervalSince(epoch).truncatingRemainder(dividingBy: 1800) == 0)
+    @Test func episodesHaveTheirWholeBreakAfterThem() throws {
+        let s = try withCommercials(Fixtures.series("Drama", seasons: 1, episodes: 6, minutes: 44))
+        let slot = s.airings(from: epoch, to: epoch.addingTimeInterval(3600 - 1))
+        #expect(slot.filter { !$0.isFiller }.count == 1, "No mid-rolls in an episode")
+        #expect(slot[0].end == epoch.addingTimeInterval(44 * 60))
+        #expect(slot.dropFirst().allSatisfy { $0.isFiller }, "16 minutes of commercials after it")
     }
 
-    @Test func aFilmJustPastTheHourIsFollowedByTheNextProgrammeNotABreak() throws {
-        // 92 minutes: 28 minutes short of the next half hour, so no break;
-        // 22-minute episodes follow until one ends within 10 minutes of a boundary.
-        let film = Fixtures.movie("Long", minutes: 92)
-        let s = try schedule([film] + Fixtures.series("Short", seasons: 1, episodes: 20), strategy: SequentialBySeries.id, padTo: 30)
-        let day = s.airings(from: epoch, to: epoch.addingTimeInterval(24 * 3600))
-        let filmAiring = try #require(day.first { $0.item.id == film.id })
-        #expect(filmAiring.slotEnd == filmAiring.end)
-        // 92 + 22 = 114: 6 minutes short of 2 hours, so that break is filled.
-        let after = try #require(day.first { $0.start == filmAiring.end })
-        #expect(after.slotEnd.timeIntervalSince(after.end) == 6 * 60)
+    /// The parts and breaks of the first film's slot.
+    private func filmSlot(minutes: Double) throws -> (parts: [Airing], breaks: [DateInterval], slotEnd: Date) {
+        let film = Fixtures.movie("Film", minutes: minutes)
+        let s = try withCommercials([film])
+        let programme = s.programme(at: epoch)
+        let airings = s.airings(from: epoch, to: programme.slotEnd.addingTimeInterval(-1))
+        let parts = airings.filter { !$0.isFiller }
+        // Each break: from a part's end to the next part (or the next programme).
+        let breaks = parts.map { DateInterval(start: $0.end, end: nextStart(after: $0, in: airings, slotEnd: programme.slotEnd)) }
+        return (parts, breaks, programme.slotEnd)
+    }
+
+    private func nextStart(after part: Airing, in airings: [Airing], slotEnd: Date) -> Date {
+        airings.first { !$0.isFiller && $0.start > part.start }?.start ?? slotEnd
+    }
+
+    @Test(arguments: [(95.0, 2), (100, 1), (105, 1), (91, 2), (78, 1), (125, 2), (82, 0), (58, 0),
+                      // Short films: parts of at least 15 minutes, so fewer mid-rolls, or none.
+                      (35, 1), (40, 1), (13, 0), (2, 0)])
+    func filmsGetUpToTwoMidRollsOfTenMinutesOrLess(minutes: Double, midRolls: Int) throws {
+        let (parts, breaks, slotEnd) = try filmSlot(minutes: minutes)
+        #expect(parts.count == midRolls + 1)
+        // The whole film plays, each part resuming where the last stopped.
+        var resumeAt: TimeInterval = 0
+        for part in parts {
+            #expect(abs(part.mediaOffset - resumeAt) < 0.01)
+            resumeAt += part.length
+        }
+        #expect(abs(resumeAt - minutes * 60) < 0.01)
+        #expect(parts.allSatisfy { $0.programmeStart == epoch })
+        // Mid-rolls are 10 minutes or less, with at least 15 minutes of film
+        // between breaks; all the breaks together fill the half-hour slot.
+        for midRoll in breaks.dropLast() { #expect(midRoll.duration <= 600 && midRoll.duration > 0) }
+        if parts.count > 1 { #expect(parts.allSatisfy { $0.length >= 15 * 60 }) }
+        let total = breaks.reduce(0) { $0 + $1.duration }
+        #expect(abs(total - (slotEnd.timeIntervalSince(epoch) - minutes * 60)) < 0.01)
+        #expect(total < 1800)
+        #expect(slotEnd.timeIntervalSince(epoch).truncatingRemainder(dividingBy: 1800) == 0)
+    }
+
+    @Test func withCommercialsOffAFilmsMidRollsAreTheSameButBlank() throws {
+        let film = Fixtures.movie("Film", minutes: 92)
+        let on = try withCommercials([film])
+        let off = try schedule([film], padTo: 30)   // no filler
+        let window = (epoch, epoch.addingTimeInterval(120 * 60 - 1))
+        let onParts = on.airings(from: window.0, to: window.1).filter { !$0.isFiller }
+        let offAirings = off.airings(from: window.0, to: window.1)
+        #expect(!offAirings.contains { $0.isFiller })
+        #expect(offAirings.count == 3, "Two mid-rolls, blank")
+        #expect(offAirings.map(\.start) == onParts.map(\.start))
+        #expect(offAirings.map(\.mediaOffset) == onParts.map(\.mediaOffset))
+    }
+
+    @Test func aSplitFilmIsOneProgrammeInTheGuideAndOnScreen() throws {
+        let s = try withCommercials([Fixtures.movie("Film", minutes: 92)])
+        let programme = s.programme(at: epoch.addingTimeInterval(40 * 60))   // in a mid-roll or part 2
+        #expect(programme.start == epoch)
+        #expect(programme.slotEnd == epoch.addingTimeInterval(120 * 60))
+        #expect(programme.end > epoch.addingTimeInterval(92 * 60), "Ends after its mid-rolls, not at 92 minutes")
+        #expect(s.programmes(from: epoch, to: epoch.addingTimeInterval(120 * 60 - 1)).count == 1)
+        // During a mid-roll: the film's still on, and the break ends at its next part.
+        let parts = s.airings(from: epoch, to: epoch.addingTimeInterval(120 * 60 - 1)).filter { !$0.isFiller }
+        let midRoll = parts[0].end.addingTimeInterval(30)
+        #expect(s.nowShowing(at: midRoll) == .programme(programme))
+        #expect(s.commercialBreak(at: midRoll)?.end == parts[1].start)
     }
 
     @Test func nowShowingTellsProgrammesFromBreaks() throws {
@@ -239,7 +282,8 @@ struct ScheduleEngineTests {
         for strategy in [RandomShuffle.id, DerangedShows.id] {
             let s = try schedule(movies, strategy: strategy, padTo: 30)
             let runStart = Channel.defaultEpoch.addingTimeInterval(3 * s.runDuration)
-            let day = s.airings(from: runStart, to: runStart.addingTimeInterval(s.runDuration - 1))
+            // Whole programmes: the parts of a film split by mid-roll breaks aren't repeats.
+            let day = s.programmes(from: runStart, to: runStart.addingTimeInterval(s.runDuration - 1))
             #expect(Set(day.map(\.item.id)).count == day.count, "\(strategy) repeated a movie within a run")
         }
     }
