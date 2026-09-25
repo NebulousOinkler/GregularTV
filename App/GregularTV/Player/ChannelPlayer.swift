@@ -1,5 +1,5 @@
 import AVFoundation
-import GregularTVCore
+import GregularCore
 import Observation
 
 /// Plays one channel as live TV.
@@ -36,7 +36,7 @@ import Observation
 ///   server does.
 /// - **Stalls:** if video hasn't moved for 30 s (for example, the server
 ///   can't transcode fast enough), it's treated as a failure and retried.
-/// - **Head start for re-encoding:** tuning into a programme Jellyfin has to
+/// - **Head start for re-encoding:** tuning into a programme the server has to
 ///   re-encode, the player asks for it from a little ahead of live
 ///   (`transcodeHeadStart`), lets it buffer paused while the screen is blank,
 ///   and starts playing when live reaches that point, once `startCushion` is
@@ -44,12 +44,12 @@ import Observation
 ///   live). Each stall on the channel doubles the head start, up to
 ///   `maxTranscodeHeadStart`. Files that play as-is or are only repackaged
 ///   start at once.
-/// - **Re-encoding that can't keep up:** when a programme Jellyfin re-encodes
+/// - **Re-encoding that can't keep up:** when a programme the server re-encodes
 ///   fails or stalls, the retry asks for less work: 720p, then a step lower
 ///   on each further failure, for that programme only (shown in Settings as
 ///   its fix). The server's processor is the limit, not the connection, so
 ///   Auto doesn't re-measure first.
-/// - **Too little left to re-encode:** a programme Jellyfin would re-encode
+/// - **Too little left to re-encode:** a programme the server would re-encode
 ///   isn't started with under `minReencodedTimeLeft` to go, since starting a
 ///   transcode costs the server a lot for a minute of video. The screen is
 ///   blank with "Up next" instead.
@@ -57,7 +57,7 @@ import Observation
 ///   for just the programme on now, if it keeps having trouble. Changing
 ///   channel, changing quality, or the next programme starting puts it back
 ///   to standard.
-/// - **Quality** caps the bitrate Jellyfin sends. Auto never delays playback
+/// - **Quality** caps the bitrate the server sends. Auto never delays playback
 ///   to measure: it plays at the last measured rate (8 Mbps before the first
 ///   measurement), then runs the speed test in the background once playback
 ///   has settled, for the next programme. After a playback failure it measures
@@ -80,7 +80,7 @@ final class ChannelPlayer {
         case playing
         case paused(since: Date)
         case betweenProgrammes(until: Date)
-        /// Buffering ahead of live while Jellyfin re-encodes; plays at `at`.
+        /// Buffering ahead of live while the server re-encodes; plays at `at`.
         case startingSoon(at: Date)
         case failed(message: String, retryAt: Date)
     }
@@ -110,7 +110,7 @@ final class ChannelPlayer {
     /// How much longer than the head start to wait for that cushion.
     static let maxCushionWait: TimeInterval = 30
     /// How far ahead a re-encoded programme keeps buffering, so it builds a
-    /// reserve whenever Jellyfin gets ahead.
+    /// reserve whenever the server gets ahead.
     static let reencodedForwardBuffer: TimeInterval = 60
     /// With "Step down quality", buffering this long steps down again.
     static let stepDownAfterBuffering: TimeInterval = 4
@@ -151,7 +151,7 @@ final class ChannelPlayer {
     /// True while AVPlayer is waiting for data. The UI shows "Buffering…".
     private(set) var isBuffering = false
     /// Called if the server rejects our token, for example because the device
-    /// was removed in Jellyfin's dashboard. Retrying can't help; sign in again.
+    /// was removed in the server's dashboard. Retrying can't help; sign in again.
     var onUnauthorized: (() -> Void)?
     /// Set from Settings ("Show playback diagnostics"). Diagnostics are only
     /// worked out while it's on.
@@ -164,12 +164,13 @@ final class ChannelPlayer {
     var skippedCommercialsNote: String? {
         switch skippedCommercialIDs.count {
         case 0: nil
-        case 1: "1 was skipped so far because Jellyfin would have to re-encode it."
-        case let n: "\(n) were skipped so far because Jellyfin would have to re-encode them."
+        case 1: "1 was skipped so far because the server would have to re-encode it."
+        case let n: "\(n) were skipped so far because the server would have to re-encode them."
         }
     }
 
-    private let client: JellyfinClient
+    /// Where streams come from: the media server, through Core's interface.
+    private let streams: any StreamSource
     private var current: LoadedAiring?
     private var next: LoadedAiring?
     private var isPreparingNext = false
@@ -201,24 +202,25 @@ final class ChannelPlayer {
     private var tuneTask: Task<Void, Never>?
     private var heartbeat: Task<Void, Never>?
 
-    /// An airing with its AVPlayerItem and Jellyfin play session.
+    /// An airing with its AVPlayerItem and the server's stream.
     private struct LoadedAiring {
         let airing: Airing
         let item: AVPlayerItem
-        /// Cleared once Jellyfin has been told to stop, so it's only told once.
-        var transcodeSessionID: String?
+        /// The stream, until the server's been told it's finished with (so
+        /// it's only told once).
+        var unreleased: MediaStream?
         let description: String
         /// The bitrate cap it was asked for.
         let cap: Int
-        /// Jellyfin re-encodes the video, so tuning in mid-programme gets a head start.
-        let reencodesVideo: Bool
-        /// Jellyfin's reasons for transcoding, if it is (for diagnostics).
+        /// The server re-encodes it, so tuning in mid-programme gets a head start.
+        let reencodes: Bool
+        /// The server's reasons for converting it, if it is (for diagnostics).
         let transcodeReasons: String?
     }
 
-    init(schedule: ChannelSchedule, client: JellyfinClient, quality: StreamingQuality) {
+    init(schedule: ChannelSchedule, streams: any StreamSource, quality: StreamingQuality) {
         self.schedule = schedule
-        self.client = client
+        self.streams = streams
         self.quality = quality
     }
 
@@ -320,7 +322,7 @@ final class ChannelPlayer {
             do {
                 let loaded = try await load(tuning.airing)
                 guard !Task.isCancelled else { return release(loaded) }
-                if loaded.reencodesVideo, !tuning.airing.isFiller,
+                if loaded.reencodes, !tuning.airing.isFiller,
                    tuning.airing.end.timeIntervalSinceNow < Self.minReencodedTimeLeft {
                     // Not worth a transcode: blank with "Up next" until the
                     // break after it, or the next programme if there's none.
@@ -332,12 +334,12 @@ final class ChannelPlayer {
                 current = loaded
                 streamDescription = loaded.description
                 player.insert(loaded.item, after: nil)
-                if loaded.reencodesVideo, let start = headStartTarget(in: tuning.airing) {
-                    // Let Jellyfin get ahead: buffer from `start`, paused, then play on time.
+                if loaded.reencodes, let start = headStartTarget(in: tuning.airing) {
+                    // Let the server get ahead: buffer from `start`, paused, then play on time.
                     seek(to: start.timeIntervalSince(tuning.airing.start), in: tuning.airing)
                     status = .startingSoon(at: start)
                     // Wait for live to reach `start`. Don't start into an almost
-                    // empty buffer: wait a little longer for a cushion if Jellyfin
+                    // empty buffer: wait a little longer for a cushion if the server
                     // was slow to get going. A stream that fails is retried at
                     // once, not after the head start.
                     let deadline = start.addingTimeInterval(Self.maxCushionWait)
@@ -418,11 +420,11 @@ final class ChannelPlayer {
         // the end. Blank, with the "Up next" card, until the next item starts.
         if player.actionAtItemEnd == .pause, player.timeControlStatus == .paused {
             isBuffering = false
-            // It's finished, so let Jellyfin stop its transcode and delete the
+            // It's finished, so let the server stop its transcode and delete the
             // temporary files now, rather than when the next item starts.
-            if current.transcodeSessionID != nil {
+            if current.unreleased?.sessionID != nil {
                 release(current)
-                self.current?.transcodeSessionID = nil
+                self.current?.unreleased = nil
             }
             status = .betweenProgrammes(until: next?.airing.start ?? current.airing.slotEnd)
             return
@@ -614,14 +616,14 @@ final class ChannelPlayer {
     private func load(_ airing: Airing) async throws -> LoadedAiring {
         let (source, cap) = airing.isFiller ? try await commercialSource(for: airing.item)
                                             : try await programmeSource(for: airing)
-        let method = source.method == .directPlay ? "direct play" : "streamed by Jellyfin"
+        let method = source.delivery == .original ? "direct play" : "streamed by the server"
         let label = airing.isFiller ? "Commercial"
             : fixedProgramme.map({ $0.airing.isSameProgramme(as: airing) }) == true ? "This programme only"
             : quality == .auto ? "Auto" : quality.label
-        let reasons = source.transcodeReasons.isEmpty ? nil : source.transcodeReasons.joined(separator: ",")
+        let reasons = source.conversionReasons.isEmpty ? nil : source.conversionReasons.joined(separator: ",")
         let item = AVPlayerItem(url: source.url)
         // Stop at the scheduled length, so programmes and commercials keep to
-        // the schedule even when a file runs a little longer than Jellyfin says,
+        // the schedule even when a file runs a little longer than the server says,
         // and a commercial still playing is cut off when the next programme starts.
         item.forwardPlaybackEndTime = CMTime(seconds: airing.mediaOffset + airing.length, preferredTimescale: 600)
         // A later part of a film split by mid-roll breaks starts where the
@@ -632,21 +634,21 @@ final class ChannelPlayer {
                       toleranceBefore: .zero, toleranceAfter: CMTime(seconds: 1, preferredTimescale: 600),
                       completionHandler: nil)
         }
-        if source.reencodesVideo { item.preferredForwardBufferDuration = Self.reencodedForwardBuffer }
+        if source.reencodes { item.preferredForwardBufferDuration = Self.reencodedForwardBuffer }
         return LoadedAiring(airing: airing,
                             item: item,
-                            transcodeSessionID: source.method == .hls ? source.playSessionID : nil,
+                            unreleased: source,
                             description: "\(label) · up to \(Self.mbps(cap)) · \(method)",
                             cap: cap,
-                            reencodesVideo: source.reencodesVideo,
+                            reencodes: source.reencodes,
                             transcodeReasons: reasons)
     }
 
     /// Programmes use the viewer's quality setting, or the programme fix's cap.
-    private func programmeSource(for airing: Airing) async throws -> (PlaybackSource, cap: Int) {
+    private func programmeSource(for airing: Airing) async throws -> (MediaStream, cap: Int) {
         let fixedCap = fixedProgramme.flatMap { $0.airing.isSameProgramme(as: airing) ? $0.cap : nil }
         let cap = if let fixedCap { fixedCap } else { await maxBitrate() }
-        return (try await client.playbackSource(for: airing.item.id, maxBitrate: cap), cap)
+        return (try await streams.stream(for: airing.item.id, maxBitrate: cap), cap)
     }
 
     /// Commercials never make the server re-encode video, and never start a
@@ -656,11 +658,11 @@ final class ChannelPlayer {
     /// re-encoded just for its bitrate. A clip that would need re-encoding
     /// anyway is skipped (`SkippedCommercial`): its time is blank. It's
     /// remembered for the rest of the session, so it isn't asked about again.
-    private func commercialSource(for item: MediaItem) async throws -> (PlaybackSource, cap: Int) {
+    private func commercialSource(for item: MediaItem) async throws -> (MediaStream, cap: Int) {
         guard !skippedCommercialIDs.contains(item.id) else { throw SkippedCommercial() }
         let cap = StreamingQuality.maximumBitrate
-        let source = try await client.playbackSource(for: item.id, maxBitrate: cap)
-        guard !source.reencodesVideo else {
+        let source = try await streams.stream(for: item.id, maxBitrate: cap)
+        guard !source.reencodes else {
             skippedCommercialIDs.insert(item.id)   // nothing to stop: a transcode only starts when the stream is requested
             throw SkippedCommercial()
         }
@@ -700,7 +702,7 @@ final class ChannelPlayer {
 
     private func measureBandwidth() async {
         guard quality == .auto else { return }
-        let measured = try? await client.measureBandwidth()
+        let measured = try? await streams.measureBandwidth()
         // Dropped if cancelled, or if the viewer left Auto meanwhile.
         guard !Task.isCancelled, quality == .auto else { return }
         autoBitrate = (measured.map(StreamingQuality.autoBitrate(measured:)) ?? StreamingQuality.fallbackAutoBitrate, .now)
@@ -724,19 +726,19 @@ final class ChannelPlayer {
     }
 
     private func fail(_ error: (any Error)?, airing: Airing) {
-        if let error = error as? JellyfinError, error == .unauthorized {
+        if (error as? any MediaServiceFailure)?.isSessionExpired == true {
             stop()
             onUnauthorized?()
             return
         }
-        let failedReencode = current.map { $0.airing == airing && $0.reencodesVideo && !airing.isFiller } ?? false
+        let failedReencode = current.map { $0.airing == airing && $0.reencodes && !airing.isFiller } ?? false
         let failedCap = current?.cap
         unloadEverything()
         self.airing = airing
         let delay = min(Self.maxRetryDelay, 5 * pow(2, Double(consecutiveFailures)))
         consecutiveFailures += 1
         if failedReencode, let failedCap {
-            // Jellyfin couldn't re-encode fast enough: retry this programme with less work.
+            // The server couldn't re-encode fast enough: retry this programme with less work.
             stepDownAfterReencodeFailure(of: airing, from: failedCap)
         } else if quality == .auto {
             // The server or connection may be struggling: measure again before the retry.
@@ -777,11 +779,12 @@ final class ChannelPlayer {
         diagnostics = nil
     }
 
-    /// Tells Jellyfin to stop transcoding for an airing we've finished with.
+    /// Tells the server we've finished with an airing's stream, so it can
+    /// stop any transcode now.
     private func release(_ loaded: LoadedAiring) {
-        guard let id = loaded.transcodeSessionID else { return }
-        let client = client
-        Task.detached { try? await client.stopTranscoding(playSessionID: id) }
+        guard let stream = loaded.unreleased, stream.sessionID != nil else { return }
+        let streams = streams
+        Task.detached { await streams.release(stream) }
     }
 }
 

@@ -1,5 +1,6 @@
 import Foundation
-import GregularTVCore
+import GregularCore
+import GregularJellyfin
 import Testing
 @testable import GregularTV
 
@@ -24,7 +25,7 @@ struct StreamStabilityTests {
         let client = JellyfinClient(
             credentials: Credentials(serverURL: URL(string: "https://tv.invalid")!, userID: "u", accessToken: "t"),
             identity: ClientIdentity(deviceID: "test"), transport: OfflineTransport())
-        return ChannelSurfer(channels: channels, startingWith: channels[0], client: client, preferences: preferences)
+        return ChannelSurfer(channels: channels, startingWith: channels[0], streams: client, preferences: preferences)
     }
 
     @Test func startingAgainDoesNotRetune() throws {
@@ -77,7 +78,7 @@ struct StreamStabilityTests {
         let client = JellyfinClient(   // plays directly from a server that doesn't exist
             credentials: Credentials(serverURL: URL(string: "https://tv.invalid")!, userID: "u", accessToken: "t"),
             identity: ClientIdentity(deviceID: "test"), transport: HeadStartTests.Server(reply: HeadStartTests.directPlay))
-        let player = ChannelPlayer(schedule: schedule, client: client, quality: .hd10)
+        let player = ChannelPlayer(schedule: schedule, streams: client, quality: .hd10)
         player.start()
         for _ in 0..<150 {
             if case .failed = player.status { break }

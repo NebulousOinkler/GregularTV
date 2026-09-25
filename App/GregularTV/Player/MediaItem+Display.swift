@@ -1,4 +1,4 @@
-import GregularTVCore
+import GregularCore
 
 extension MediaItem {
     /// The series name for episodes, the title for movies.

@@ -1,4 +1,4 @@
-import GregularTVCore
+import GregularCore
 import SwiftUI
 
 /// Opened by clicking and holding while watching, or from the guide.

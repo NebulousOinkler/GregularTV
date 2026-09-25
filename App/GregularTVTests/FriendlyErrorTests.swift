@@ -1,5 +1,6 @@
 import Foundation
-import GregularTVCore
+import GregularCore
+import GregularJellyfin
 import Testing
 @testable import GregularTV
 

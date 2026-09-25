@@ -1,5 +1,6 @@
 import Foundation
-import GregularTVCore
+import GregularCore
+import GregularJellyfin
 
 extension AppModel {
     /// The model the app starts with. Release builds always use the saved

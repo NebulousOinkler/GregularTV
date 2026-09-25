@@ -1,5 +1,6 @@
 import Foundation
-import GregularTVCore
+import GregularCore
+import GregularJellyfin
 import Testing
 @testable import GregularTV
 
@@ -43,7 +44,7 @@ struct CommercialQualityTests {
         let client = JellyfinClient(
             credentials: Credentials(serverURL: URL(string: "https://tv.invalid")!, userID: "u", accessToken: "t"),
             identity: ClientIdentity(deviceID: "test"), transport: server)
-        return ChannelPlayer(schedule: schedule, client: client, quality: .auto)
+        return ChannelPlayer(schedule: schedule, streams: client, quality: .auto)
     }
 
     private func settle(_ server: Server) async throws {

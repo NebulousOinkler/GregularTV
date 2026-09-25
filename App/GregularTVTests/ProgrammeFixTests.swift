@@ -1,5 +1,6 @@
 import Foundation
-import GregularTVCore
+import GregularCore
+import GregularJellyfin
 import Testing
 @testable import GregularTV
 
@@ -43,7 +44,7 @@ struct ProgrammeFixTests {
         let client = JellyfinClient(
             credentials: Credentials(serverURL: URL(string: "https://tv.invalid")!, userID: "u", accessToken: "t"),
             identity: ClientIdentity(deviceID: "test"), transport: server)
-        return ChannelSurfer(channels: channels, startingWith: channels[0], client: client, preferences: preferences)
+        return ChannelSurfer(channels: channels, startingWith: channels[0], streams: client, preferences: preferences)
     }
 
     private func settle(_ player: ChannelPlayer) async throws {
@@ -89,7 +90,7 @@ struct ProgrammeFixTests {
         let client = JellyfinClient(
             credentials: Credentials(serverURL: URL(string: "https://tv.invalid")!, userID: "u", accessToken: "t"),
             identity: ClientIdentity(deviceID: "test"), transport: server)
-        let player = ChannelPlayer(schedule: schedule, client: client, quality: .hd10)
+        let player = ChannelPlayer(schedule: schedule, streams: client, quality: .hd10)
         player.tune()
         try await settle(player)
         player.setProgrammeFix(.hd720)
