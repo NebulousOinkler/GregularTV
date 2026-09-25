@@ -324,6 +324,9 @@ public struct ChannelSchedule: Sendable {
     public static let longestMidRoll: Int64 = 10 * 60_000
     /// The most mid-roll breaks in one film.
     public static let maxMidRolls = 2
+    /// An episode at least this long (milliseconds) gets mid-rolls like a
+    /// film; a shorter one has its whole leftover after it.
+    public static let longEpisode: Int64 = 60 * 60_000
     /// The least of a film that plays between two breaks (milliseconds), so
     /// mid-rolls are never close together. A short film gets fewer mid-rolls,
     /// or none, and the rest of its leftover goes after it.
@@ -398,12 +401,14 @@ public struct ChannelSchedule: Sendable {
     }
 
     /// How many mid-roll breaks a programme gets, for a leftover `gap`:
-    /// none for an episode; for a film, none up to 10 minutes, one up to 20,
+    /// none for an episode under an hour (`longEpisode`); for a film or a
+    /// long episode, none up to 10 minutes, one up to 20,
     /// else two, but only as many as leave every part at least
     /// `shortestPart` long. The same with commercials on or off (off, they're
     /// blank), so the schedule doesn't change with the setting.
     private func midRollCount(for item: MediaItem, length: Int64, gap: Int64) -> Int {
-        guard channel.padToMinutes != nil, item.kind != .episode, gap > Self.longestMidRoll else { return 0 }
+        guard channel.padToMinutes != nil, item.kind != .episode || length >= Self.longEpisode,
+              gap > Self.longestMidRoll else { return 0 }
         let wanted = Int((gap - 1) / Self.longestMidRoll)
         let roomFor = Int(length / Self.shortestPart) - 1
         return max(0, min(Self.maxMidRolls, wanted, roomFor))
