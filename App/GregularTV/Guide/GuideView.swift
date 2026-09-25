@@ -7,10 +7,12 @@ import SwiftUI
 /// the channel names pinned on the left and the times pinned along the top.
 /// Each block's break (commercials or blank airtime after the programme) is a
 /// darker tail at its right edge.
-/// Opened from `RemoteControls.watching` (a click, as shipped). Select tunes
-/// to the channel. The buttons in `RemoteControls.guide` (Play/Pause for
-/// Settings and Menu to close, as shipped), or 60 s without activity, close
-/// it and stay on the current channel.
+/// The app's main screen: open at launch, over the channel playing, and
+/// reached from watching with `RemoteControls.watching` (Menu, as shipped).
+/// Select tunes to the channel. The buttons in `RemoteControls.guide` act on
+/// it: as shipped, Play/Pause opens Settings, and Menu steps back, first to
+/// the Settings button, then out of the app. 60 s without activity closes it
+/// and stays on the current channel.
 struct GuideView: View {
     static let idleTimeout: Duration = .seconds(60)
 
@@ -62,7 +64,13 @@ struct GuideView: View {
             }
             .padding(.horizontal, 80)
             .padding(.vertical, 50)
-            .remoteControls(RemoteControls.guide, perform: onRemote)
+            // On the Settings button, a button mapped to `.stepBack` is left to
+            // tvOS: the guide is the main screen, so Menu there leaves the app.
+            .remoteControls(focusedID == Self.settingsFocusID
+                            ? RemoteControls.guide.filter { $0.value != .stepBack }
+                            : RemoteControls.guide) { action in
+                if action == .stepBack { focusedID = Self.settingsFocusID } else { onRemote(action) }
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(.black.opacity(0.88))
@@ -103,6 +111,10 @@ struct GuideView: View {
             }
         }
     }
+
+    /// Focus ID of the Settings button.
+    static let settingsFocusID = "settings"
+
 
     static func id(_ schedule: ChannelSchedule, _ cell: GuideCell) -> String {
         "\(schedule.channel.number)|\(cell.id)"
@@ -155,6 +167,7 @@ struct GuideView: View {
                 Button { onRemote(.openSettings) } label: {
                     Label("Settings", systemImage: "gearshape")
                 }
+                .focused($focusedID, equals: Self.settingsFocusID)
                 Text(RemoteControls.hint(for: RemoteControls.guide))
                     .font(.caption).foregroundStyle(.secondary)
             }
