@@ -55,6 +55,7 @@ public struct GuideWindow: Sendable, Equatable {
         }
         return spans.map { span in
             GuideCell(programme: span.programme,
+                      slotEnd: span.end,
                       visibleStart: max(span.programme.start, start),
                       visibleEnd: min(span.end, end))
         }
@@ -64,6 +65,8 @@ public struct GuideWindow: Sendable, Equatable {
 /// One programme's block in a guide row.
 public struct GuideCell: Sendable, Hashable, Identifiable {
     public let programme: Airing
+    /// When the next programme starts: the end of any break after this one.
+    public let slotEnd: Date
     /// The part inside the guide window, used for the block's position and width.
     public let visibleStart: Date
     public let visibleEnd: Date
@@ -75,5 +78,17 @@ public struct GuideCell: Sendable, Hashable, Identifiable {
 
     public func contains(_ date: Date) -> Bool {
         visibleStart <= date && date < visibleEnd
+    }
+
+    /// The break after the programme, until the next one, or nil if there's none.
+    public var breakSpan: DateInterval? {
+        programme.end < slotEnd ? DateInterval(start: programme.end, end: slotEnd) : nil
+    }
+
+    /// How much of the visible block, from its right edge, is the break: 0 to 1.
+    public var breakFraction: Double {
+        guard let span = breakSpan, visibleEnd > visibleStart else { return 0 }
+        let visibleBreak = visibleEnd.timeIntervalSince(max(span.start, visibleStart))
+        return min(1, max(0, visibleBreak / visibleEnd.timeIntervalSince(visibleStart)))
     }
 }

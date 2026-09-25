@@ -3,21 +3,27 @@ import SwiftUI
 
 /// Full-screen live TV with the info banner, channel list and settings.
 ///
-/// Remote controls:
+/// **Remote controls** are set in one place, `RemoteControls` (in
+/// Remote/RemoteControls.swift): a table per screen of which button does
+/// what. As shipped, while watching:
 /// - **Up/down:** channel up/down (the banner previews each channel as you go).
-/// - **Left:** channel list. **Menu** closes it.
+/// - **Left:** channel list.
 /// - **Right, or a light tap on the touch surface:** show the info banner. Again
 ///   while it's showing: switch between the end time and the time left.
-///   During a commercial break the banner stays up the whole time.
-/// - **Click (Select):** programme guide. **Menu** closes it.
+/// - **Click (Select):** programme guide.
 /// - **Click and hold:** Settings (quality, schedule code, diagnostics, sign out).
-///   Also from the guide: Play/Pause, or Up from its top row.
-///
-/// Clicks within half a second of the guide or list opening or closing are
-/// ignored, so a double-click (or a held key repeating) can't open the guide
-/// and immediately select something in it.
 /// - **Play/Pause:** pause, then press again to jump back to live.
 /// - **Digits** (keyboard only; the Siri Remote has none): type a channel number.
+///
+/// Opening or closing the guide, list or Settings within half a second of the
+/// last change is ignored, so a double-click (or a held key repeating) can't
+/// open the guide and immediately select something in it.
+///
+/// **Breaks:** the banner comes and goes as for a programme. While a
+/// commercial plays, a small badge in the corner says it's a break and when
+/// the programme's back. The last commercial fades out into the "Up next"
+/// card, which fills the last 15 seconds of every break; then the screen
+/// fades to black and the programme fades in.
 struct WatchView: View {
     let surfer: ChannelSurfer
     let scheduleCode: ScheduleCode
@@ -46,6 +52,17 @@ struct WatchView: View {
     static let clickGuard: TimeInterval = 0.5
     /// Focus is on the live-TV input layer (not in the list or guide).
     @FocusState private var watchingHasFocus: Bool
+    /// Black over everything but the guide and list. At the end of a break:
+    /// the last commercial fades out into it, the "Up next" card fades in
+    /// from it, the card fades back into it just before the programme, and
+    /// the programme fades in from it once it plays.
+    @State private var curtainClosed = false
+    /// The last commercial fading out, and the Up next card fading in.
+    static let quickFade: TimeInterval = 0.5
+    static let fadeToBlack: TimeInterval = 0.8
+    /// Fully black for this long before the programme starts.
+    static let holdBlack: TimeInterval = 0.4
+    static let fadeIn: TimeInterval = 1.2
 
     /// The channel list or guide is open and owns remote input.
     private var overlayOpen: Bool { showingList || showingGuide }
@@ -66,8 +83,10 @@ struct WatchView: View {
             // while a head start buffers, not a frame held on screen.
             .opacity(hidesVideo ? 0 : 1)
             liveTVInput
-            RemoteSurfaceTap(isEnabled: !overlayOpen && !showingSettings, action: showInfo)
-                .frame(width: 0, height: 0)
+            if let tapAction = RemoteControls.watching[.touchTap] {
+                RemoteSurfaceTap(isEnabled: !overlayOpen && !showingSettings) { perform(tapAction) }
+                    .frame(width: 0, height: 0)
+            }
 
             if showsCard {
                 StatusCard(player: player)
@@ -75,11 +94,18 @@ struct WatchView: View {
             if bannerIsShowing {
                 ChannelBanner(surfer: surfer, timeDisplay: timeDisplay)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
+            } else if showsBreakBadge {
+                BreakBadge(player: player)
+                    .transition(.opacity)
             }
             if !surfer.typedDigits.isEmpty || surfer.notice != nil {
                 NumberEntryOverlay(digits: surfer.typedDigits, maxDigits: surfer.navigator.maxDigits,
                                    notice: surfer.notice)
             }
+            Color.black
+                .ignoresSafeArea()
+                .opacity(curtainClosed ? 1 : 0)
+                .allowsHitTesting(false)
             if showingList {
                 HStack {
                     ChannelListView(channels: surfer.channels,
@@ -89,7 +115,7 @@ struct WatchView: View {
                                         surfer.tune(to: number)
                                         closeOverlays()
                                     },
-                                    onClose: closeOverlays)
+                                    onRemote: perform)
                     Spacer()
                 }
                 .ignoresSafeArea()
@@ -103,11 +129,7 @@ struct WatchView: View {
                               surfer.tune(to: number)
                               closeOverlays()
                           },
-                          onOpenSettings: {
-                              closeOverlays()
-                              showingSettings = true
-                          },
-                          onClose: closeOverlays)
+                          onRemote: perform)
                     .ignoresSafeArea()
                     .transition(.opacity)
             }
@@ -126,7 +148,8 @@ struct WatchView: View {
                          onScheduleCodeChange: onScheduleCodeChange,
                          onShowsDiagnosticsChange: onShowsDiagnosticsChange,
                          onPlaysCommercialsChange: onPlaysCommercialsChange,
-                         onSignOut: onSignOut)
+                         onSignOut: onSignOut,
+                         onRemote: perform)
         }
         .onAppear {
             player.start()
@@ -134,7 +157,7 @@ struct WatchView: View {
             watchingHasFocus = true
             player.diagnosticsEnabled = showsDiagnostics
             #if DEBUG
-            if DebugOptions.opensChannelList { openList() }
+            if DebugOptions.opensChannelList { show(.channelList) }
             #endif
         }
         .onDisappear {
@@ -156,6 +179,9 @@ struct WatchView: View {
             case .background: player.stop()
             default: break
             }
+        }
+        .task(id: CurtainTrigger(status: player.status, airing: player.airing)) {
+            await moveCurtain(for: player.status)
         }
         // Show the banner for a few seconds whenever the programme changes or we
         // re-tune. Not for each clip in a commercial break.
@@ -180,45 +206,45 @@ struct WatchView: View {
             .focusable(!overlayOpen)
             .focused($watchingHasFocus)
             .focusEffectDisabled()
-            .onMoveCommand { direction in
-                switch direction {
-                case .up: surfer.channelUp()
-                case .down: surfer.channelDown()
-                case .left: openList()
-                case .right: showInfo()
-                default: break
-                }
-            }
+            .remoteControls(RemoteControls.watching, takesClicks: true, perform: perform)
             .onKeyPress(characters: .decimalDigits) { press in
                 press.characters.forEach(surfer.type(digit:))
                 return .handled
             }
-            .onPlayPauseCommand { player.togglePause() }
-            // Hold: Settings. A quick click: the guide.
-            .onLongPressGesture(minimumDuration: 0.6) { openSettings() }
-            .onTapGesture { openGuide() }
-        // No Menu handler here: while watching, Menu leaves the app as usual.
+        // Menu isn't in the table as shipped, so while watching it leaves the app as usual.
     }
 
     private var changedRecently: Bool {
         Date.now.timeIntervalSince(lastOverlayChange) < Self.clickGuard
     }
 
-    private func openGuide() {
-        guard !overlayOpen, !showingSettings, !changedRecently else { return }
-        lastOverlayChange = .now
-        withAnimation { showingGuide = true }
+    /// Does what a remote button is mapped to in `RemoteControls`.
+    private func perform(_ action: RemoteAction) {
+        switch action {
+        case .channelUp: surfer.channelUp()
+        case .channelDown: surfer.channelDown()
+        case .showInfo: showInfo()
+        case .pauseOrJumpToLive: player.togglePause()
+        case .openChannelList: show(.channelList)
+        case .openGuide: show(.guide)
+        case .openSettings: show(.settings)
+        case .close:
+            showingSettings = false
+            closeOverlays()
+        }
     }
 
-    private func openList() {
-        guard !overlayOpen, !showingSettings, !changedRecently else { return }
-        lastOverlayChange = .now
-        withAnimation { showingList = true }
-    }
+    private enum Screen { case channelList, guide, settings }
 
-    private func openSettings() {
-        guard !overlayOpen, !showingSettings, !changedRecently else { return }
-        showingSettings = true
+    /// Opens one of the list, guide or Settings, closing whichever else is open.
+    private func show(_ screen: Screen) {
+        guard !changedRecently else { return }
+        lastOverlayChange = .now
+        withAnimation {
+            showingList = screen == .channelList
+            showingGuide = screen == .guide
+        }
+        showingSettings = screen == .settings
     }
 
     /// Focus goes back to live TV from `onChange(of: overlayOpen)`, once the
@@ -238,11 +264,45 @@ struct WatchView: View {
         let requests: Int
     }
 
-    /// Always up during a commercial break, so it's clear it's a break and
-    /// when the next programme starts.
     private var bannerIsShowing: Bool {
         bannerVisible || surfer.preview != nil || player.status != .playing || player.isBuffering
-            || player.airing?.isFiller == true
+    }
+
+    /// A commercial is playing: the corner badge says so when the banner's down.
+    private var showsBreakBadge: Bool {
+        player.status == .playing && player.airing?.isFiller == true && !overlayOpen
+    }
+
+    /// The fade between a gap and the programme after it: to black just
+    /// before the programme's start, then in from black once it plays.
+    private func moveCurtain(for status: ChannelPlayer.Status) async {
+        switch status {
+        case .playing:
+            // Something to show: a programme (after a break) or a commercial.
+            if curtainClosed { withAnimation(.easeOut(duration: Self.fadeIn)) { curtainClosed = false } }
+            // The break's last commercial, with the Up next card after it
+            // (it stops short of the next programme): fade it out as it ends.
+            guard let clip = player.airing, clip.isFiller, clip.slotEnd.timeIntervalSince(clip.end) > 1 else { return }
+            try? await Task.sleep(for: .seconds(max(0, clip.end.timeIntervalSinceNow - Self.quickFade)))
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeIn(duration: Self.quickFade)) { curtainClosed = true }
+        case .betweenProgrammes(let until) where !player.schedule.tune(at: until).airing.isFiller:
+            // The Up next card fades in, then out to black just before the programme.
+            if curtainClosed { withAnimation(.easeOut(duration: Self.quickFade)) { curtainClosed = false } }
+            let closeAt = until.addingTimeInterval(-(Self.fadeToBlack + Self.holdBlack))
+            try? await Task.sleep(for: .seconds(max(0, closeAt.timeIntervalSinceNow)))
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeIn(duration: Self.fadeToBlack)) { curtainClosed = true }
+        case .tuning:
+            break   // stays as it is until there's something to show
+        default:
+            if curtainClosed { withAnimation(.easeOut(duration: Self.fadeIn)) { curtainClosed = false } }
+        }
+    }
+
+    private struct CurtainTrigger: Equatable {
+        let status: ChannelPlayer.Status
+        let airing: Airing?
     }
 
     /// Right or a touch-surface tap: show the banner, or if it's already
@@ -301,7 +361,7 @@ private struct ChannelBanner: View {
                     let span = (airing.isFiller && surfer.preview == nil ? breakSpan : nil)
                         ?? DateInterval(start: airing.start, end: airing.isFiller ? airing.slotEnd : airing.end)
                     VStack(alignment: .leading, spacing: 10) {
-                        Text(airing.isFiller ? "Commercial break" : airing.item.displayTitle)
+                        Text(airing.isFiller ? BreakStyle.title : airing.item.displayTitle)
                             .font(.title2).bold().lineLimit(1)
                         if airing.isFiller {
                             let backAt = "Back at \(span.end.formatted(date: .omitted, time: .shortened))"
@@ -319,7 +379,7 @@ private struct ChannelBanner: View {
                             Text(timeText(span, at: context.date)).monospacedDigit()
                         }
                         .font(.caption).foregroundStyle(.secondary)
-                        Text("▲▼ channels · ◀ channel list · ▶ or tap: info, end time / time left · click: guide · hold click: settings")
+                        Text(RemoteControls.hint(for: RemoteControls.watching))
                             .font(.caption2).foregroundStyle(.tertiary)
                             .frame(maxWidth: .infinity, alignment: .trailing)
                         if player.diagnosticsEnabled, surfer.preview == nil {
@@ -395,6 +455,32 @@ private struct ChannelBanner: View {
                 EmptyView()
             }
         }
+    }
+}
+
+/// While a commercial plays and the banner's down: a small badge in the top
+/// corner, "Commercial break · Back at 9:30 PM", so it's clear the
+/// programme is over without covering the picture.
+private struct BreakBadge: View {
+    let player: ChannelPlayer
+
+    var body: some View {
+        let backAt = player.airing.flatMap { player.schedule.commercialBreak(at: $0.start)?.end }
+        VStack {
+            HStack(spacing: 10) {
+                BreakStyle.label
+                if let backAt {
+                    Text("· Back at \(backAt.formatted(date: .omitted, time: .shortened))")
+                }
+            }
+            .font(.callout).foregroundStyle(.secondary)
+            .padding(.horizontal, 24).padding(.vertical, 12)
+            .background(.ultraThinMaterial, in: Capsule())
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Spacer()
+        }
+        .padding(60)
+        .allowsHitTesting(false)
     }
 }
 

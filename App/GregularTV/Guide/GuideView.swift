@@ -5,16 +5,20 @@ import SwiftUI
 /// to at least six hours ahead, with the focused programme's details above.
 /// Three hours fit on screen; the grid scrolls sideways as focus moves, with
 /// the channel names pinned on the left and the times pinned along the top.
-/// Opened by clicking the remote. Select tunes to the channel. Play/Pause opens
-/// Settings. Menu, or 60 s without activity, closes it and stays on the current channel.
+/// Each block's break (commercials or blank airtime after the programme) is a
+/// darker tail at its right edge.
+/// Opened from `RemoteControls.watching` (a click, as shipped). Select tunes
+/// to the channel. The buttons in `RemoteControls.guide` (Play/Pause for
+/// Settings and Menu to close, as shipped), or 60 s without activity, close
+/// it and stay on the current channel.
 struct GuideView: View {
     static let idleTimeout: Duration = .seconds(60)
 
     let channels: [ChannelSchedule]
     let currentNumber: Int
     let onSelect: (Int) -> Void
-    let onOpenSettings: () -> Void
-    let onClose: () -> Void
+    /// Buttons from `RemoteControls.guide`, the Settings button, and `.close` when idle.
+    let onRemote: (RemoteAction) -> Void
 
     static let channelColumnWidth: CGFloat = 330
     /// Three hours fill the visible grid.
@@ -37,7 +41,7 @@ struct GuideView: View {
             let startFocus = nowID(channel: currentNumber, window: window, at: context.date)
 
             VStack(alignment: .leading, spacing: 24) {
-                header(window: window)
+                header(window: window, now: context.date)
                 // The ruler and channel names are much bigger than the screen.
                 // Each is drawn over space the layout sets aside, following the
                 // grid's scroll position, so they never change the guide's size.
@@ -58,12 +62,11 @@ struct GuideView: View {
             }
             .padding(.horizontal, 80)
             .padding(.vertical, 50)
-            .onExitCommand(perform: onClose)
-            .onPlayPauseCommand(perform: onOpenSettings)   // one press to Settings, from anywhere in the guide
+            .remoteControls(RemoteControls.guide, perform: onRemote)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(.black.opacity(0.88))
-        .closeWhenIdle(after: Self.idleTimeout, activity: focusedID, perform: onClose)
+        .closeWhenIdle(after: Self.idleTimeout, activity: focusedID) { onRemote(.close) }
     }
 
     /// The programmes, scrolling both ways. Focus moving off the edge scrolls it.
@@ -118,7 +121,7 @@ struct GuideView: View {
 
     /// Details of the focused programme, with the Settings button on the right.
     /// Only the focused channel's programmes are looked up.
-    private func header(window: GuideWindow) -> some View {
+    private func header(window: GuideWindow, now: Date) -> some View {
         let number = focusedID?.split(separator: "|").first.flatMap { Int($0) }
         let focused = number.flatMap(schedule(number:)).flatMap { schedule in
             window.cells(for: schedule).first { Self.id(schedule, $0) == focusedID }.map { (schedule, $0) }
@@ -134,6 +137,14 @@ struct GuideView: View {
                           "\(cell.programme.start.formatted(date: .omitted, time: .shortened)) – \(cell.programme.end.formatted(date: .omitted, time: .shortened))"]
                             .compactMap { $0 }.joined(separator: " · "))
                         .font(.headline).foregroundStyle(.secondary).lineLimit(1)
+                    if let span = cell.breakSpan, span.start <= now, now < span.end {
+                        HStack(spacing: 6) {
+                            Text("Programme ended ·")
+                            BreakStyle.label
+                            Text("until \(span.end.formatted(date: .omitted, time: .shortened))")
+                        }
+                        .font(.headline).foregroundStyle(.secondary).lineLimit(1)
+                    }
                 } else {
                     Text("Guide").font(.title2).bold()
                 }
@@ -141,10 +152,10 @@ struct GuideView: View {
             .frame(height: 170, alignment: .top)
             Spacer()
             VStack(alignment: .trailing, spacing: 12) {
-                Button(action: onOpenSettings) {
+                Button { onRemote(.openSettings) } label: {
                     Label("Settings", systemImage: "gearshape")
                 }
-                (Text(Image(systemName: "playpause.fill")) + Text(" for Settings · Menu to close"))
+                Text(RemoteControls.hint(for: RemoteControls.guide))
                     .font(.caption).foregroundStyle(.secondary)
             }
         }
@@ -246,6 +257,12 @@ private struct GuideCellLabel: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
         .padding(.horizontal, 14)
+        // The break after the programme: a darker tail, no text (it's usually narrow).
+        .background(alignment: .trailing) {
+            if cell.breakFraction > 0 {
+                BreakStyle.guideTail.frame(width: width * cell.breakFraction)
+            }
+        }
     }
 }
 
@@ -259,6 +276,7 @@ private struct GuideCellStyle: ButtonStyle {
             .foregroundStyle(isFocused ? .black : .white)
             .background(isFocused ? Color.white : Color.white.opacity(configuration.isPressed ? 0.3 : 0.12),
                         in: RoundedRectangle(cornerRadius: 10))
+            .clipShape(RoundedRectangle(cornerRadius: 10))   // the break's tail too
             .padding(3)
             .animation(.easeOut(duration: 0.12), value: isFocused)
     }

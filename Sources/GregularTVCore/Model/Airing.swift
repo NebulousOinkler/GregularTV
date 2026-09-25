@@ -29,3 +29,19 @@ public struct Tuning: Sendable, Hashable {
     /// before the next slot. The player shows filler here, not video.
     public var isInPadding: Bool { offset >= airing.length }
 }
+
+/// What a channel has on screen: a programme, or a break after one.
+/// From `ChannelSchedule.nowShowing(at:)`.
+public enum Onscreen: Sendable, Hashable {
+    case programme(Airing)
+    /// `ended` is over, and the channel is in a break (commercials or blank
+    /// airtime) until `next` starts.
+    case inBreak(ended: Airing, next: Airing)
+
+    /// The break's span, from the end of the programme to the next one, or
+    /// nil while a programme is on.
+    public var breakSpan: DateInterval? {
+        guard case .inBreak(let ended, let next) = self else { return nil }
+        return DateInterval(start: ended.end, end: next.start)
+    }
+}
