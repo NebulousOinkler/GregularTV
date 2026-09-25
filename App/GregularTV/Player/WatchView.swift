@@ -10,7 +10,11 @@ import SwiftUI
 /// - **Left:** channel list.
 /// - **Right, or a light tap on the touch surface:** show the info banner. Again
 ///   while it's showing: switch between the end time and the time left.
-/// - **Click (Select):** programme guide.
+/// - **Click (Select):** the info banner, like Right.
+/// - **Menu (or Back ‹):** back to the programme guide, the app's main screen
+///   (it's open at launch, over the channel playing). In the guide, Menu
+///   first moves up to its Settings button, then leaves the app, as tvOS
+///   expects of a main screen.
 /// - **Click and hold:** Settings (quality, schedule code, diagnostics, sign out).
 /// - **Play/Pause:** pause, then press again to jump back to live.
 /// - **Digits** (keyboard only; the Siri Remote has none): type a channel number.
@@ -42,11 +46,19 @@ struct WatchView: View {
     @State private var bannerVisible = true
     /// Goes up each time the viewer asks for the banner, to restart its timer.
     @State private var bannerRequests = 0
+    /// The last press that showed the banner. A light tap on the edge of the
+    /// Siri Remote arrives as both a tap and an arrow press; only one counts.
+    @State private var lastInfoPress = Date.distantPast
+    static let infoPressGap: TimeInterval = 0.5
     /// End time or time left, switched by pressing Right or tapping again. Kept while the app runs.
     @State private var timeDisplay: BannerTimeDisplay = .endTime
     @State private var showingSettings = false
     @State private var showingList = false
-    @State private var showingGuide = false
+    /// The guide is the app's main screen: it's open at launch, and Menu
+    /// while watching goes back to it.
+    @State private var showingGuide = true
+    /// Settings was opened from the guide, so closing it goes back there.
+    @State private var settingsReturnsToGuide = false
     /// When the guide or list last opened or closed, for ignoring too-quick clicks.
     @State private var lastOverlayChange = Date.distantPast
     static let clickGuard: TimeInterval = 0.5
@@ -168,7 +180,13 @@ struct WatchView: View {
             if !open { watchingHasFocus = true }
         }
         .onChange(of: showingSettings) { _, showing in
-            if !showing { watchingHasFocus = true }
+            guard !showing else { return }
+            if settingsReturnsToGuide {
+                settingsReturnsToGuide = false
+                withAnimation { showingGuide = true }
+            } else {
+                watchingHasFocus = true
+            }
         }
         // Only a real trip to the background stops playback. Becoming inactive
         // (Control Center, a notification) leaves the stream alone, and
@@ -211,7 +229,7 @@ struct WatchView: View {
                 press.characters.forEach(surfer.type(digit:))
                 return .handled
             }
-        // Menu isn't in the table as shipped, so while watching it leaves the app as usual.
+        // Menu goes back to the guide, the main screen; Menu there leaves the app.
     }
 
     private var changedRecently: Bool {
@@ -228,7 +246,7 @@ struct WatchView: View {
         case .openChannelList: show(.channelList)
         case .openGuide: show(.guide)
         case .openSettings: show(.settings)
-        case .close:
+        case .close, .stepBack:
             showingSettings = false
             closeOverlays()
         }
@@ -240,6 +258,7 @@ struct WatchView: View {
     private func show(_ screen: Screen) {
         guard !changedRecently else { return }
         lastOverlayChange = .now
+        settingsReturnsToGuide = screen == .settings && showingGuide
         withAnimation {
             showingList = screen == .channelList
             showingGuide = screen == .guide
@@ -305,9 +324,12 @@ struct WatchView: View {
         let airing: Airing?
     }
 
-    /// Right or a touch-surface tap: show the banner, or if it's already
-    /// showing, switch between end time and time left (and keep it up).
+    /// Show the banner, or if it's already showing, switch between end time
+    /// and time left (and keep it up). One press, one switch: a second
+    /// report of the same press within half a second is ignored.
     private func showInfo() {
+        guard Date.now.timeIntervalSince(lastInfoPress) > Self.infoPressGap else { return }
+        lastInfoPress = .now
         if bannerIsShowing { timeDisplay.toggle() }
         bannerRequests += 1
     }
@@ -371,12 +393,16 @@ private struct ChannelBanner: View {
                             Text(subtitle).font(.headline).foregroundStyle(.secondary).lineLimit(1)
                         }
                         PlayheadBar(fraction: progress(of: span, at: context.date))
+                        // The status note is centred on the bar, whatever the
+                        // widths either side, so switching end time / time left
+                        // doesn't nudge it.
                         HStack(alignment: .firstTextBaseline) {
                             Text(startedText(span, at: context.date))
                             Spacer()
-                            statusNote(at: context.date).foregroundStyle(.yellow)
-                            Spacer()
                             Text(timeText(span, at: context.date)).monospacedDigit()
+                        }
+                        .overlay {
+                            statusNote(at: context.date).foregroundStyle(.yellow).lineLimit(1)
                         }
                         .font(.caption).foregroundStyle(.secondary)
                         Text(RemoteControls.hint(for: RemoteControls.watching))

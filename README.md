@@ -68,7 +68,8 @@ In the Simulator: Return is click, the arrow keys are the arrows, the space bar 
 | Swipe/click up or down | Channel up/down (the banner previews each channel, and tunes when you stop) |
 | Swipe/click right, or tap the touch surface | Show the info banner (clock, progress, time in). Again while showing: switch between end time and time left |
 | Swipe/click left | Channel list; Select tunes. Right, Menu, or 15 s idle closes it and stays on the current channel. Play/Pause opens Settings |
-| Click (Select) | Programme guide, six hours ahead, scrolling sideways; Select on a programme tunes to its channel. Menu, or 60 s idle, closes it |
+| Click (Select) | Show the info banner, like Right |
+| Menu (or Back ‹) | Back to the programme guide, the app's main screen (open at launch, over the channel playing): six hours ahead, scrolling sideways; Select on a programme tunes to its channel, and 60 s idle closes it. In the guide, Menu first moves up to its Settings button (highlighted, not opened), then leaves the app, as tvOS expects |
 | Click and hold | Settings: streaming quality, trouble with this programme (step down quality, 720p, standard), schedule code, commercials, diagnostics, sign out. In the guide, Play/Pause also opens Settings. Close with Menu, Play/Pause or Done |
 | Play/Pause | Pause; press again to jump back to live |
 | Digits (keyboard only) | Type a channel number |
