@@ -17,6 +17,9 @@ import SwiftUI
 //   map there does its action *as well*, so only map one that has nowhere to
 //   go (like Right in the channel list, whose rows are one column).
 // - `.clickAndHold` and `.touchTap` only work while watching.
+// - `.touchTap` isn't used as shipped: a light tap near the top or bottom of
+//   the touch surface also counts as Up or Down, so it was easy to change
+//   channel when you meant to show the banner.
 // - The guide is the app's main screen. Menu (or Back ‹) goes back to it
 //   while watching, and from the guide leaves the app, as tvOS expects: Apple
 //   asks that Menu on an app's main screen always goes to the Home screen.
@@ -30,7 +33,6 @@ enum RemoteControls {
         .down: .channelDown,
         .left: .openChannelList,
         .right: .showInfo,
-        .touchTap: .showInfo,
         .click: .showInfo,
         .clickAndHold: .openSettings,
         .playPause: .pauseOrJumpToLive,
@@ -124,7 +126,7 @@ enum RemoteAction: Hashable, CaseIterable {
 
 extension RemoteControls {
     /// A one-line hint from a table, such as
-    /// "▲▼ channels · ◀ channel list · ▶ or tap: info · click: guide".
+    /// "▲▼ channels · ▶ or click: info · ◀: channel list".
     static func hint(for map: [RemoteButton: RemoteAction]) -> String {
         // The usual pairing reads better as one.
         let paired = map[.up] == .channelUp && map[.down] == .channelDown

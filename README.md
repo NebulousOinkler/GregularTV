@@ -51,7 +51,7 @@ A programme that ends within 10 minutes of the next half hour is followed by a b
 - Clips play in the order of the channel's derangement, with the same `a` and `b` as its shows, carrying on from break to break.
 - A gap of a minute or less gets no commercials. When a clip ends, the next only starts if at least half of it will play before the last 15 seconds; otherwise the rest of the break is blank. A clip still playing then is cut off.
 - The last 15 seconds of every break are the "Up next" card: the last commercial fades out quickly into it, then the card fades to black and the programme fades in.
-- Clips are never re-encoded: one Jellyfin would have to re-encode is skipped, and its time is blank. **MP4, H.264/AAC, at 3 Mbps or less** plays everywhere, even over a slow remote connection.
+- Clips are never re-encoded: one Jellyfin would have to re-encode (for example, a video codec the Apple TV can't play) is skipped, and its time is blank. There's no bitrate cap for commercials, so the quality setting never stops one playing. **MP4, H.264/AAC** plays everywhere; keep the bitrate modest if you watch over a slow remote connection.
 - The screen is blank during any unfilled time, with an "Up next" card showing when the next programme starts.
 - It's always clear when the programme is over: while commercials play, a small **Commercial break · Back at 9:30 PM** badge sits in the top corner (the banner comes and goes as usual). The channel list shows **Up next: …** with **Commercial break · starts 9:30 PM**, and the guide draws each programme's break as a darker tail on its block.
 - **Settings › Commercials › Play commercials** turns them off: every break is blank. Programme times don't change, so you stay in step with everyone on the same schedule code.
@@ -66,9 +66,9 @@ In the Simulator: Return is click, the arrow keys are the arrows, the space bar 
 | Input | Action |
 |---|---|
 | Swipe/click up or down | Channel up/down (the banner previews each channel, and tunes when you stop) |
-| Swipe/click right, or tap the touch surface | Show the info banner (clock, progress, time in). Again while showing: switch between end time and time left |
+| Swipe/click right | Show the info banner (clock, progress, time in). Again while showing: switch between end time and time left |
 | Swipe/click left | Channel list; Select tunes. Right, Menu, or 15 s idle closes it and stays on the current channel. Play/Pause opens Settings |
-| Click (Select) | Show the info banner, like Right |
+| Click (Select) | Show the info banner, like Right. A light tap on the touch surface does nothing, so it can't be mistaken for a channel change |
 | Menu (or Back ‹) | Back to the programme guide, the app's main screen (open at launch, over the channel playing): six hours ahead, scrolling sideways; Select on a programme tunes to its channel, and 60 s idle closes it. In the guide, Menu first moves up to its Settings button (highlighted, not opened), then leaves the app, as tvOS expects |
 | Click and hold | Settings: streaming quality, trouble with this programme (step down quality, 720p, standard), schedule code, commercials, diagnostics, sign out. In the guide, Play/Pause also opens Settings. Close with Menu, Play/Pause or Done |
 | Play/Pause | Pause; press again to jump back to live |

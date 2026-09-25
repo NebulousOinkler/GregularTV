@@ -8,9 +8,9 @@ import SwiftUI
 /// what. As shipped, while watching:
 /// - **Up/down:** channel up/down (the banner previews each channel as you go).
 /// - **Left:** channel list.
-/// - **Right, or a light tap on the touch surface:** show the info banner. Again
-///   while it's showing: switch between the end time and the time left.
-/// - **Click (Select):** the info banner, like Right.
+/// - **Right, or click (Select):** show the info banner. Again while it's
+///   showing: switch between the end time and the time left. (A light tap
+///   does nothing: near the edges it's too easily taken for Up or Down.)
 /// - **Menu (or Back ‹):** back to the programme guide, the app's main screen
 ///   (it's open at launch, over the channel playing). In the guide, Menu
 ///   first moves up to its Settings button, then leaves the app, as tvOS
@@ -46,8 +46,9 @@ struct WatchView: View {
     @State private var bannerVisible = true
     /// Goes up each time the viewer asks for the banner, to restart its timer.
     @State private var bannerRequests = 0
-    /// The last press that showed the banner. A light tap on the edge of the
-    /// Siri Remote arrives as both a tap and an arrow press; only one counts.
+    /// The last press that showed the banner. One press can be reported
+    /// twice (for example as an arrow and a tap, if `.touchTap` is mapped);
+    /// only the first counts.
     @State private var lastInfoPress = Date.distantPast
     static let infoPressGap: TimeInterval = 0.5
     /// End time or time left, switched by pressing Right or tapping again. Kept while the app runs.

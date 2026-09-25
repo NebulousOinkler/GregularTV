@@ -5,7 +5,7 @@ import Testing
 struct RemoteControlsTests {
     @Test func hintsAreWrittenFromTheTables() {
         #expect(RemoteControls.hint(for: RemoteControls.watching)
-                == "▲▼ channels · ▶ or click or tap: info · Play/Pause: pause · ◀: channel list · Menu: guide · hold click: Settings")
+                == "▲▼ channels · ▶ or click: info · Play/Pause: pause · ◀: channel list · Menu: guide · hold click: Settings")
         #expect(RemoteControls.hint(for: RemoteControls.guide) == "Play/Pause: Settings · Menu: back")
         #expect(RemoteControls.hint(for: [.left: .channelUp, .menu: .close]) == "◀: channel up · Menu: close")
     }
