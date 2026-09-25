@@ -1,5 +1,5 @@
 import Foundation
-import GregularTVCore
+import GregularCore
 import Observation
 
 /// Turns remote input into channel changes: channel up/down, picking from
@@ -31,11 +31,11 @@ final class ChannelSurfer {
     private var noticeTask: Task<Void, Never>?
 
     init(channels: [ChannelSchedule], startingWith channel: ChannelSchedule,
-         client: JellyfinClient, preferences: AppPreferences) {
+         streams: any StreamSource, preferences: AppPreferences) {
         self.channels = channels
         self.preferences = preferences
         navigator = ChannelNavigator(numbers: channels.map(\.channel.number))
-        player = ChannelPlayer(schedule: channel, client: client, quality: preferences.streamingQuality)
+        player = ChannelPlayer(schedule: channel, streams: streams, quality: preferences.streamingQuality)
     }
 
     /// The channel the banner should show: the preview while surfing,

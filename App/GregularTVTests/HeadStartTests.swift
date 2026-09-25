@@ -1,5 +1,6 @@
 import Foundation
-import GregularTVCore
+import GregularCore
+import GregularJellyfin
 import Testing
 @testable import GregularTV
 
@@ -31,7 +32,7 @@ struct HeadStartTests {
         let client = JellyfinClient(
             credentials: Credentials(serverURL: URL(string: "https://tv.invalid")!, userID: "u", accessToken: "t"),
             identity: ClientIdentity(deviceID: "test"), transport: Server(reply: reply))
-        return ChannelPlayer(schedule: schedule, client: client, quality: .hd10)
+        return ChannelPlayer(schedule: schedule, streams: client, quality: .hd10)
     }
 
     private func settledStatus(_ player: ChannelPlayer) async throws -> ChannelPlayer.Status {

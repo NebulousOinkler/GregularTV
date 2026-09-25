@@ -1,5 +1,6 @@
 import Foundation
-import GregularTVCore
+import GregularCore
+import GregularJellyfin
 import Testing
 
 /// The Keychain needs an app host, so this test lives here and not in the
