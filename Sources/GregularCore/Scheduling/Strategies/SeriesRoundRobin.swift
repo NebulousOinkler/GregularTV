@@ -10,9 +10,7 @@ struct SeriesRoundRobin: ScheduleStrategy {
     func programmes(from content: ChannelContent, startingAt position: Int, rng: SeededRandom) -> AnyIterator<MediaItem> {
         let shows = content.series
         let turnOrder = LazyPermutation(count: shows.count, seed: content.seed)
-        var position = position
-        return AnyIterator {
-            defer { position += 1 }
+        return programmes(startingAt: position) { position in
             let round = ChannelContent.pass(position, shows.count)
             let show = shows[turnOrder.index(at: position)]
             return show[ChannelContent.wrap(round, show.count)]

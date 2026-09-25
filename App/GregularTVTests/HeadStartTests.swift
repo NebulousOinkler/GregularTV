@@ -26,18 +26,14 @@ struct HeadStartTests {
 
     /// A player `elapsed` seconds into an hour-long programme.
     private func player(reply: String, elapsed: TimeInterval = 600) throws -> ChannelPlayer {
-        let epoch = ISO8601DateFormatter().string(from: Date.now.addingTimeInterval(-elapsed))
-        let json = #"[{ "number": 1, "name": "C", "source": { "type": "all" }, "strategy": "derangement", "seed": 1, "epoch": "\#(epoch)" }]"#
         let items = [MediaItem(id: "ep", kind: .episode, name: "E", duration: 3600)]
-        let schedule = try #require(try ChannelLineup.load(from: Data(json.utf8)).schedules(for: items).first)
-        let client = JellyfinClient(
-            credentials: Credentials(serverURL: URL(string: "https://tv.invalid")!, userID: "u", accessToken: "t"),
-            identity: ClientIdentity(deviceID: "test"), transport: Server(reply: reply))
+        let schedule = try #require(try ChannelSchedule.testing(epoch: Date.now.addingTimeInterval(-elapsed), items: items).first)
+        let client = JellyfinClient.testing(Server(reply: reply))
         return ChannelPlayer(schedule: schedule, streams: client, quality: .hd10)
     }
 
     private func settledStatus(_ player: ChannelPlayer) async throws -> ChannelPlayer.Status {
-        for _ in 0..<100 where player.status == .tuning { try await Task.sleep(for: .milliseconds(10)) }
+        try await waitUntil(1) { player.status != .tuning }
         return player.status
     }
 

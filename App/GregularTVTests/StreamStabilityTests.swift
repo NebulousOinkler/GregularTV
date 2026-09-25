@@ -16,16 +16,11 @@ struct StreamStabilityTests {
     }
 
     private func makeSurfer(quality: StreamingQuality = .auto) throws -> ChannelSurfer {
-        let json = [1, 2].map {
-            #"{ "number": \#($0), "name": "C\#($0)", "source": { "type": "all" }, "strategy": "derangement", "seed": \#($0) }"#
-        }.joined(separator: ",")
         let items = (1...3).map { MediaItem(id: "m\($0)", kind: .movie, name: "M\($0)", duration: 3600) }
-        let channels = try ChannelLineup.load(from: Data("[\(json)]".utf8)).schedules(for: items)
-        let preferences = AppPreferences(defaults: UserDefaults(suiteName: "StreamStabilityTests-\(UUID())")!)
+        let channels = try ChannelSchedule.testing([1, 2], items: items)
+        let preferences = AppPreferences.testing()
         preferences.streamingQuality = quality
-        let client = JellyfinClient(
-            credentials: Credentials(serverURL: URL(string: "https://tv.invalid")!, userID: "u", accessToken: "t"),
-            identity: ClientIdentity(deviceID: "test"), transport: OfflineTransport())
+        let client = JellyfinClient.testing(OfflineTransport())
         return ChannelSurfer(channels: channels, startingWith: channels[0], streams: client, preferences: preferences)
     }
 
@@ -53,11 +48,9 @@ struct StreamStabilityTests {
         let surfer = try makeSurfer()
         let player = surfer.player
         func waitForFailure() async throws -> TimeInterval? {
-            for _ in 0..<100 {
-                if case .failed(_, let retryAt) = player.status { return retryAt.timeIntervalSinceNow }
-                try await Task.sleep(for: .milliseconds(10))
-            }
-            return nil
+            try await waitUntil(1) { player.status.isFailed }
+            guard case .failed(_, let retryAt) = player.status else { return nil }
+            return retryAt.timeIntervalSinceNow
         }
         player.tune()
         _ = try await waitForFailure()
@@ -72,20 +65,13 @@ struct StreamStabilityTests {
     /// look like the programme finishing (blank until the slot ends): it
     /// should fail, and so retry.
     @Test func aStreamThatFailsIsRetriedNotTreatedAsFinished() async throws {
-        let epoch = ISO8601DateFormatter().string(from: Date.now.addingTimeInterval(-600))
-        let json = #"[{ "number": 1, "name": "C", "source": { "type": "all" }, "strategy": "derangement", "seed": 1, "epoch": "\#(epoch)" }]"#
         let items = [MediaItem(id: "ep", kind: .episode, name: "E", duration: 3600)]
-        let schedule = try #require(try ChannelLineup.load(from: Data(json.utf8)).schedules(for: items).first)
-        let client = JellyfinClient(   // plays directly from a server that doesn't exist
-            credentials: Credentials(serverURL: URL(string: "https://tv.invalid")!, userID: "u", accessToken: "t"),
-            identity: ClientIdentity(deviceID: "test"), transport: HeadStartTests.Server(reply: HeadStartTests.directPlay))
+        let schedule = try #require(try ChannelSchedule.testing(epoch: Date.now.addingTimeInterval(-600), items: items).first)
+        // Plays directly from a server that doesn't exist.
+        let client = JellyfinClient.testing(HeadStartTests.Server(reply: HeadStartTests.directPlay))
         let player = ChannelPlayer(schedule: schedule, streams: client, quality: .hd10)
         player.start()
-        for _ in 0..<150 {
-            if case .failed = player.status { break }
-            if case .betweenProgrammes = player.status { break }
-            try await Task.sleep(for: .milliseconds(100))
-        }
+        try await waitUntil(15) { player.status.isFailed || player.status.isBetweenProgrammes }
         guard case .failed = player.status else {
             Issue.record("Expected a failure and retry, not \(player.status)")
             return player.stop()

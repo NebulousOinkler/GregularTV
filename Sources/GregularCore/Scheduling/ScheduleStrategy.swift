@@ -43,4 +43,14 @@ public protocol ScheduleStrategy: Sendable {
 
 extension ScheduleStrategy {
     public static var mayReorderToFit: Bool { true }
+
+    /// The stream for a strategy that can say what airs at any position on
+    /// its own: `programme(at:)` for `position`, `position + 1`, and so on.
+    func programmes(startingAt position: Int, _ programme: @escaping (Int) -> MediaItem) -> AnyIterator<MediaItem> {
+        var position = position
+        return AnyIterator {
+            defer { position += 1 }
+            return programme(position)
+        }
+    }
 }

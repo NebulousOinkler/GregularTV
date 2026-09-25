@@ -6,10 +6,6 @@ struct SequentialBySeries: ScheduleStrategy {
     static let mayReorderToFit = false   // skipping would break episode order
 
     func programmes(from content: ChannelContent, startingAt position: Int, rng: SeededRandom) -> AnyIterator<MediaItem> {
-        var position = position
-        return AnyIterator {
-            defer { position += 1 }
-            return content.items[ChannelContent.wrap(position, content.items.count)]
-        }
+        programmes(startingAt: position) { content.items[ChannelContent.wrap($0, content.items.count)] }
     }
 }
