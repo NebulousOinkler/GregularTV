@@ -114,15 +114,18 @@ struct ScheduleEngineTests {
 
     // MARK: Padding and gaps
 
-    @Test func paddingRoundsUpOnlyGapsOfTenMinutesOrLess() throws {
+    @Test func episodesAlwaysGetABreakFilmsOnlyTenMinutesOrLess() throws {
         let day = try schedule(padTo: 30).airings(from: later, to: later.addingTimeInterval(24 * 3600))
         var sawBackToBack = false
         for airing in day.dropLast() {   // (the run's last slot also takes its leftover)
+            let onTheHalfHour = airing.slotEnd.timeIntervalSince(epoch).truncatingRemainder(dividingBy: 1800) == 0
             let gap = airing.slotEnd.timeIntervalSince(airing.end)
-            if gap > 0 {
-                // Rounded up to the half hour, by no more than ten minutes.
-                #expect(airing.slotEnd.timeIntervalSince(epoch).truncatingRemainder(dividingBy: 1800) == 0)
-                #expect(gap <= 600)
+            if airing.item.kind == .episode {
+                // Always up to the next half hour, however long that is.
+                #expect(onTheHalfHour && gap < 1800)
+            } else if gap > 0 {
+                // A film: rounded up to the half hour by no more than ten minutes.
+                #expect(onTheHalfHour && gap <= 600)
             } else {
                 sawBackToBack = true
                 // Too far from the half hour: the next programme starts at once.
@@ -130,7 +133,21 @@ struct ScheduleEngineTests {
                 #expect(past == 0 || 1800 - past > 600)
             }
         }
-        #expect(sawBackToBack, "Some programme in a day ends too far before the half hour")
+        #expect(sawBackToBack, "Some film in a day ends too far before the half hour")
+    }
+
+    @Test func anEpisodeAfterAFilmBringsTheChannelBackToTheHalfHour() throws {
+        // 92 minutes, then a 10-minute episode from 1:32: it ends at 1:42,
+        // 18 minutes short of 2:00, and still gets a break up to 2:00.
+        let film = Fixtures.movie("Long", minutes: 92)
+        let s = try schedule([film] + Fixtures.series("Short", seasons: 1, episodes: 20, minutes: 10),
+                             strategy: SequentialBySeries.id, padTo: 30)
+        let day = s.airings(from: epoch, to: epoch.addingTimeInterval(24 * 3600))
+        let filmAiring = try #require(day.first { $0.item.id == film.id })
+        #expect(filmAiring.slotEnd == filmAiring.end, "28 minutes is too long a break after a film")
+        let episode = try #require(day.first { $0.start == filmAiring.end })
+        #expect(episode.slotEnd.timeIntervalSince(episode.end) == 18 * 60)
+        #expect(episode.slotEnd.timeIntervalSince(epoch).truncatingRemainder(dividingBy: 1800) == 0)
     }
 
     @Test func aFilmJustPastTheHourIsFollowedByTheNextProgrammeNotABreak() throws {

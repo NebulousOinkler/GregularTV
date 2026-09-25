@@ -24,13 +24,16 @@ import Foundation
 /// or be skipped there.
 ///
 /// Each programme gets a *slot*. With `padTo`, a slot is rounded up to the
-/// next boundary and the gap is part of it, but only when that gap is
-/// `longestBreak` (10 minutes) or shorter. A longer gap isn't filled: the
-/// next programme starts straight away, off the boundary, and the gap after
-/// *it* is looked at the same way, until one is short enough to fill. So a
-/// film that runs a little past the hour is followed by the next programme,
-/// not by half an hour of commercials. The last slot in a run also takes the
-/// run's leftover time.
+/// next boundary and the gap is part of it (a break):
+/// - **After an episode, always.** Episodes keep the channel on its half-hour
+///   lines, with commercials after every one.
+/// - **After anything else (a film), only when the gap is `longestBreak`
+///   (10 minutes) or shorter.** A longer gap isn't filled: the next programme
+///   starts straight away, off the boundary, and the gap after *it* is looked
+///   at the same way. So a film that runs a little past the hour is followed
+///   by the next programme, not by half an hour of commercials, and an
+///   episode after it brings the channel back to the half hour.
+/// The last slot in a run also takes the run's leftover time.
 public struct ChannelSchedule: Sendable {
     /// Runs are at least this long.
     public static let minimumRunLength: TimeInterval = 24 * 3600
@@ -92,7 +95,7 @@ public struct ChannelSchedule: Sendable {
         self.shortestProgramme = eligible.map { Self.milliseconds(of: $0.duration) }.min() ?? 1
         // As if each started on a boundary: only a guide to where each run's stream starts.
         let typicalSlots = eligible.map {
-            Self.slotEnd(startingAt: 0, length: Self.milliseconds(of: $0.duration), padToMinutes: channel.padToMinutes)
+            Self.slotEnd(of: $0, startingAt: 0, padToMinutes: channel.padToMinutes)
         }
         self.averageSlotLength = Double(typicalSlots.reduce(0, +)) / Double(typicalSlots.count)
         // Roughly how many commercials air in a run: the share of a slot that's
@@ -255,7 +258,7 @@ public struct ChannelSchedule: Sendable {
                 // A show that was passed over keeps its place: its later episodes wait too.
                 let showIsWaiting = passedOver.contains { $0.seriesKey == item.seriesKey }
                 if cursor + length <= runEnd, !showIsWaiting {
-                    let end = min(runEnd, ChannelSchedule.slotEnd(startingAt: cursor, length: length,
+                    let end = min(runEnd, ChannelSchedule.slotEnd(of: item, startingAt: cursor,
                                                                   padToMinutes: schedule.channel.padToMinutes))
                     defer { cursor = end }
                     return (item, cursor, end)
@@ -287,8 +290,9 @@ public struct ChannelSchedule: Sendable {
     /// screen stays blank, with the "Up next" card, until the next programme.
     static let shortestBreak: Int64 = 60_000
 
-    /// With `padTo`, the longest gap (milliseconds) a slot is rounded up by.
-    /// A programme that would leave more starts the next one straight away.
+    /// With `padTo`, the longest gap (milliseconds) a film's slot is rounded up
+    /// by. A film that would leave more is followed straight away by the next
+    /// programme. (An episode's slot is always rounded up.)
     public static let longestBreak: Int64 = 10 * 60_000
 
     /// The end of every break is blank for this long (milliseconds), with the
@@ -352,15 +356,16 @@ public struct ChannelSchedule: Sendable {
         max(1, Int64((duration * 1000).rounded()))
     }
 
-    /// Where a slot ends, for a programme `length` long starting at `start`
-    /// (both milliseconds since the epoch): at the next `padTo` boundary if
-    /// that leaves `longestBreak` or less, otherwise as soon as it ends.
-    static func slotEnd(startingAt start: Int64, length: Int64, padToMinutes: Int?) -> Int64 {
-        let end = start + length
+    /// Where a slot ends, for `item` starting at `start` (milliseconds since
+    /// the epoch): at the next `padTo` boundary after an episode, or after
+    /// anything else if that leaves `longestBreak` or less; otherwise as soon
+    /// as it ends.
+    static func slotEnd(of item: MediaItem, startingAt start: Int64, padToMinutes: Int?) -> Int64 {
+        let end = start + milliseconds(of: item.duration)
         guard let pad = padToMinutes, pad > 0 else { return end }
         let unit = Int64(pad) * 60_000
         let boundary = -floorDivide(-end, unit) * unit   // rounded up, before the epoch too
-        return boundary - end <= longestBreak ? boundary : end
+        return item.kind == .episode || boundary - end <= longestBreak ? boundary : end
     }
 
     /// The longest a slot can be: the programme rounded up to a whole `padTo`.

@@ -47,7 +47,9 @@ Every channel's running order comes from one 10-character **schedule code** (lik
 
 ## Commercials
 
-A programme that ends within 10 minutes of the next half hour is followed by a break up to it, filled with clips from a Jellyfin library named `Commercials` (the name is set in `channels.json`). One that would leave a longer gap (a film that runs just past the hour) is followed straight away by the next programme, and the gap after that one is looked at the same way, until a break of 10 minutes or less lines the channel back up with the half hour. So there's never half an hour of commercials.
+Breaks are filled with clips from a Jellyfin library named `Commercials` (the name is set in `channels.json`). When there's a break:
+- **After every TV episode**, up to the next half hour, however long that is. Episodes keep a channel on its half-hour lines.
+- **After a film**, only if it ends within 10 minutes of the next half hour. A film that would leave a longer gap (one that runs just past the hour) is followed straight away by the next programme, so two films are never separated by half an hour of commercials. An episode after it brings the channel back to the half hour; another film is judged the same way.
 - Clips play in the order of the channel's derangement, with the same `a` and `b` as its shows, carrying on from break to break.
 - A gap of a minute or less gets no commercials. When a clip ends, the next only starts if at least half of it will play before the last 15 seconds; otherwise the rest of the break is blank. A clip still playing then is cut off.
 - The last 15 seconds of every break are the "Up next" card: the last commercial fades out quickly into it, then the card fades to black and the programme fades in.
@@ -104,7 +106,7 @@ xcrun simctl launch booted dev.gregulartv.GregularTV -handoffTest
 | Add a way to choose channel content | New type in `Sources/GregularTVCore/Channels/Sources/`, then add it to `ChannelSourceRegistry.all` |
 | Change the order commercials play in | New `GapFiller` in `Sources/GregularTVCore/Scheduling/GapFiller.swift`, then add it to `GapFillerRegistry.all` and set `"filler"` in `channels.json` (see PLAN.md §9a) |
 | Change what the remote's buttons do | The tables at the top of `App/GregularTV/Remote/RemoteControls.swift` (one per screen) |
-| Change how long breaks may be, or the Up next lead | `ChannelSchedule.longestBreak` and `upNextLead` in `Sources/GregularTVCore/Scheduling/ScheduleEngine.swift` |
+| Change how long a break after a film may be, or the Up next lead | `ChannelSchedule.longestBreak` and `upNextLead` in `Sources/GregularTVCore/Scheduling/ScheduleEngine.swift` |
 | Restyle the icon or Top Shelf image | `scripts/make-artwork.swift`, then run `swift scripts/make-artwork.swift` |
 | Take App Store screenshots | Demo mode (Debug builds only): run `swift scripts/make-demo-video.swift` once, then `python3 scripts/demo-server.py`, and launch the app in a simulator with `-demoServer http://localhost:8765`. It plays public-domain films and made-up shows, with nothing saved to the Keychain. See `App/GregularTV/DemoMode.swift`. |
 
