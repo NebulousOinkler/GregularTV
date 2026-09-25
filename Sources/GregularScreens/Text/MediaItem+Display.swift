@@ -2,12 +2,12 @@ import GregularCore
 
 extension MediaItem {
     /// The series name for episodes, the title for movies.
-    var displayTitle: String {
+    public var displayTitle: String {
         seriesName ?? name
     }
 
     /// "S2 E30 · Climax" for episodes, "1999" for movies.
-    var displaySubtitle: String? {
+    public var displaySubtitle: String? {
         switch kind {
         case .episode:
             let number = [seasonNumber.map { "S\($0)" }, episodeNumber.map { "E\($0)" }]

@@ -2,6 +2,7 @@ import Foundation
 import GregularCore
 import GregularJellyfin
 import Testing
+@testable import GregularScreens
 @testable import GregularTV
 
 /// "Trouble with this programme?" in Settings: a lower quality for just the

@@ -2,6 +2,7 @@ import Foundation
 import GregularCore
 import GregularJellyfin
 import Testing
+@testable import GregularScreens
 @testable import GregularTV
 
 /// Tuning into a programme Jellyfin has to re-encode starts a little ahead of

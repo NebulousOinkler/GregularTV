@@ -57,7 +57,7 @@ Enforcement:
 
 ## 4. Architecture
 
-Three parts, each depending only on the ones before it. The logic and the Jellyfin connection are a Swift package, so they're testable with `swift test` on the Mac, without a simulator.
+Four parts, each depending only on the ones before it. The first three are a Swift package, so they're testable with `swift test` on the Mac, without a simulator; only the fourth is Apple TV.
 
 ```
 jellyfin_tv/
@@ -97,21 +97,36 @@ jellyfin_tv/
 │  ├─ Playback.swift                # DeviceProfile, PlaybackSource (→ MediaStream)
 │  ├─ SecureStore.swift             # Credentials, Keychain (server, token, user ID, device ID)
 │  └─ ServerAddress.swift, ClientIdentity.swift, JellyfinJSON.swift
+├─ Sources/GregularScreens/         # 3. WHAT THE SCREENS DO, not how they're drawn: Foundation, Observation,
+│  │                                #    GregularCore (and GregularJellyfin, for sign-in only)
+│  ├─ App/                          # AppModel (signed out / loading / watching), LoginModel, FriendlyError,
+│  │                                # DebugOptions, DemoCredentials
+│  ├─ Player/
+│  │  ├─ PlayerDeck.swift           # the ONLY way to actual video: a queue player with its own picture
+│  │  ├─ ChannelPlayer.swift        # every playback decision: tuning, hand-offs, breaks, retries, head
+│  │  │                             # starts, quality; plays on two PlayerDecks
+│  │  └─ ChannelSurfer.swift        # channel up/down with preview, typed numbers, the list
+│  ├─ Watch/WatchModel.swift        # the watch screen's rules: banner, overlays, curtain, remote actions,
+│  │                                # and the words on the banner, cards and badge
+│  ├─ Remote/RemoteControls.swift   # the button tables (one per screen) and hints
+│  └─ Text/                         # displayTitle / displaySubtitle, quality labels, break wording
 ├─ Tests/GregularCoreTests/         # schedule, strategies, commercials, guide, privacy, layers
 ├─ Tests/GregularJellyfinTests/     # Jellyfin client and sign-in (against a mock server), privacy
+├─ Tests/GregularScreensTests/      # player and watch screen on fake decks: no video, no Apple TV
 ├─ scripts/                         # privacy-check.sh (runs in the build), layer-check.sh, make-artwork.swift
-└─ App/ (Xcode tvOS target "GregularTV", shown as Gregular TV)   # 3. THE APPLE TV APP
-   ├─ GregularTVApp.swift, RootView.swift, AppModel.swift   # launch, sign-in state, settings
-   ├─ Login/          LoginView, LoginModel (Quick Connect or password)
-   ├─ Player/         ChannelPlayer (AVQueuePlayer ×2), ChannelSurfer, WatchView (banner, cards),
-   │                  ChannelListView, SettingsView, VideoSurface, PlaybackDiagnostics
-   ├─ Remote/         RemoteControls (the button tables), RemoteGestures (clicks, slides, touches)
+└─ App/ (Xcode tvOS target "GregularTV", shown as Gregular TV)   # 4. APPLE TV: SwiftUI, AVFoundation, UIKit
+   ├─ GregularTVApp.swift, RootView.swift, DemoMode.swift   # launch; AppModel with AVFoundation decks
+   ├─ Login/          LoginView (draws LoginModel)
+   ├─ Player/         WatchView (draws WatchModel), AVPlayerDeck (PlayerDeck on AVQueuePlayer),
+   │                  VideoSurface, ChannelListView, SettingsView, BreakStyle
+   ├─ Remote/         RemoteControls+SwiftUI (attaches the tables), RemoteGestures (clicks, slides, touches)
    ├─ Guide/          GuideView (scrolling EPG grid)
-   ├─ DebugOptions.swift, DemoMode.swift   # launch arguments and demo mode, Debug builds only
-   └─ GregularTVTests/  app-hosted tests (Keychain, player, commercials, surfing, remote)
+   └─ GregularTVTests/  app-hosted tests (Keychain, player on AVFoundation, commercials, surfing, remote)
 ```
 
-**Dependencies.** `GregularJellyfin → GregularCore`, and the app → both. The logic knows nothing about Jellyfin, networking, AVFoundation or UI: it defines what it needs from a server (`MediaLibrary` for programmes and commercials, `StreamSource` for playable streams and the speed test) and works with any implementation. In the app, only `AppModel` (which signs in and hands the client on as those interfaces), `DemoMode` and the `Login` screens know it's Jellyfin; the player, guide, Settings and remote see only Core. `scripts/layer-check.sh` enforces this, and runs as a test. Inside the logic, `Scheduling` knows nothing about where items come from; strategies only see `[MediaItem]` and an RNG.
+**Dependencies.** `GregularJellyfin → GregularCore`; `GregularScreens → both`; the Apple TV app → `GregularScreens` and `GregularCore`, never Jellyfin. The logic knows nothing about Jellyfin, networking, AVFoundation or UI: it defines what it needs from a server (`MediaLibrary` for programmes and commercials, `StreamSource` for playable streams and the speed test) and works with any implementation. `GregularScreens` knows what the screens do but not how they're drawn or how video plays: `ChannelPlayer` reaches video only through `PlayerDeck`, and only `AppModel`, `LoginModel` and `DemoCredentials` know the server is Jellyfin. The Apple TV app only draws the models, provides `AVPlayerDeck`, and connects the Siri Remote. `scripts/layer-check.sh` enforces all of this, and runs as a test. Inside the logic, `Scheduling` knows nothing about where items come from; strategies only see `[MediaItem]` and an RNG.
+
+**A web version.** It would keep the first three parts as they are (the same channels, schedules, banner rules, remote tables and words) and bring its own views that draw `AppModel`, `LoginModel` and `WatchModel`, its own `PlayerDeck` on `<video>` elements, and its own input (keyboard or a remote) connected to `RemoteControls`. `Tests/GregularScreensTests` already runs the player and the watch screen on a fake deck, the same way. (How the Swift runs on the web, such as WebAssembly or a server, is still to decide.)
 
 **Reusing it, for example for radio.** A radio app would keep `GregularCore` (channels, shuffles, commercials, the guide maths) and `GregularJellyfin`, add music kinds to `MediaItem.Kind` and map Jellyfin's audio types to them in `LibraryQuery`, and bring its own player and screens, which would use `StreamSource` exactly as `ChannelPlayer` does.
 
@@ -211,7 +226,7 @@ A second, optional protocol, `DaypartStrategy`, can wrap strategies ("cartoons 7
 ## 8. UI (SwiftUI on tvOS)
 
 - **Launch:** first run shows the login screen. After that, it goes straight to the last-watched channel, stored as a number in `AppPreferences`. If that channel no longer exists or is empty, it falls back to the lowest-numbered channel that has content.
-- **Watching:** full-screen player. Click the left or right edge of the pad to change channel. A light touch shows a banner: channel number and name, title, S/E, progress bar, and the clock. Every button's job is set in one table per screen (`App/GregularTV/Remote/RemoteControls.swift`); README has the current layout.
+- **Watching:** full-screen player. Click the left or right edge of the pad to change channel. A light touch shows a banner: channel number and name, title, S/E, progress bar, and the clock. Every button's job is set in one table per screen (`Sources/GregularScreens/Remote/RemoteControls.swift`); README has the current layout.
 - **Guide:** press Menu to open an EPG grid. Channels are the rows and time runs left to right, from the current half hour to at least 6 hours ahead (6.5 hours); 3 hours fit on screen and the grid scrolls sideways as focus moves, with channel names pinned on the left and times pinned along the top. Focus moves across programmes, and Select tunes in. The data comes from `ChannelSchedule.programmes(from:to:)`, one block per programme (a film's mid-roll breaks inside it).
 - **Channel list:** a compact vertical list, the classic "channel selector", overlaid on the video.
 - Artwork loads lazily into the in-memory cache only.

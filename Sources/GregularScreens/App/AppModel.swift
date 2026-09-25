@@ -14,8 +14,8 @@ import Observation
 /// The library and schedules live only in this object's memory. On relaunch
 /// they're fetched again (PLAN.md §3).
 @MainActor @Observable
-final class AppModel {
-    enum Phase {
+public final class AppModel {
+    public enum Phase {
         case launching
         case signedOut
         case loading
@@ -23,20 +23,21 @@ final class AppModel {
         case failed(String)
     }
 
-    private(set) var phase: Phase = .launching
+    public private(set) var phase: Phase = .launching
     /// Why the user is back at sign-in, if it wasn't their choice.
-    private(set) var signedOutReason: String?
+    public private(set) var signedOutReason: String?
     /// Decides every channel's running order. Shown and editable in Settings;
-    /// the same code gives the same schedule on any Apple TV with the same library.
-    private(set) var scheduleCode: ScheduleCode
+    /// the same code gives the same schedule on any device with the same library.
+    public private(set) var scheduleCode: ScheduleCode
     /// "Show playback diagnostics" in Settings.
-    private(set) var showsDiagnostics: Bool
+    public private(set) var showsDiagnostics: Bool
     /// "Play commercials" in Settings. Off leaves every break blank, with the
     /// same programme times, so the schedule code still means the same schedule.
-    private(set) var playsCommercials: Bool
-    let identity: ClientIdentity
+    public private(set) var playsCommercials: Bool
+    public let identity: ClientIdentity
     private let store: any CredentialStore
     private let preferences: AppPreferences
+    private let makeDecks: @MainActor () -> [any PlayerDeck]
     private var client: JellyfinClient?
     /// The library, in memory only, so a new schedule code can rebuild the
     /// channels without fetching it again.
@@ -46,9 +47,13 @@ final class AppModel {
     private var commercials: [MediaItem] = []
     /// What was found in the commercials library, in plain words. Shown in
     /// Settings with diagnostics on, so a missing or unscanned library is easy to spot.
-    private(set) var commercialsStatus: String?
+    public private(set) var commercialsStatus: String?
 
-    init(store: any CredentialStore = KeychainStore(), preferences: AppPreferences = AppPreferences()) {
+    /// - Parameter makeDecks: the two video decks for each channel player
+    ///   (see `PlayerDeck`): AVFoundation on Apple TV.
+    public init(store: any CredentialStore = KeychainStore(), preferences: AppPreferences = AppPreferences(),
+                makeDecks: @escaping @MainActor () -> [any PlayerDeck]) {
+        self.makeDecks = makeDecks
         self.store = store
         self.preferences = preferences
         identity = ClientIdentity(deviceID: store.deviceID())
@@ -63,7 +68,7 @@ final class AppModel {
     }
 
     /// Reconnect with saved credentials, or ask the user to sign in.
-    func launch() async {
+    public func launch() async {
         guard let credentials = store.loadCredentials() else {
             phase = .signedOut
             return
@@ -71,19 +76,24 @@ final class AppModel {
         await connect(credentials)
     }
 
-    func didSignIn(_ credentials: Credentials) async {
+    /// The sign-in steps for the sign-in screen. Signing in there carries on here.
+    public func makeLoginModel() -> LoginModel {
+        LoginModel(identity: identity) { [weak self] credentials in await self?.didSignIn(credentials) }
+    }
+
+    public func didSignIn(_ credentials: Credentials) async {
         signedOutReason = nil
         // If the Keychain write fails, still carry on for this session.
         try? store.saveCredentials(credentials)
         await connect(credentials)
     }
 
-    func setStreamingQuality(_ quality: StreamingQuality) {
+    public func setStreamingQuality(_ quality: StreamingQuality) {
         preferences.streamingQuality = quality
         if case .watching(let surfer) = phase { surfer.player.setQuality(quality) }
     }
 
-    func setShowsDiagnostics(_ show: Bool) {
+    public func setShowsDiagnostics(_ show: Bool) {
         showsDiagnostics = show
         preferences.showsDiagnostics = show
         if case .watching(let surfer) = phase { surfer.player.diagnosticsEnabled = show }
@@ -91,7 +101,7 @@ final class AppModel {
 
     /// Rebuilds every channel with or without commercials, and re-tunes the
     /// current channel. Programme times don't change.
-    func setPlaysCommercials(_ plays: Bool) {
+    public func setPlaysCommercials(_ plays: Bool) {
         guard plays != playsCommercials else { return }
         playsCommercials = plays
         preferences.playsCommercials = plays
@@ -102,7 +112,7 @@ final class AppModel {
     }
 
     /// Rebuilds every channel from the new code and re-tunes the current channel.
-    func setScheduleCode(_ code: ScheduleCode) {
+    public func setScheduleCode(_ code: ScheduleCode) {
         guard code != scheduleCode else { return }
         scheduleCode = code
         preferences.scheduleCode = code
@@ -112,7 +122,7 @@ final class AppModel {
                       preferring: surfer.player.schedule.channel.number)
     }
 
-    func signOut() async {
+    public func signOut() async {
         if case .watching(let surfer) = phase { surfer.player.stop() }
         library = []
         commercials = []
@@ -183,7 +193,8 @@ final class AppModel {
             return .failed("None of the channels in channels.json match anything in your library.")
         }
         preferences.lastChannelNumber = number
-        let surfer = ChannelSurfer(channels: channels, startingWith: channel, streams: streams, preferences: preferences)
+        let surfer = ChannelSurfer(channels: channels, startingWith: channel, streams: streams, preferences: preferences,
+                                   decks: makeDecks())
         surfer.player.onUnauthorized = { [weak self] in self?.sessionExpired() }
         return .watching(surfer)
     }

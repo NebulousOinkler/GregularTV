@@ -1,4 +1,5 @@
 import Testing
+@testable import GregularScreens
 @testable import GregularTV
 
 /// The remote's button tables in `RemoteControls`, and the hints written from them.

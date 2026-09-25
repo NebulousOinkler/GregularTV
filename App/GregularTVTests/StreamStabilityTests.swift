@@ -2,6 +2,7 @@ import Foundation
 import GregularCore
 import GregularJellyfin
 import Testing
+@testable import GregularScreens
 @testable import GregularTV
 
 /// The stream only restarts on an explicit change. `tuneCount` goes up on

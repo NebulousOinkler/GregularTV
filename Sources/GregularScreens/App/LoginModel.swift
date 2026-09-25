@@ -7,32 +7,32 @@ import Observation
 /// password. Nothing here is stored. `AppModel` saves the credentials after
 /// a successful sign-in.
 @MainActor @Observable
-final class LoginModel {
-    enum Step {
+public final class LoginModel {
+    public enum Step {
         case enterAddress
         case connecting
         case signIn(server: JellyfinServer, serverName: String)
     }
 
-    var address = ""
-    var username = ""
-    var password = ""
-    private(set) var step: Step = .enterAddress
-    private(set) var quickConnectCode: String?
-    private(set) var quickConnectNote: String?
-    private(set) var isSigningIn = false
-    private(set) var errorMessage: String?
+    public var address = ""
+    public var username = ""
+    public var password = ""
+    public private(set) var step: Step = .enterAddress
+    public private(set) var quickConnectCode: String?
+    public private(set) var quickConnectNote: String?
+    public private(set) var isSigningIn = false
+    public private(set) var errorMessage: String?
 
     private let identity: ClientIdentity
     private let onSignedIn: (Credentials) async -> Void
     private var quickConnectTask: Task<Void, Never>?
 
-    init(identity: ClientIdentity, onSignedIn: @escaping (Credentials) async -> Void) {
+    public init(identity: ClientIdentity, onSignedIn: @escaping (Credentials) async -> Void) {
         self.identity = identity
         self.onSignedIn = onSignedIn
     }
 
-    func connect() async {
+    public func connect() async {
         let candidates = ServerAddress.candidates(for: address)
         guard !candidates.isEmpty else {
             errorMessage = "That doesn't look like a server address. Try something like 192.168.1.10:8096."
@@ -56,7 +56,7 @@ final class LoginModel {
         errorMessage = "Couldn't reach a Jellyfin server at \(address). \(FriendlyError.message(for: lastError))"
     }
 
-    func signInWithPassword() async {
+    public func signInWithPassword() async {
         guard case .signIn(let server, _) = step else { return }
         isSigningIn = true
         errorMessage = nil
@@ -73,7 +73,7 @@ final class LoginModel {
         }
     }
 
-    func changeServer() {
+    public func changeServer() {
         quickConnectTask?.cancel()
         quickConnectCode = nil
         step = .enterAddress
