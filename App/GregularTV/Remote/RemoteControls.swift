@@ -9,7 +9,7 @@ import SwiftUI
 //
 // Buttons: .up .down .left .right .click .clickAndHold .touchTap .playPause .menu
 // Actions: .channelUp .channelDown .showInfo .pauseOrJumpToLive
-//          .openChannelList .openGuide .openSettings .close
+//          .openChannelList .openGuide .openSettings .close .stepBack
 //
 // Fixed, not in the tables:
 // - In the channel list, guide and Settings, the arrows always move the
@@ -17,8 +17,10 @@ import SwiftUI
 //   map there does its action *as well*, so only map one that has nowhere to
 //   go (like Right in the channel list, whose rows are one column).
 // - `.clickAndHold` and `.touchTap` only work while watching.
-// - While watching, Menu (or Back ‹) with no action leaves the app for the
-//   Home screen, as tvOS expects. Map it to something and it won't.
+// - The guide is the app's main screen. Menu (or Back ‹) goes back to it
+//   while watching, and from the guide leaves the app, as tvOS expects: Apple
+//   asks that Menu on an app's main screen always goes to the Home screen.
+//   Keep a way to leave from the guide if you change these.
 // - Digits on a keyboard always type a channel number.
 
 enum RemoteControls {
@@ -29,9 +31,10 @@ enum RemoteControls {
         .left: .openChannelList,
         .right: .showInfo,
         .touchTap: .showInfo,
-        .click: .openGuide,
+        .click: .showInfo,
         .clickAndHold: .openSettings,
         .playPause: .pauseOrJumpToLive,
+        .menu: .openGuide,
     ]
 
     /// The channel list (opened with Left while watching).
@@ -41,9 +44,9 @@ enum RemoteControls {
         .playPause: .openSettings,
     ]
 
-    /// The programme guide (opened with a click while watching).
+    /// The programme guide (opened with Menu while watching).
     static let guide: [RemoteButton: RemoteAction] = [
-        .menu: .close,
+        .menu: .stepBack,
         .playPause: .openSettings,
     ]
 
@@ -99,6 +102,9 @@ enum RemoteAction: Hashable, CaseIterable {
     case openSettings
     /// Close whatever's open (the channel list, guide or Settings).
     case close
+    /// One step back. In the guide: from the programmes to the Settings
+    /// button (highlighted, not pressed), then out of the app. Elsewhere, `.close`.
+    case stepBack
 
     /// How hints describe the action.
     var label: String {
@@ -111,6 +117,7 @@ enum RemoteAction: Hashable, CaseIterable {
         case .openGuide: "guide"
         case .openSettings: "Settings"
         case .close: "close"
+        case .stepBack: "back"
         }
     }
 }
