@@ -27,11 +27,12 @@ import Foundation
 // - `.clickAndHold`, `.touchTap` and the swipes only work while watching.
 // - These tables are shared by every version of the app; each one connects
 //   its own input (the Siri Remote here) to them.
-// - With the Apple TV's *Settings › Remotes and Devices › Clickpad* set to
-//   "Click and Touch", tvOS reports a light tap on the edge of the pad as an
-//   edge click. `RemoteGestures` tells them apart (a real click presses
-//   while the finger's still down) and treats such a tap as `.touchTap`.
-//   If that ever misfires, "Click Only" stops tvOS doing it.
+// - Most Siri Remotes report any click on the pad as a centre click; the
+//   Apple TV app's `RemoteGestures` reads where the finger is to tell an
+//   edge click from a centre one. With *Settings › Remotes and Devices ›
+//   Clickpad* set to "Click and Touch", tvOS also turns a light tap on the
+//   edge into an arrow press; `RemoteGestures` ignores those, so the tap is
+//   just `.touchTap`. If that ever misfires, "Click Only" stops tvOS doing it.
 // - Don't map both `.click` and `.touchTap` to `.showInfo`: a click also
 //   touches the pad, so it would count twice (show, then switch the time).
 // - While watching, Menu (or Back ‹) hides the banner if it's up, or else
