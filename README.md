@@ -65,11 +65,11 @@ Every programme starts on the half hour. The time from its end to the next half 
 
 The app starts on the channel you last watched. "Click" means pressing the pad down; "slide" means moving a finger across it; a "light touch" is touching it without clicking. In the Simulator, the arrow keys are clicks on the edge of the pad, Return is a click, the space bar is Play/Pause and Escape is Menu; the Simulator can't slide or touch.
 
-A light tap anywhere on the pad, edges included, only brings up the banner; only a real click on the left or right edge changes channel. (With the remote's "Click and Touch" setting, tvOS reports an edge tap as a click; the app tells them apart by whether your finger was still on the pad when the press came. If an edge tap ever changes the channel, set the Apple TV's **Settings › Remotes and Devices › Clickpad** to **Click Only**.)
+A light tap anywhere on the pad, edges included, only brings up the banner; only a real click on the left or right edge changes channel. (Most Siri Remotes report every click on the pad as a centre click, so the app reads where your finger is when it clicks: past halfway to an edge is that edge's click. With the remote's "Click and Touch" setting, tvOS also turns a light tap on the edge into an arrow press just after the finger lifts; the app ignores those. If an edge tap ever changes the channel, set the Apple TV's **Settings › Remotes and Devices › Clickpad** to **Click Only**.)
 
 | Input | Action |
 |---|---|
-| Click left / right (edge of the pad) | Channel down / up (the banner previews each channel, and tunes when you stop) |
+| Click left / right (edge of the pad) | Channel down / up (the banner previews each channel, and tunes when you stop; the picture fades out while you surf and back in once the new channel plays) |
 | Slide left | Channel list; Select tunes. Slide right, Menu, or 15 s idle closes it and stays on the current channel. Play/Pause opens Settings |
 | Light touch (a click touches the pad too) | Show the info banner (clock, progress, time in). Again while showing: switch between end time and time left |
 | Menu (or Back ‹) | If the banner is up, hide it. Otherwise the programme guide, six hours ahead, scrolling sideways; Select on a programme tunes to its channel, and 60 s idle closes it. In the guide, Menu first moves up to its Settings button (highlighted, not opened), then goes back to the programme. Menu never leaves the app: use the TV (Home) button |
