@@ -1,4 +1,5 @@
 import GregularCore
+import GregularScreens
 import SwiftUI
 
 /// Opened by clicking and holding while watching, or from the guide.

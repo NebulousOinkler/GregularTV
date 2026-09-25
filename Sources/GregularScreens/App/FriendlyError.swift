@@ -1,4 +1,3 @@
-import AVFoundation
 import Foundation
 import GregularCore
 
@@ -7,24 +6,23 @@ import GregularCore
 /// The system's own error text can be technical, and can include the server's
 /// address (for example, certificate errors name the host). A TV screen is
 /// seen by anyone in the room, so errors are always shown through this.
-enum FriendlyError {
-    static func message(for error: (any Error)?) -> String {
+public enum FriendlyError {
+    public static func message(for error: (any Error)?) -> String {
         guard let error else { return "Something went wrong." }
         // The media server's own errors are already written for people.
         if let failure = error as? any MediaServiceFailure { return failure.localizedDescription }
         if let stall = error as? StallError { return stall.localizedDescription }
         if let url = error as? URLError { return message(for: url) }
         if error is DecodingError { return "Your server sent a reply the app didn't understand. Is it a Jellyfin server?" }
-        if (error as NSError).domain == AVFoundationErrorDomain {
-            return "This programme couldn't be played. It may be in a format Apple TV can't show."
-        }
+        // (A player's own errors, such as a format it can't show, come as
+        // LocalizedErrors written for people: see each `PlayerDeck`.)
         return (error as? LocalizedError)?.errorDescription ?? "Something went wrong."
     }
 
     private static func message(for error: URLError) -> String {
         switch error.code {
         case .notConnectedToInternet, .networkConnectionLost:
-            "The Apple TV isn't connected to the network."
+            "This device isn't connected to the network."
         case .timedOut:
             "Your Jellyfin server took too long to respond."
         case .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed:

@@ -27,7 +27,7 @@ The project is ready for TestFlight and App Store uploads: it includes Apple's p
 
 ## Run the tests
 
-The logic and the Jellyfin connection, on the Mac (this also runs the privacy and layer checks):
+The logic, the Jellyfin connection and the screens (on fake video decks), on the Mac. This also runs the privacy and layer checks:
 
 ```bash
 swift test
@@ -61,7 +61,7 @@ Every programme starts on the half hour. The time from its end to the next half 
 
 ## Remote controls
 
-**To change what a button does,** edit the tables at the top of `App/GregularTV/Remote/RemoteControls.swift`: one per screen (watching, channel list, guide, Settings), each a list of `button: action`. The hints on screen are written from the same tables. As shipped:
+**To change what a button does,** edit the tables at the top of `Sources/GregularScreens/Remote/RemoteControls.swift`: one per screen (watching, channel list, guide, Settings), each a list of `button: action`. The hints on screen are written from the same tables. As shipped:
 
 The app starts on the channel you last watched. "Click" means pressing the pad down; "slide" means moving a finger across it; a "light touch" is touching it without clicking. In the Simulator, the arrow keys are clicks on the edge of the pad, Return is a click, the space bar is Play/Pause and Escape is Menu; the Simulator can't slide or touch.
 
@@ -100,13 +100,15 @@ xcrun simctl launch booted dev.gregulartv.GregularTV -handoffTest
 
 | I want to… | Edit |
 |---|---|
-| Understand how the code is split | The three parts are the logic (`Sources/GregularCore`), the Jellyfin connection (`Sources/GregularJellyfin`) and the tvOS app (`App/`); see `Package.swift` and PLAN.md §4 |
+| Understand how the code is split | Four parts: the logic (`Sources/GregularCore`), the Jellyfin connection (`Sources/GregularJellyfin`), what the screens do (`Sources/GregularScreens`) and Apple TV itself (`App/`); see `Package.swift` and PLAN.md §4 |
+| Change what the screens do or say (banner, cards, overlays, fades) | `WatchModel` in `Sources/GregularScreens/Watch/WatchModel.swift`; the Apple TV views in `App/GregularTV` only draw it |
+| Play video some other way (for a web version) | Implement `PlayerDeck` (`Sources/GregularScreens/Player/PlayerDeck.swift`), as `AVPlayerDeck` does for Apple TV |
 | Connect a different media server | Implement `MediaLibrary` and `StreamSource` (`Sources/GregularCore/Services/MediaServices.swift`), and use it in `AppModel` |
 | Change the channel line-up | `Sources/GregularCore/Resources/channels.json`, then run `swift test` to validate it |
 | Add a shuffle/scheduling algorithm | New file in `Sources/GregularCore/Scheduling/Strategies/`, then add it to `StrategyRegistry.all` |
 | Add a way to choose channel content | New type in `Sources/GregularCore/Channels/Sources/`, then add it to `ChannelSourceRegistry.all` |
 | Change the order commercials play in | New `GapFiller` in `Sources/GregularCore/Scheduling/GapFiller.swift`, then add it to `GapFillerRegistry.all` and set `"filler"` in `channels.json` (see PLAN.md §9a) |
-| Change what the remote's buttons do | The tables at the top of `App/GregularTV/Remote/RemoteControls.swift` (one per screen) |
+| Change what the remote's buttons do | The tables at the top of `Sources/GregularScreens/Remote/RemoteControls.swift` (one per screen) |
 | Change how long a mid-roll may be, how many a film gets, or the Up next lead | `ChannelSchedule.longestMidRoll`, `maxMidRolls` and `upNextLead` in `Sources/GregularCore/Scheduling/ScheduleEngine.swift` |
 | Restyle the icon or Top Shelf image | `scripts/make-artwork.swift`, then run `swift scripts/make-artwork.swift` |
 | Take App Store screenshots | Demo mode (Debug builds only): run `swift scripts/make-demo-video.swift` once, then `python3 scripts/demo-server.py`, and launch the app in a simulator with `-demoServer http://localhost:8765`. It plays public-domain films and made-up shows, with nothing saved to the Keychain. See `App/GregularTV/DemoMode.swift`. |
