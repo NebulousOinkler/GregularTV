@@ -5,7 +5,7 @@ import Testing
 struct RemoteControlsTests {
     @Test func hintsAreWrittenFromTheTables() {
         #expect(RemoteControls.hint(for: RemoteControls.watching)
-                == "click ◀▶: channels · slide ▲ or click or touch: info · slide ▼: hide info · Play/Pause: pause · slide ◀: channel list · Menu: guide · hold click: Settings")
+                == "click ◀▶: channels · touch: info · Menu: hide info, or guide · Play/Pause: pause · slide ◀: channel list · hold click: Settings")
         #expect(RemoteControls.hint(for: RemoteControls.channelList) == "Play/Pause: Settings · slide ▶ or Menu: close")
         #expect(RemoteControls.hint(for: RemoteControls.guide) == "Play/Pause: Settings · Menu: back")
         #expect(RemoteControls.hint(for: [.clickLeft: .channelUp, .menu: .close]) == "click ◀: channel up · Menu: close")
@@ -19,8 +19,10 @@ struct RemoteControlsTests {
     @Test func watchingTellsClicksFromSwipes() {
         let map = RemoteControls.watching
         #expect(map[.clickLeft] == .channelDown && map[.clickRight] == .channelUp)
-        #expect(map[.swipeLeft] == .openChannelList && map[.swipeUp] == .showInfoSlowly && map[.swipeDown] == .hideInfo)
+        #expect(map[.swipeLeft] == .openChannelList && map[.swipeUp] == nil && map[.swipeDown] == nil)
         #expect(map[.touchTap] == .showInfo && map[.clickAndHold] == .openSettings)
+        #expect(map[.menu] == .hideInfoOrOpenGuide)
+        #expect(map[.click] == nil, "A click touches the pad too: mapping both would count it twice")
     }
 
     @Test func everyMenuCanBeClosedFromTheRemote() {
@@ -31,6 +33,7 @@ struct RemoteControlsTests {
 
     @Test func watchingCanReachEveryScreen() {
         let actions = Set(RemoteControls.watching.values)
-        #expect(actions.isSuperset(of: [.openChannelList, .openGuide, .openSettings, .channelUp, .channelDown]))
+        #expect(actions.isSuperset(of: [.openChannelList, .openSettings, .channelUp, .channelDown]))
+        #expect(actions.contains(.openGuide) || actions.contains(.hideInfoOrOpenGuide))
     }
 }
