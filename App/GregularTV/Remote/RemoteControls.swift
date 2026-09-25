@@ -13,7 +13,7 @@ import SwiftUI
 //   .click .clickAndHold                          the centre (or the touch surface)
 //   .touchTap                                     a light touch, without clicking
 //   .playPause .menu
-// Actions: .channelUp .channelDown .showInfo .showInfoSlowly .hideInfo
+// Actions: .channelUp .channelDown .showInfo .hideInfo .hideInfoOrOpenGuide
 //          .pauseOrJumpToLive .openChannelList .openGuide .openSettings
 //          .close .stepBack
 //
@@ -26,10 +26,14 @@ import SwiftUI
 //   always chooses the highlighted item.
 // - `.clickAndHold`, `.touchTap` and the swipes only work while watching.
 // - With the Apple TV's *Settings › Remotes and Devices › Clickpad* set to
-//   "Click and Touch", a light touch on the edge of the pad counts as a click
-//   there. Set it to "Click Only" to keep light touches for `.touchTap`.
-// - While watching, Menu (or Back ‹) opens the guide, and never leaves the
-//   app: the TV (Home) button does. (Apple asks that Menu on an app's main
+//   "Click and Touch", tvOS reports a light tap on the edge of the pad as an
+//   edge click. `RemoteGestures` tells them apart (a real click presses
+//   while the finger's still down) and treats such a tap as `.touchTap`.
+//   If that ever misfires, "Click Only" stops tvOS doing it.
+// - Don't map both `.click` and `.touchTap` to `.showInfo`: a click also
+//   touches the pad, so it would count twice (show, then switch the time).
+// - While watching, Menu (or Back ‹) hides the banner if it's up, or else
+//   opens the guide, and never leaves the app: the TV (Home) button does. (Apple asks that Menu on an app's main
 //   screen goes to the Home screen; delete `.menu` from `watching` for that.)
 // - Digits on a keyboard always type a channel number.
 
@@ -39,13 +43,10 @@ enum RemoteControls {
         .clickLeft: .channelDown,
         .clickRight: .channelUp,
         .swipeLeft: .openChannelList,
-        .swipeUp: .showInfoSlowly,
-        .swipeDown: .hideInfo,
         .touchTap: .showInfo,
-        .click: .showInfo,
         .clickAndHold: .openSettings,
         .playPause: .pauseOrJumpToLive,
-        .menu: .openGuide,
+        .menu: .hideInfoOrOpenGuide,
     ]
 
     /// The channel list (opened by sliding left while watching).
@@ -123,10 +124,10 @@ enum RemoteAction: Hashable, CaseIterable {
     case channelDown
     /// The info banner; again while it's up, switch end time / time left.
     case showInfo
-    /// The info banner, fading in slowly.
-    case showInfoSlowly
     /// Put the banner away at once.
     case hideInfo
+    /// Put the banner away if it's up; otherwise open the guide.
+    case hideInfoOrOpenGuide
     /// Pause, or if paused, jump back to live.
     case pauseOrJumpToLive
     case openChannelList
@@ -143,8 +144,9 @@ enum RemoteAction: Hashable, CaseIterable {
         switch self {
         case .channelUp: "channel up"
         case .channelDown: "channel down"
-        case .showInfo, .showInfoSlowly: "info"
+        case .showInfo: "info"
         case .hideInfo: "hide info"
+        case .hideInfoOrOpenGuide: "hide info, or guide"
         case .pauseOrJumpToLive: "pause"
         case .openChannelList: "channel list"
         case .openGuide: "guide"
