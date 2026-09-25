@@ -27,10 +27,7 @@ struct ChannelPlayerDeckTests {
         try await Fixture.settle(player)
         let deck = try #require(player.decks[player.activeIndex] as? FakeDeck)
         deck.queue.first?.hasFailed = true
-        for _ in 0..<300 {
-            if case .failed = player.status { break }
-            try await Task.sleep(for: .milliseconds(10))
-        }
+        try await waitUntil(3) { player.status.isFailed }
         guard case .failed = player.status else {
             Issue.record("Expected a failure and a retry, not \(player.status)")
             return

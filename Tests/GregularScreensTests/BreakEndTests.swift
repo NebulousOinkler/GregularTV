@@ -9,40 +9,38 @@ import Testing
 struct BreakEndTests {
     /// A 22-minute episode padded to 30 minutes, with 30-second clips.
     private func channel(epoch: Date) throws -> ChannelSchedule {
-        let iso = ISO8601DateFormatter().string(from: epoch)
-        let json = #"[{ "number": 1, "name": "C", "source": { "type": "all" }, "strategy": "derangement", "seed": 1, "padTo": 30, "filler": "derangement", "epoch": "\#(iso)" }]"#
         let items = (1...3).map { MediaItem(id: "e\($0)", kind: .episode, name: "E\($0)", duration: 22 * 60, seriesName: "Show") }
         let ads = (0..<6).map { MediaItem(id: "ad\($0)", kind: .video, name: "Ad", duration: 30) }
-        return try #require(try ChannelLineup.load(from: Data(json.utf8)).schedules(for: items, fillerPool: ads).first)
+        return try #require(try ChannelSchedule.testing(epoch: epoch, padTo: 30, items: items, ads: ads).first)
+    }
+
+    /// Watching that channel, tuned in `seconds` before the first break's last
+    /// clip is scheduled to end (the Up next card follows it).
+    private func watching(secondsBeforeTheLastClipEnds seconds: TimeInterval) async throws -> WatchModel {
+        let probe = try channel(epoch: Date(timeIntervalSince1970: 0))
+        let firstSlot = probe.airings(from: probe.channel.epoch, to: probe.channel.epoch.addingTimeInterval(30 * 60 - 1))
+        let lastClipEnd = try #require(firstSlot.last { $0.isFiller }).end.timeIntervalSince(probe.channel.epoch)
+        let schedule = try channel(epoch: Date.now.addingTimeInterval(-(lastClipEnd - seconds)))
+        let surfer = ChannelSurfer(channels: [schedule], startingWith: schedule, streams: FakeStreams(),
+                                   preferences: Fixture.preferences(), decks: FakeDeck.pair())
+        let model = WatchModel(surfer: surfer)
+        model.player.start()
+        try await Fixture.settle(model.player)
+        return model
     }
 
     @Test func theLastClipEndsIntoTheUpNextCard() async throws {
-        // Where the first break's last clip ends, then join 3 s before that.
-        let probe = try channel(epoch: Date(timeIntervalSince1970: 0))
-        let firstSlot = probe.airings(from: probe.channel.epoch, to: probe.channel.epoch.addingTimeInterval(30 * 60 - 1))
-        let lastClip = try #require(firstSlot.last { $0.isFiller })
-        let lastClipEnd = lastClip.end.timeIntervalSince(probe.channel.epoch)
-        let schedule = try channel(epoch: Date.now.addingTimeInterval(-(lastClipEnd - 3)))
-
-        let preferences = AppPreferences(defaults: UserDefaults(suiteName: "BreakEndTests-\(UUID())")!)
-        let surfer = ChannelSurfer(channels: [schedule], startingWith: schedule, streams: FakeStreams(),
-                                   preferences: preferences, decks: FakeDeck.pair())
-        let model = WatchModel(surfer: surfer)
+        let model = try await watching(secondsBeforeTheLastClipEnds: 3)
         let player = model.player
-        player.start()
-        try await Fixture.settle(player)
         #expect(player.airing?.isFiller == true, "Tuned in to the last clip")
 
         // The programme after the break is preloaded on standby, and the deck holds at the clip's end.
         let deck = try #require(player.decks[player.activeIndex] as? FakeDeck)
-        for _ in 0..<300 where !deck.pausesAtItemEnd { try await Task.sleep(for: .milliseconds(10)) }
+        try await waitUntil(3) { deck.pausesAtItemEnd }
         #expect(deck.pausesAtItemEnd)
 
         deck.finishCurrentItem()
-        for _ in 0..<300 {
-            if case .betweenProgrammes = player.status { break }
-            try await Task.sleep(for: .milliseconds(10))
-        }
+        try await waitUntil(4) { player.status.isBetweenProgrammes }
         guard case .betweenProgrammes = player.status else {
             Issue.record("Expected the Up next gap after the last clip, not \(player.status)")
             return player.stop()
@@ -58,26 +56,13 @@ struct BreakEndTests {
     }
 
     @Test func aLastClipRunningLateStopsAtItsScheduledEndForTheCard() async throws {
-        let probe = try channel(epoch: Date(timeIntervalSince1970: 0))
-        let firstSlot = probe.airings(from: probe.channel.epoch, to: probe.channel.epoch.addingTimeInterval(30 * 60 - 1))
-        let lastClip = try #require(firstSlot.last { $0.isFiller })
-        let lastClipEnd = lastClip.end.timeIntervalSince(probe.channel.epoch)
         // Join 2 s before the last clip's scheduled end. The fake deck never
         // finishes it by itself: it's running late, still playing at its end.
-        let schedule = try channel(epoch: Date.now.addingTimeInterval(-(lastClipEnd - 2)))
-        let preferences = AppPreferences(defaults: UserDefaults(suiteName: "BreakEndTests-\(UUID())")!)
-        let surfer = ChannelSurfer(channels: [schedule], startingWith: schedule, streams: FakeStreams(),
-                                   preferences: preferences, decks: FakeDeck.pair())
-        let model = WatchModel(surfer: surfer)
+        let model = try await watching(secondsBeforeTheLastClipEnds: 2)
         let player = model.player
-        player.start()
-        try await Fixture.settle(player)
         #expect(player.airing?.isFiller == true)
 
-        for _ in 0..<400 {
-            if case .betweenProgrammes = player.status { break }
-            try await Task.sleep(for: .milliseconds(10))
-        }
+        try await waitUntil(4) { player.status.isBetweenProgrammes }
         guard case .betweenProgrammes(let until) = player.status else {
             Issue.record("Expected the clip stopped for the Up next card, not \(player.status)")
             return player.stop()
@@ -89,19 +74,9 @@ struct BreakEndTests {
     }
 
     @Test func theSoundFadesOutWithThePictureAtTheEndOfTheLastClip() async throws {
-        let probe = try channel(epoch: Date(timeIntervalSince1970: 0))
-        let firstSlot = probe.airings(from: probe.channel.epoch, to: probe.channel.epoch.addingTimeInterval(30 * 60 - 1))
-        let lastClip = try #require(firstSlot.last { $0.isFiller })
-        let lastClipEnd = lastClip.end.timeIntervalSince(probe.channel.epoch)
         // Join 2 s before the last clip's scheduled end; the clip itself runs on (it started late).
-        let schedule = try channel(epoch: Date.now.addingTimeInterval(-(lastClipEnd - 2)))
-        let preferences = AppPreferences(defaults: UserDefaults(suiteName: "BreakEndTests-\(UUID())")!)
-        let surfer = ChannelSurfer(channels: [schedule], startingWith: schedule, streams: FakeStreams(),
-                                   preferences: preferences, decks: FakeDeck.pair())
-        let model = WatchModel(surfer: surfer)
+        let model = try await watching(secondsBeforeTheLastClipEnds: 2)
         let player = model.player
-        player.start()
-        try await Fixture.settle(player)
         #expect(player.volume == 1)
 
         let curtain = Task { await model.runCurtain() }
@@ -114,30 +89,17 @@ struct BreakEndTests {
     }
 
     @Test func aClipEndingEarlyDoesntCloseTheCurtainOverTheCard() async throws {
-        let probe = try channel(epoch: Date(timeIntervalSince1970: 0))
-        let firstSlot = probe.airings(from: probe.channel.epoch, to: probe.channel.epoch.addingTimeInterval(30 * 60 - 1))
-        let lastClip = try #require(firstSlot.last { $0.isFiller })
-        let lastClipEnd = lastClip.end.timeIntervalSince(probe.channel.epoch)
         // Join 6 s before the last clip's scheduled end.
-        let schedule = try channel(epoch: Date.now.addingTimeInterval(-(lastClipEnd - 6)))
-        let preferences = AppPreferences(defaults: UserDefaults(suiteName: "BreakEndTests-\(UUID())")!)
-        let surfer = ChannelSurfer(channels: [schedule], startingWith: schedule, streams: FakeStreams(),
-                                   preferences: preferences, decks: FakeDeck.pair())
-        let model = WatchModel(surfer: surfer)
+        let model = try await watching(secondsBeforeTheLastClipEnds: 6)
         let player = model.player
-        player.start()
-        try await Fixture.settle(player)
         let deck = try #require(player.decks[player.activeIndex] as? FakeDeck)
-        for _ in 0..<300 where !deck.pausesAtItemEnd { try await Task.sleep(for: .milliseconds(10)) }
+        try await waitUntil(3) { deck.pausesAtItemEnd }
 
         // The fade planned for the clip's end, still waiting (as if never cancelled).
         let stale = Task { await model.runCurtain() }
         // The clip ends early, and the Up next card takes over.
         deck.finishCurrentItem()
-        for _ in 0..<300 {
-            if case .betweenProgrammes = player.status { break }
-            try await Task.sleep(for: .milliseconds(10))
-        }
+        try await waitUntil(4) { player.status.isBetweenProgrammes }
         let card = Task { await model.runCurtain() }
         // Past the clip's scheduled end: the stale fade has had its chance.
         try await Task.sleep(for: .seconds(6.5))

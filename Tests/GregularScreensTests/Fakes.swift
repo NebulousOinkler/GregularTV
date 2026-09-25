@@ -65,19 +65,50 @@ struct FakeStreams: StreamSource {
 enum Fixture {
     /// Two channels of hour-long films, `elapsed` seconds into one.
     @MainActor static func surfer(elapsed: TimeInterval = 600) throws -> ChannelSurfer {
-        let epoch = ISO8601DateFormatter().string(from: Date.now.addingTimeInterval(-elapsed))
-        let json = [1, 2].map {
-            #"{ "number": \#($0), "name": "C\#($0)", "source": { "type": "all" }, "strategy": "derangement", "seed": \#($0), "epoch": "\#(epoch)" }"#
-        }.joined(separator: ",")
         let items = (1...3).map { MediaItem(id: "m\($0)", kind: .movie, name: "Film \($0)", duration: 3600) }
-        let channels = try ChannelLineup.load(from: Data("[\(json)]".utf8)).schedules(for: items)
-        let preferences = AppPreferences(defaults: UserDefaults(suiteName: "ScreensTests-\(UUID())")!)
+        let channels = try ChannelSchedule.testing([1, 2], epoch: Date.now.addingTimeInterval(-elapsed), items: items)
+        let preferences = Self.preferences()
         preferences.streamingQuality = .hd10
         return ChannelSurfer(channels: channels, startingWith: channels[0], streams: FakeStreams(),
                              preferences: preferences, decks: FakeDeck.pair())
     }
 
-    @MainActor static func settle(_ player: ChannelPlayer) async throws {
-        for _ in 0..<200 where player.status != .playing { try await Task.sleep(for: .milliseconds(10)) }
+    /// Preferences of their own, so tests never share (or touch the app's).
+    static func preferences() -> AppPreferences {
+        AppPreferences(defaults: UserDefaults(suiteName: "ScreensTests-\(UUID())")!)
     }
+
+    @MainActor static func settle(_ player: ChannelPlayer) async throws {
+        try await waitUntil(2) { player.status == .playing }
+    }
+}
+
+extension ChannelSchedule {
+    /// Test channels numbered `numbers` (each seeded with its number), all
+    /// playing `items`, with `ads` as commercials if there are any.
+    static func testing(_ numbers: [Int] = [1], strategy: String = "derangement", epoch: Date? = nil,
+                        padTo: Int? = nil, items: [MediaItem], ads: [MediaItem] = [],
+                        playsCommercials: Bool = true) throws -> [ChannelSchedule] {
+        let channels = numbers.map { n in
+            var fields = [#""number": \#(n)"#, #""name": "C\#(n)""#, #""source": { "type": "all" }"#,
+                          #""strategy": "\#(strategy)""#, #""seed": \#(n)"#]
+            if let padTo { fields.append(#""padTo": \#(padTo)"#) }
+            if !ads.isEmpty { fields.append(#""filler": "derangement""#) }
+            if let epoch { fields.append(#""epoch": "\#(ISO8601DateFormatter().string(from: epoch))""#) }
+            return "{ " + fields.joined(separator: ", ") + " }"
+        }
+        return try ChannelLineup.load(from: Data("[\(channels.joined(separator: ","))]".utf8))
+            .schedules(for: items, fillerPool: ads, playsCommercials: playsCommercials)
+    }
+}
+
+/// Waits, checking every 10 ms, until `condition` holds or `seconds` pass.
+@MainActor func waitUntil(_ seconds: TimeInterval, _ condition: () -> Bool) async throws {
+    let deadline = Date.now.addingTimeInterval(seconds)
+    while !condition(), Date.now < deadline { try await Task.sleep(for: .milliseconds(10)) }
+}
+
+extension ChannelPlayer.Status {
+    var isFailed: Bool { if case .failed = self { true } else { false } }
+    var isBetweenProgrammes: Bool { if case .betweenProgrammes = self { true } else { false } }
 }

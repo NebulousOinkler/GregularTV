@@ -37,12 +37,12 @@ enum DebugOptions {
     }
 
     static var opensChannelList: Bool {
-        ProcessInfo.processInfo.arguments.contains("-openChannelList")
+        arguments.contains("-openChannelList")
     }
 
     /// `-openGuide`: opens the guide on launch, to check it without a Menu button.
     static var opensGuide: Bool {
-        ProcessInfo.processInfo.arguments.contains("-openGuide")
+        arguments.contains("-openGuide")
     }
 
     static func apply(to channels: [ChannelSchedule], items: [MediaItem], fillerPool: [MediaItem]) -> [ChannelSchedule] {
@@ -54,7 +54,7 @@ enum DebugOptions {
     }
 
     static var usesPretendCommercials: Bool {
-        ProcessInfo.processInfo.arguments.contains("-pretendCommercials")
+        arguments.contains("-pretendCommercials")
     }
 
     static func pretendCommercials(from library: [MediaItem]) -> [MediaItem] {
