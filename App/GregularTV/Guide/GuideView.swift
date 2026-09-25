@@ -32,6 +32,11 @@ struct GuideView: View {
         CGFloat(window.duration / 3600) * hourWidth
     }
 
+    /// Where `date` falls across the grid, from its left edge.
+    static func x(of date: Date, in window: GuideWindow) -> CGFloat {
+        window.fraction(of: date) * trackWidth(window)
+    }
+
     @FocusState private var focusedID: String?
     /// Where the grid's top-left corner is, relative to what's on screen: it
     /// goes negative as the grid scrolls. The ruler and channel names follow it.
@@ -155,13 +160,13 @@ struct GuideView: View {
                         if let span = cell.breakSpan, span.start <= now, now < span.end {
                             Text("· Programme ended ·")
                             BreakStyle.label
-                            Text("until \(span.end.formatted(date: .omitted, time: .shortened))")
+                            Text("until \(span.end.clockTime)")
                         }
                     }
                     .font(.headline).foregroundStyle(.secondary).lineLimit(1)
                     Text(cell.programme.item.displayTitle).font(.title2).bold().lineLimit(1)
                     Text([cell.programme.item.displaySubtitle,
-                          "\(cell.programme.start.formatted(date: .omitted, time: .shortened)) – \(cell.programme.end.formatted(date: .omitted, time: .shortened))"]
+                          "\(cell.programme.start.clockTime) – \(cell.programme.end.clockTime)"]
                             .compactMap { $0 }.joined(separator: " · "))
                         .font(.headline).foregroundStyle(.secondary).lineLimit(1)
                 } else {
@@ -258,7 +263,7 @@ private struct GuideRow: View {
     }
 
     private func width(of cell: GuideCell) -> CGFloat {
-        CGFloat(cell.visibleEnd.timeIntervalSince(cell.visibleStart) / window.duration) * GuideView.trackWidth(window)
+        GuideView.x(of: cell.visibleEnd, in: window) - GuideView.x(of: cell.visibleStart, in: window)
     }
 }
 
@@ -271,7 +276,7 @@ private struct GuideCellLabel: View {
             Text((cell.startsBeforeWindow ? "◀ " : "") + cell.programme.item.displayTitle)
                 .font(.callout).bold().lineLimit(1)
             if width >= 110 {   // too narrow to fit a time legibly
-                Text(cell.programme.start.formatted(date: .omitted, time: .shortened))
+                Text(cell.programme.start.clockTime)
                     .font(.caption2).opacity(0.7)
             }
         }
@@ -310,9 +315,9 @@ private struct TimeRuler: View {
     var body: some View {
         ZStack(alignment: .leading) {
             ForEach(window.timeMarks, id: \.self) { mark in
-                Text(mark.formatted(date: .omitted, time: .shortened))
+                Text(mark.clockTime)
                     .font(.callout).foregroundStyle(.secondary)
-                    .offset(x: window.fraction(of: mark) * GuideView.trackWidth(window))
+                    .offset(x: GuideView.x(of: mark, in: window))
             }
         }
         .frame(width: GuideView.trackWidth(window), height: Self.height, alignment: .leading)
@@ -329,7 +334,7 @@ private struct NowLine: View {
             .fill(.yellow)
             .frame(width: 3)
             .frame(maxHeight: .infinity)
-            .offset(x: window.fraction(of: date) * GuideView.trackWidth(window))
+            .offset(x: GuideView.x(of: date, in: window))
             .allowsHitTesting(false)
     }
 }

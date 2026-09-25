@@ -36,20 +36,17 @@ struct CommercialQualityTests {
     /// A channel tuned 30 seconds into a commercial break: a 20-minute
     /// episode in a 30-minute slot, the rest filled with one-minute ads.
     private func playerInABreak(server: Server, playsCommercials: Bool = true) throws -> ChannelPlayer {
-        let epoch = ISO8601DateFormatter().string(from: Date.now.addingTimeInterval(-(20 * 60 + 30)))
-        let json = #"[{ "number": 1, "name": "C", "source": { "type": "all" }, "strategy": "derangement", "seed": 1, "padTo": 30, "filler": "derangement", "epoch": "\#(epoch)" }]"#
         let items = [MediaItem(id: "ep", kind: .episode, name: "E", duration: 20 * 60)]
         let ads = (0..<5).map { MediaItem(id: "ad\($0)", kind: .video, name: "Ad", duration: 60) }
-        let schedule = try #require(try ChannelLineup.load(from: Data(json.utf8)).schedules(for: items, fillerPool: ads, playsCommercials: playsCommercials).first)
+        let schedule = try #require(try ChannelSchedule.testing(epoch: Date.now.addingTimeInterval(-(20 * 60 + 30)), padTo: 30,
+                                                                items: items, ads: ads, playsCommercials: playsCommercials).first)
         #expect(schedule.tune(at: .now).isInPadding || schedule.tune(at: .now).airing.isFiller, "The test needs to start in the break")
-        let client = JellyfinClient(
-            credentials: Credentials(serverURL: URL(string: "https://tv.invalid")!, userID: "u", accessToken: "t"),
-            identity: ClientIdentity(deviceID: "test"), transport: server)
+        let client = JellyfinClient.testing(server)
         return ChannelPlayer(schedule: schedule, streams: client, quality: .auto)
     }
 
     private func settle(_ server: Server) async throws {
-        for _ in 0..<100 where server.playbackInfos.isEmpty { try await Task.sleep(for: .milliseconds(10)) }
+        try await waitUntil(1) { !server.playbackInfos.isEmpty }
         try await Task.sleep(for: .milliseconds(300))
     }
 

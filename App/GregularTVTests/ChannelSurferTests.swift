@@ -16,18 +16,13 @@ struct ChannelSurferTests {
         }
     }
 
-    private let preferences = AppPreferences(defaults: UserDefaults(suiteName: "ChannelSurferTests-\(UUID())")!)
+    private let preferences = AppPreferences.testing()
 
     /// Channels 1, 2, 5 and 10 (note the gaps), each with a few movies.
     private func makeSurfer() throws -> ChannelSurfer {
-        let json = [1, 2, 5, 10].map {
-            #"{ "number": \#($0), "name": "C\#($0)", "source": { "type": "all" }, "strategy": "random-shuffle", "seed": \#($0) }"#
-        }.joined(separator: ",")
         let items = (1...3).map { MediaItem(id: "m\($0)", kind: .movie, name: "M\($0)", duration: 3600) }
-        let channels = try ChannelLineup.load(from: Data("[\(json)]".utf8)).schedules(for: items)
-        let client = JellyfinClient(
-            credentials: Credentials(serverURL: URL(string: "https://tv.invalid")!, userID: "u", accessToken: "t"),
-            identity: ClientIdentity(deviceID: "test"), transport: OfflineTransport())
+        let channels = try ChannelSchedule.testing([1, 2, 5, 10], strategy: "random-shuffle", items: items)
+        let client = JellyfinClient.testing(OfflineTransport())
         return ChannelSurfer(channels: channels, startingWith: channels[0], streams: client, preferences: preferences)
     }
 
@@ -103,18 +98,15 @@ struct ChannelPlayerAuthTests {
     }
 
     @Test func revokedTokenCallsOnUnauthorizedInsteadOfRetrying() async throws {
-        let json = #"[{ "number": 1, "name": "C", "source": { "type": "all" }, "strategy": "random-shuffle", "seed": 1 }]"#
         let items = [MediaItem(id: "m", kind: .movie, name: "M", duration: 3600)]
-        let schedule = try #require(try ChannelLineup.load(from: Data(json.utf8)).schedules(for: items).first)
-        let client = JellyfinClient(
-            credentials: Credentials(serverURL: URL(string: "https://tv.invalid")!, userID: "u", accessToken: "t"),
-            identity: ClientIdentity(deviceID: "test"), transport: RevokedTransport())
+        let schedule = try #require(try ChannelSchedule.testing(strategy: "random-shuffle", items: items).first)
+        let client = JellyfinClient.testing(RevokedTransport())
         let player = ChannelPlayer(schedule: schedule, streams: client, quality: .maximum)
 
         var called = false
         player.onUnauthorized = { called = true }
         player.tune()
-        for _ in 0..<50 where !called { try await Task.sleep(for: .milliseconds(20)) }
+        try await waitUntil(1) { called }
 
         #expect(called)
         #expect(player.status == .tuning, "Stopped, not scheduled for retry")

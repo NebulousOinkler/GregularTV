@@ -82,7 +82,7 @@ private struct ChannelRow: View {
                 case .programme(let airing):
                     Text(airing.item.displayTitle).font(.body).lineLimit(1)
                     RowProgressBar(fraction: fraction(from: airing.start, to: airing.end))
-                    Text("until \(airing.end.formatted(date: .omitted, time: .shortened))")
+                    Text("until \(airing.end.clockTime)")
                         .font(.caption).foregroundStyle(.secondary)
                 case .inBreak(let ended, let next):
                     // The programme is over: say what's next, not what ended.
@@ -90,7 +90,7 @@ private struct ChannelRow: View {
                     RowProgressBar(fraction: fraction(from: ended.end, to: next.start)).opacity(0.45)
                     HStack(spacing: 6) {
                         BreakStyle.label
-                        Text("· starts \(next.start.formatted(date: .omitted, time: .shortened))")
+                        Text("· starts \(next.start.clockTime)")
                     }
                     .font(.caption).foregroundStyle(.secondary)
                 }
@@ -101,8 +101,7 @@ private struct ChannelRow: View {
     }
 
     private func fraction(from start: Date, to end: Date) -> Double {
-        guard end > start else { return 1 }
-        return min(1, max(0, date.timeIntervalSince(start) / end.timeIntervalSince(start)))
+        DateInterval(start: start, end: max(start, end)).progress(at: date)
     }
 }
 
