@@ -23,16 +23,17 @@ import Foundation
 /// the next run's starting point is estimated, so one programme may repeat
 /// or be skipped there.
 ///
-/// Each programme gets a *slot*. With `padTo`, a slot is rounded up to the
-/// next boundary and the gap is part of it (a break):
-/// - **After an episode, always.** Episodes keep the channel on its half-hour
-///   lines, with commercials after every one.
-/// - **After anything else (a film), only when the gap is `longestBreak`
-///   (10 minutes) or shorter.** A longer gap isn't filled: the next programme
-///   starts straight away, off the boundary, and the gap after *it* is looked
-///   at the same way. So a film that runs a little past the hour is followed
-///   by the next programme, not by half an hour of commercials, and an
-///   episode after it brings the channel back to the half hour.
+/// Each programme gets a *slot*. With `padTo` (every bundled channel uses
+/// 30), a slot is rounded up to the next boundary, so every programme starts
+/// on the half hour, and the time left over is commercials:
+/// - **After an episode:** all of it, after the episode.
+/// - **In a film:** a film's leftover can be up to half an hour. Up to 10
+///   minutes goes after it; more is shared out evenly between breaks after
+///   the film and one or two *mid-roll* breaks inside it (at a third and two
+///   thirds, or halfway), each at most `longestMidRoll` (10 minutes). The
+///   film airs as parts, each resuming where the last stopped (`mediaOffset`).
+///   With commercials off, the breaks are the same, only blank, so the
+///   schedule is identical either way.
 /// The last slot in a run also takes the run's leftover time.
 public struct ChannelSchedule: Sendable {
     /// Runs are at least this long.
@@ -119,30 +120,59 @@ public struct ChannelSchedule: Sendable {
         return Tuning(airing: airing, offset: date.timeIntervalSince(airing.start))
     }
 
-    /// The programme whose slot contains `date`, even during its filler.
-    /// Use this for "what's on" displays such as the guide and channel list.
+    /// The programme whose slot contains `date`, even during its filler,
+    /// as a whole: a film split by mid-roll breaks is one airing from its
+    /// first part's start to its last part's end, and `slotEnd` is when the
+    /// next programme starts. Use this for "what's on" displays such as the
+    /// guide and channel list.
     public func programme(at date: Date) -> Airing {
-        slot(containing: date)[0]
+        Self.wholeProgramme(in: slot(containing: date))
+    }
+
+    /// Every programme (whole, as `programme(at:)` gives them) whose slot
+    /// overlaps `start..<end`, in order. For guide listings.
+    public func programmes(from start: Date, to end: Date) -> [Airing] {
+        guard start < end else { return [] }
+        var walker = SlotWalker(self, startingAt: runIndex(containing: start))
+        var result: [Airing] = []
+        while true {
+            let slot = walker.nextSlot()
+            guard slot[0].start < end else { break }
+            let programme = Self.wholeProgramme(in: slot)
+            if programme.slotEnd > start { result.append(programme) }
+        }
+        return result
+    }
+
+    /// A slot's programme as one airing, however many parts it's in.
+    private static func wholeProgramme(in slot: [Airing]) -> Airing {
+        let parts = slot.filter { !$0.isFiller }
+        let first = parts[0]
+        return Airing(item: first.item, start: first.start, end: parts[parts.count - 1].end,
+                      slotEnd: slot[slot.count - 1].slotEnd, isFiller: false)
     }
 
     /// What's on screen at `date`: a programme, or a break after one (its
     /// commercials, or blank airtime) until the next. Use this wherever a
     /// channel is shown, so every view tells the two apart the same way.
     public func nowShowing(at date: Date) -> Onscreen {
-        let airings = slot(containing: date)
-        let programme = airings[0]
-        guard date >= programme.end, let slotEnd = airings.last?.slotEnd else { return .programme(programme) }
-        return .inBreak(ended: programme, next: slot(containing: slotEnd)[0])
+        let programme = programme(at: date)
+        guard date >= programme.end else { return .programme(programme) }
+        return .inBreak(ended: programme, next: self.programme(at: programme.slotEnd))
     }
 
     /// The whole commercial break playing at `date`, from its first clip to
-    /// the next programme, or nil when no filler clip is playing. Each clip's
-    /// own `slotEnd` is only the next clip's start, so use this for "Back at".
+    /// the programme (or the film's next part) after it, or nil when no
+    /// filler clip is playing. Each clip's own `slotEnd` is only the next
+    /// clip's start, so use this for "Back at".
     public func commercialBreak(at date: Date) -> DateInterval? {
         let airings = slot(containing: date)
-        guard let now = airings.last(where: { $0.start <= date }), now.isFiller,
-              let first = airings.first(where: \.isFiller), let last = airings.last else { return nil }
-        return DateInterval(start: first.start, end: last.slotEnd)
+        guard let now = airings.lastIndex(where: { $0.start <= date }), airings[now].isFiller else { return nil }
+        var first = now
+        while first > 0, airings[first - 1].isFiller { first -= 1 }
+        var last = now
+        while last + 1 < airings.count, airings[last + 1].isFiller { last += 1 }
+        return DateInterval(start: airings[first].start, end: airings[last].slotEnd)
     }
 
     /// Every airing that overlaps `start..<end`, in order. The first one may
@@ -290,22 +320,30 @@ public struct ChannelSchedule: Sendable {
     /// screen stays blank, with the "Up next" card, until the next programme.
     static let shortestBreak: Int64 = 60_000
 
-    /// With `padTo`, the longest gap (milliseconds) a film's slot is rounded up
-    /// by. A film that would leave more is followed straight away by the next
-    /// programme. (An episode's slot is always rounded up.)
-    public static let longestBreak: Int64 = 10 * 60_000
+    /// The longest a mid-roll break inside a film can be (milliseconds). A
+    /// film's leftover up to this long all goes after it; more is shared with
+    /// one mid-roll (up to twice this) or two.
+    public static let longestMidRoll: Int64 = 10 * 60_000
+    /// The most mid-roll breaks in one film.
+    public static let maxMidRolls = 2
+    /// The least of a film that plays between two breaks (milliseconds), so
+    /// mid-rolls are never close together. A short film gets fewer mid-rolls,
+    /// or none, and the rest of its leftover goes after it.
+    public static let shortestPart: Int64 = 15 * 60_000
 
     /// The end of every break is blank for this long (milliseconds), with the
     /// "Up next" card, before the next programme: no commercial plays into it.
     public static let upNextLead: Int64 = 15_000
 
-    /// The programme, then any filler clips, in one slot. Each airing's
+    /// The programme, then any filler clips, in one slot; a film with
+    /// mid-roll breaks is its parts with clips between. Each airing's
     /// `slotEnd` is the next one's start; the last one owns any leftover gap.
     ///
-    /// Commercials are dealt from the run's stream (see `GapFiller`):
+    /// Commercials are dealt from the run's stream (see `GapFiller`), break
+    /// after break, the same way in a mid-roll as after the programme:
     /// - A gap of a minute or less gets none (`shortestBreak`).
-    /// - The last 15 seconds before the next programme get none either
-    ///   (`upNextLead`): they're blank, with the "Up next" card.
+    /// - The last 15 seconds before the programme (or the film's next part)
+    ///   get none either (`upNextLead`): they're blank, with the "Up next" card.
     /// - Clips play back to back. When one ends, the next only starts if at
     ///   least half of it will play before those last 15 seconds. Otherwise it
     ///   waits to open the next break, and the rest of this gap is blank.
@@ -313,24 +351,26 @@ public struct ChannelSchedule: Sendable {
     ///   (`end` is the cut).
     private func airingsInSlot(_ item: MediaItem, slotStart: Int64, slotEnd: Int64,
                                    commercials: inout CommercialQueue) -> [Airing] {
-        let programmeEnd = slotStart + Self.milliseconds(of: item.duration)
-        var pieces: [(item: MediaItem, start: Int64, end: Int64, isFiller: Bool)] = [(item, slotStart, programmeEnd, false)]
+        let length = Self.milliseconds(of: item.duration)
+        let gap = slotEnd - slotStart - length
+        let midRolls = midRollCount(for: item, length: length, gap: gap)
+        let midRollLength = min(Self.longestMidRoll, gap / Int64(midRolls + 1))
+        let partLength = length / Int64(midRolls + 1)
 
-        if slotEnd - programmeEnd > Self.shortestBreak {
-            let commercialsEnd = slotEnd - Self.upNextLead
-            var t = programmeEnd
-            while t < commercialsEnd, let clip = commercials.peek() {
-                let length = Self.milliseconds(of: clip.duration)
-                // At least half of it must play, or it doesn't start.
-                guard (commercialsEnd - t) * 2 >= length else { break }
-                commercials.take()
-                // Up next is on time: a clip still playing is cut off.
-                let clipEnd = min(t + length, commercialsEnd)
-                pieces.append((clip, t, clipEnd, true))
-                t = clipEnd
-            }
+        var pieces: [Piece] = []
+        var t = slotStart
+        for part in 0...midRolls {
+            let isLast = part == midRolls
+            let thisPart = isLast ? length - partLength * Int64(midRolls) : partLength
+            pieces.append(Piece(item: item, start: t, end: t + thisPart, isFiller: false,
+                                offset: partLength * Int64(part)))
+            t += thisPart
+            let breakEnd = isLast ? slotEnd : t + midRollLength
+            pieces += clips(from: t, to: breakEnd, commercials: &commercials)
+            t = breakEnd
         }
 
+        let programmeStart = date(atMilliseconds: slotStart)
         return pieces.indices.map { i in
             let piece = pieces[i]
             let next = i + 1 < pieces.count ? pieces[i + 1].start : slotEnd
@@ -338,8 +378,49 @@ public struct ChannelSchedule: Sendable {
                           start: date(atMilliseconds: piece.start),
                           end: date(atMilliseconds: piece.end),
                           slotEnd: date(atMilliseconds: next),
-                          isFiller: piece.isFiller)
+                          isFiller: piece.isFiller,
+                          mediaOffset: TimeInterval(piece.offset) / 1000,
+                          programmeStart: piece.isFiller ? nil : programmeStart)
         }
+    }
+
+    private struct Piece {
+        let item: MediaItem
+        let start: Int64
+        let end: Int64
+        let isFiller: Bool
+        var offset: Int64 = 0
+    }
+
+    /// How many mid-roll breaks a programme gets, for a leftover `gap`:
+    /// none for an episode; for a film, none up to 10 minutes, one up to 20,
+    /// else two, but only as many as leave every part at least
+    /// `shortestPart` long. The same with commercials on or off (off, they're
+    /// blank), so the schedule doesn't change with the setting.
+    private func midRollCount(for item: MediaItem, length: Int64, gap: Int64) -> Int {
+        guard channel.padToMinutes != nil, item.kind != .episode, gap > Self.longestMidRoll else { return 0 }
+        let wanted = Int((gap - 1) / Self.longestMidRoll)
+        let roomFor = Int(length / Self.shortestPart) - 1
+        return max(0, min(Self.maxMidRolls, wanted, roomFor))
+    }
+
+    /// The clips for one break, from `start` to the programme at `end`.
+    private func clips(from start: Int64, to end: Int64, commercials: inout CommercialQueue) -> [Piece] {
+        guard end - start > Self.shortestBreak else { return [] }
+        let commercialsEnd = end - Self.upNextLead
+        var result: [Piece] = []
+        var t = start
+        while t < commercialsEnd, let clip = commercials.peek() {
+            let length = Self.milliseconds(of: clip.duration)
+            // At least half of it must play, or it doesn't start.
+            guard (commercialsEnd - t) * 2 >= length else { break }
+            commercials.take()
+            // Up next is on time: a clip still playing is cut off.
+            let clipEnd = min(t + length, commercialsEnd)
+            result.append(Piece(item: clip, start: t, end: clipEnd, isFiller: true))
+            t = clipEnd
+        }
+        return result
     }
 
     // MARK: - Time
@@ -357,15 +438,13 @@ public struct ChannelSchedule: Sendable {
     }
 
     /// Where a slot ends, for `item` starting at `start` (milliseconds since
-    /// the epoch): at the next `padTo` boundary after an episode, or after
-    /// anything else if that leaves `longestBreak` or less; otherwise as soon
+    /// the epoch): at the next `padTo` boundary, or with no `padTo`, as soon
     /// as it ends.
     static func slotEnd(of item: MediaItem, startingAt start: Int64, padToMinutes: Int?) -> Int64 {
         let end = start + milliseconds(of: item.duration)
         guard let pad = padToMinutes, pad > 0 else { return end }
         let unit = Int64(pad) * 60_000
-        let boundary = -floorDivide(-end, unit) * unit   // rounded up, before the epoch too
-        return item.kind == .episode || boundary - end <= longestBreak ? boundary : end
+        return -floorDivide(-end, unit) * unit   // rounded up, before the epoch too
     }
 
     /// The longest a slot can be: the programme rounded up to a whole `padTo`.
