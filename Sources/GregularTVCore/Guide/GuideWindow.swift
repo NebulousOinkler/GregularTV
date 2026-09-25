@@ -37,27 +37,14 @@ public struct GuideWindow: Sendable, Equatable {
     }
 
     /// The channel's programmes in this window, back to back and clipped to
-    /// its edges. Commercial breaks and padding count as part of the
-    /// programme before them, so the guide lists programmes only.
+    /// its edges. Commercial breaks (mid-roll and after) and padding count as
+    /// part of their programme, so the guide lists programmes only.
     public func cells(for schedule: ChannelSchedule) -> [GuideCell] {
-        var spans: [(programme: Airing, end: Date)] = []
-        for airing in schedule.airings(from: start, to: end) {
-            if airing.isFiller {
-                if spans.isEmpty {
-                    // The window opens mid-break; the programme began earlier.
-                    spans.append((schedule.programme(at: airing.start), airing.slotEnd))
-                } else {
-                    spans[spans.count - 1].end = airing.slotEnd
-                }
-            } else {
-                spans.append((airing, airing.slotEnd))
-            }
-        }
-        return spans.map { span in
-            GuideCell(programme: span.programme,
-                      slotEnd: span.end,
-                      visibleStart: max(span.programme.start, start),
-                      visibleEnd: min(span.end, end))
+        schedule.programmes(from: start, to: end).map { programme in
+            GuideCell(programme: programme,
+                      slotEnd: programme.slotEnd,
+                      visibleStart: max(programme.start, start),
+                      visibleEnd: min(programme.slotEnd, end))
         }
     }
 }

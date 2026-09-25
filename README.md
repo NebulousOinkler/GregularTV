@@ -47,14 +47,17 @@ Every channel's running order comes from one 10-character **schedule code** (lik
 
 ## Commercials
 
-A programme that ends within 10 minutes of the next half hour is followed by a break up to it, filled with clips from a Jellyfin library named `Commercials` (the name is set in `channels.json`). One that would leave a longer gap (a film that runs just past the hour) is followed straight away by the next programme, and the gap after that one is looked at the same way, until a break of 10 minutes or less lines the channel back up with the half hour. So there's never half an hour of commercials.
+Every programme starts on the half hour. The time from its end to the next half hour is commercials, from a Jellyfin library named `Commercials` (the name is set in `channels.json`):
+- **After a TV episode:** all of it, after the episode.
+- **In a film:** a film's leftover can be up to half an hour. Up to 10 minutes goes after the film. More is shared out evenly between the break after it and one or two **mid-roll** breaks inside it (halfway, or at a third and two thirds), each 10 minutes at most: one mid-roll for up to 20 minutes, two beyond that. At least 15 minutes of film plays between breaks, so a short film gets fewer mid-rolls (none under 30 minutes) and the rest goes after it. The film stops at the break and carries on from the same point after it.
 - Clips play in the order of the channel's derangement, with the same `a` and `b` as its shows, carrying on from break to break.
+- **At most 20 minutes of commercials in one break.** A longer break (after an episode that ends well before the half hour, a short film, or at the end of a day) is blank after that, with the "Up next" card, and the programme still starts on time.
 - A gap of a minute or less gets no commercials. When a clip ends, the next only starts if at least half of it will play before the last 15 seconds; otherwise the rest of the break is blank. A clip still playing then is cut off.
 - The last 15 seconds of every break are the "Up next" card: the last commercial fades out quickly into it, then the card fades to black and the programme fades in.
 - Clips are never re-encoded: one Jellyfin would have to re-encode (for example, a video codec the Apple TV can't play) is skipped, and its time is blank. There's no bitrate cap for commercials, so the quality setting never stops one playing. **MP4, H.264/AAC** plays everywhere; keep the bitrate modest if you watch over a slow remote connection.
-- The screen is blank during any unfilled time, with an "Up next" card showing when the next programme starts.
+- The screen is blank during any unfilled time, with an "Up next" card showing when the next programme starts, or during a film's mid-roll, a "Now playing" card saying when it's back.
 - It's always clear when the programme is over: while commercials play, a small **Commercial break · Back at 9:30 PM** badge sits in the top corner (the banner comes and goes as usual). The channel list shows **Up next: …** with **Commercial break · starts 9:30 PM**, and the guide draws each programme's break as a darker tail on its block.
-- **Settings › Commercials › Play commercials** turns them off: every break is blank. Programme times don't change, so you stay in step with everyone on the same schedule code.
+- **Settings › Commercials › Play commercials** turns them off: every break, mid-rolls included, is blank. Programme times don't change, so you stay in step with everyone on the same schedule code.
 
 ## Remote controls
 
@@ -104,7 +107,7 @@ xcrun simctl launch booted dev.gregulartv.GregularTV -handoffTest
 | Add a way to choose channel content | New type in `Sources/GregularTVCore/Channels/Sources/`, then add it to `ChannelSourceRegistry.all` |
 | Change the order commercials play in | New `GapFiller` in `Sources/GregularTVCore/Scheduling/GapFiller.swift`, then add it to `GapFillerRegistry.all` and set `"filler"` in `channels.json` (see PLAN.md §9a) |
 | Change what the remote's buttons do | The tables at the top of `App/GregularTV/Remote/RemoteControls.swift` (one per screen) |
-| Change how long breaks may be, or the Up next lead | `ChannelSchedule.longestBreak` and `upNextLead` in `Sources/GregularTVCore/Scheduling/ScheduleEngine.swift` |
+| Change how long a mid-roll may be, how many a film gets, or the Up next lead | `ChannelSchedule.longestMidRoll`, `maxMidRolls` and `upNextLead` in `Sources/GregularTVCore/Scheduling/ScheduleEngine.swift` |
 | Restyle the icon or Top Shelf image | `scripts/make-artwork.swift`, then run `swift scripts/make-artwork.swift` |
 | Take App Store screenshots | Demo mode (Debug builds only): run `swift scripts/make-demo-video.swift` once, then `python3 scripts/demo-server.py`, and launch the app in a simulator with `-demoServer http://localhost:8765`. It plays public-domain films and made-up shows, with nothing saved to the Keychain. See `App/GregularTV/DemoMode.swift`. |
 
