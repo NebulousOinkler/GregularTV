@@ -7,9 +7,7 @@ struct RandomShuffle: ScheduleStrategy {
 
     func programmes(from content: ChannelContent, startingAt position: Int, rng: SeededRandom) -> AnyIterator<MediaItem> {
         let count = content.items.count
-        var position = position
-        return AnyIterator {
-            defer { position += 1 }
+        return programmes(startingAt: position) { position in
             // A different shuffle for each pass through the items, read at one position.
             let pass = ChannelContent.pass(position, count)
             let order = LazyPermutation(count: count, seed: content.seed &+ UInt64(bitPattern: Int64(pass)))

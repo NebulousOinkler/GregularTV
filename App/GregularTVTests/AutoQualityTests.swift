@@ -34,17 +34,14 @@ struct AutoQualityTests {
     }
 
     private func makePlayer(quality: StreamingQuality, server: RecordingServer) throws -> ChannelPlayer {
-        let json = #"[{ "number": 1, "name": "C", "source": { "type": "all" }, "strategy": "derangement", "seed": 1 }]"#
         let items = [MediaItem(id: "m", kind: .movie, name: "M", duration: 3600)]
-        let schedule = try #require(try ChannelLineup.load(from: Data(json.utf8)).schedules(for: items).first)
-        let client = JellyfinClient(
-            credentials: Credentials(serverURL: URL(string: "https://tv.invalid")!, userID: "u", accessToken: "t"),
-            identity: ClientIdentity(deviceID: "test"), transport: server)
+        let schedule = try #require(try ChannelSchedule.testing(items: items).first)
+        let client = JellyfinClient.testing(server)
         return ChannelPlayer(schedule: schedule, streams: client, quality: quality)
     }
 
     private func waitForPlaybackInfo(_ server: RecordingServer) async throws {
-        for _ in 0..<100 where server.playbackInfos.isEmpty { try await Task.sleep(for: .milliseconds(10)) }
+        try await waitUntil(1) { !server.playbackInfos.isEmpty }
     }
 
     @Test func fixedQualityNeverRunsASpeedTest() async throws {

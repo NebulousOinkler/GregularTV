@@ -33,7 +33,7 @@ public struct GuideWindow: Sendable, Equatable {
 
     /// Where `date` falls across the window, from 0 (start) to 1 (end), clamped.
     public func fraction(of date: Date) -> Double {
-        min(1, max(0, date.timeIntervalSince(start) / duration))
+        DateInterval(start: start, end: end).progress(at: date)
     }
 
     /// The channel's programmes in this window, back to back and clipped to

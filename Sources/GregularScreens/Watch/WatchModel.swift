@@ -226,14 +226,14 @@ public final class WatchModel {
         let span = (airing.isFiller && surfer.preview == nil ? breakSpan : nil)
             ?? DateInterval(start: airing.start, end: airing.isFiller ? airing.slotEnd : airing.end)
         let subtitle: String? = if airing.isFiller {
-            afterBreak.map { "Back at \(Self.time(span.end)) with \($0.displayTitle)" } ?? "Back at \(Self.time(span.end))"
+            afterBreak.map { "Back at \(span.end.clockTime) with \($0.displayTitle)" } ?? "Back at \(span.end.clockTime)"
         } else {
             airing.item.displaySubtitle
         }
         let programme = BannerContent.Programme(
             title: airing.isFiller ? BreakText.title : airing.item.displayTitle,
             subtitle: subtitle,
-            progress: Self.progress(of: span, at: date),
+            progress: span.progress(at: date),
             started: Self.startedText(span, at: date),
             time: timeText(span, at: date),
             status: statusNote(at: date))
@@ -255,7 +255,7 @@ public final class WatchModel {
 
     /// "5:00 PM · 17 min in".
     private static func startedText(_ span: DateInterval, at date: Date) -> String {
-        let start = time(span.start)
+        let start = span.start.clockTime
         let elapsed = min(date, span.end).timeIntervalSince(span.start)
         guard elapsed >= 60 else { return start }
         return "\(start) · \(duration(elapsed)) in"
@@ -266,14 +266,9 @@ public final class WatchModel {
         let remaining = span.end.timeIntervalSince(date)
         guard remaining > 0 else { return "Ended" }
         switch timeDisplay {
-        case .endTime: return "Ends \(Self.time(span.end))"
+        case .endTime: return "Ends \(span.end.clockTime)"
         case .remaining: return remaining < 60 ? "Less than a minute left" : "\(Self.duration(remaining)) left"
         }
-    }
-
-    private static func progress(of span: DateInterval, at date: Date) -> Double {
-        guard span.duration > 0 else { return 1 }
-        return min(1, max(0, date.timeIntervalSince(span.start) / span.duration))
     }
 
     /// The note in the middle of the banner, if there's something to say.
@@ -291,7 +286,7 @@ public final class WatchModel {
         case .betweenProgrammes(let until) where player.schedule.commercialBreak(at: until) == nil:
             // (Inside a break, "Back at" already says when the programme starts.)
             let resumes = player.schedule.tune(at: until).airing.mediaOffset > 0
-            return "\(resumes ? "Back at" : "Next programme at") \(Self.time(until))"
+            return "\(resumes ? "Back at" : "Next programme at") \(until.clockTime)"
         case .paused(let since):
             let ahead = Duration.seconds(date.timeIntervalSince(since)).formatted(.time(pattern: .minuteSecond))
             return "PAUSED · live is \(ahead) ahead · ▶︎ to jump to live"
@@ -309,7 +304,7 @@ public final class WatchModel {
 
     /// "Back at 9:30 PM", for the badge next to "Commercial break".
     public var breakBadgeBackAt: String? {
-        player.airing.flatMap { player.schedule.commercialBreak(at: $0.start)?.end }.map { "Back at \(Self.time($0))" }
+        player.airing.flatMap { player.schedule.commercialBreak(at: $0.start)?.end }.map { "Back at \($0.clockTime)" }
     }
 
     /// Blank between programmes (a gap with nothing to play), and while a
@@ -341,7 +336,7 @@ public final class WatchModel {
             let resumes = (next?.mediaOffset ?? 0) > 0
             return .upNext(heading: resumes ? "Now playing" : "Up next",
                            title: next?.item.displayTitle,
-                           when: "\(resumes ? "Back at" : "Starts at") \(Self.time(start))")
+                           when: "\(resumes ? "Back at" : "Starts at") \(start.clockTime)")
         case .failed(let message, let retryAt):
             return .failed(message: message, retryAt: retryAt)
         default:
@@ -419,10 +414,6 @@ public final class WatchModel {
     }
 
     // MARK: - Formatting
-
-    static func time(_ date: Date) -> String {
-        date.formatted(date: .omitted, time: .shortened)
-    }
 
     /// "42 min" or "1 hr, 5 min".
     static func duration(_ seconds: TimeInterval) -> String {
