@@ -14,9 +14,33 @@ public struct Airing: Sendable, Hashable {
     public let slotEnd: Date
     /// True for gap content such as commercials (see `GapFiller`), false for programmes.
     public let isFiller: Bool
+    /// Where in the item this airing starts playing: 0, or for a later part
+    /// of a film split by mid-roll commercials, how far into the film it resumes.
+    public let mediaOffset: TimeInterval
+    /// When the whole programme started: its first part's start, the same
+    /// for every part of a split film. (Its own start for anything else.)
+    public let programmeStart: Date
 
-    /// How long it plays for. Shorter than the item for a commercial that's cut off.
+    public init(item: MediaItem, start: Date, end: Date, slotEnd: Date, isFiller: Bool,
+                mediaOffset: TimeInterval = 0, programmeStart: Date? = nil) {
+        self.item = item
+        self.start = start
+        self.end = end
+        self.slotEnd = slotEnd
+        self.isFiller = isFiller
+        self.mediaOffset = mediaOffset
+        self.programmeStart = programmeStart ?? start
+    }
+
+    /// How long it plays for. Shorter than the item for a commercial that's cut off,
+    /// or for one part of a split film.
     public var length: TimeInterval { end.timeIntervalSince(start) }
+
+    /// Both are parts of the same showing of a programme (a film split by
+    /// mid-roll commercials), or the same airing.
+    public func isSameProgramme(as other: Airing) -> Bool {
+        item.id == other.item.id && programmeStart == other.programmeStart
+    }
 }
 
 /// What a channel is showing at a particular moment.

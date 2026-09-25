@@ -383,9 +383,12 @@ private struct ChannelBanner: View {
         // banner covers the whole break, since each clip is only a minute or so.
         let breakSpan = player.airing.flatMap { $0.isFiller ? surfer.displayedChannel.commercialBreak(at: $0.start) : nil }
         let afterBreak = breakSpan.map { surfer.displayedChannel.programme(at: $0.end).item }
+        // A programme is shown whole: for a film split by mid-roll breaks,
+        // from its start to its end, not just the part playing.
+        let playing = player.airing.map { $0.isFiller ? $0 : surfer.displayedChannel.programme(at: $0.start) }
         TimelineView(.periodic(from: .now, by: 1)) { context in
             let schedule = surfer.displayedChannel
-            let airing = surfer.preview.map { $0.programme(at: context.date) } ?? player.airing
+            let airing = surfer.preview.map { $0.programme(at: context.date) } ?? playing
             HStack(alignment: .top, spacing: 32) {
                 VStack(alignment: .leading) {
                     Text(schedule.channel.number, format: .number)
@@ -487,7 +490,8 @@ private struct ChannelBanner: View {
                 Text("Getting this ready…")   // waiting a little longer for a cushion
             case .betweenProgrammes(let until) where player.schedule.commercialBreak(at: until) == nil:
                 // (Inside a break, "Back at" already says when the programme starts.)
-                Text("Next programme at \(until.formatted(date: .omitted, time: .shortened))")
+                let resumes = player.schedule.tune(at: until).airing.mediaOffset > 0
+                Text("\(resumes ? "Back at" : "Next programme at") \(until.formatted(date: .omitted, time: .shortened))")
             case .paused(let since):
                 Text("PAUSED · live is \(Duration.seconds(date.timeIntervalSince(since)).formatted(.time(pattern: .minuteSecond))) ahead · ▶︎ to jump to live")
             default:
@@ -558,11 +562,14 @@ private struct StatusCard: View {
             case .betweenProgrammes(let until):
                 // Inside a break (a skipped commercial), the next programme is after the break.
                 let start = player.schedule.commercialBreak(at: until)?.end ?? until
-                Text("Up next").font(.title3).foregroundStyle(.secondary)
-                if let next = player.schedule.airings(from: start, to: start.addingTimeInterval(1)).first {
+                let next = player.schedule.airings(from: start, to: start.addingTimeInterval(1)).first
+                // A mid-roll break in a film: it's still on, and carries on after.
+                let resumes = (next?.mediaOffset ?? 0) > 0
+                Text(resumes ? "Now playing" : "Up next").font(.title3).foregroundStyle(.secondary)
+                if let next {
                     Text(next.item.displayTitle).font(.largeTitle).bold()
                 }
-                Text("Starts at \(start.formatted(date: .omitted, time: .shortened))")
+                Text("\(resumes ? "Back at" : "Starts at") \(start.formatted(date: .omitted, time: .shortened))")
             case .failed(let message, let retryAt):
                 Image(systemName: "exclamationmark.triangle").font(.system(size: 80))
                 Text(message).font(.title3).multilineTextAlignment(.center)

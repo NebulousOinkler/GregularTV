@@ -51,8 +51,10 @@ struct CommercialsTests {
             .schedules(for: Fixtures.series("Fifty", seasons: 1, episodes: 6, minutes: 50), fillerPool: ads).first)
         let day = schedule.airings(from: Channel.defaultEpoch, to: Channel.defaultEpoch.addingTimeInterval(24 * 3600 - 1))
         let breakTime = day.filter(\.isFiller).reduce(0) { $0 + $1.length }
-        // Up to the next day's first episode, less any tail too short to get halfway through a clip (ads are at most 105 s).
-        #expect(breakTime <= 40 * 60 && breakTime > 40 * 60 - 53)
+        // 20 minutes of the 40, the most in one break (`longestCommercialRun`), less
+        // any tail too short to get halfway through a clip (ads are at most 105 s).
+        // The rest is blank, with the Up next card.
+        #expect(breakTime <= 20 * 60 && breakTime > 20 * 60 - 53)
     }
 
     @Test func aBreakRunsFromItsFirstClipToTheNextProgramme() throws {
