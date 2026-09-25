@@ -9,11 +9,11 @@ import SwiftUI
 /// - **Click left / right** (the edge of the pad): channel down / up (the
 ///   banner previews each channel as you go).
 /// - **Slide left:** channel list (slide right closes it).
-/// - **Slide up:** the info banner, fading in slowly. **Slide down:** hide it at once.
-/// - **Light touch, or click (Select):** show the info banner. Again while
-///   it's showing: switch between the end time and the time left.
-/// - **Menu (or Back ‹):** the programme guide. In the guide, Menu first
-///   moves up to its Settings button, then goes back to the programme.
+/// - **Light touch** (a click touches the pad too): show the info banner.
+///   Again while it's showing: switch between the end time and the time left.
+/// - **Menu (or Back ‹):** hide the banner if it's up; otherwise the
+///   programme guide. In the guide, Menu first moves up to its Settings
+///   button, then goes back to the programme.
 /// - **Click and hold:** Settings (quality, schedule code, diagnostics, sign out).
 /// - **Play/Pause:** pause, then press again to jump back to live.
 /// - **Digits** (keyboard only; the Siri Remote has none): type a channel number.
@@ -45,14 +45,6 @@ struct WatchView: View {
     @State private var bannerVisible = true
     /// Goes up each time the viewer asks for the banner, to restart its timer.
     @State private var bannerRequests = 0
-    /// How the banner comes up next time: normally, or slowly (sliding up).
-    @State private var bannerFadeIn: Animation = .default
-    static let slowBannerFadeIn: Animation = .easeInOut(duration: 1.5)
-    /// The last press that showed the banner. One press can be reported
-    /// twice (for example a click in the centre and the touch that came
-    /// with it); only the first counts.
-    @State private var lastInfoPress = Date.distantPast
-    static let infoPressGap: TimeInterval = 0.5
     /// End time or time left, switched by showing the banner again while it's up. Kept while the app runs.
     @State private var timeDisplay: BannerTimeDisplay = .endTime
     @State private var showingSettings = false
@@ -207,8 +199,7 @@ struct WatchView: View {
         // re-tune. Not for each clip in a commercial break.
         .task(id: BannerTrigger(airing: player.airing?.isFiller == true ? nil : player.airing,
                                 tuneCount: player.tuneCount, requests: bannerRequests)) {
-            withAnimation(bannerFadeIn) { bannerVisible = true }
-            bannerFadeIn = .default
+            withAnimation { bannerVisible = true }
             try? await Task.sleep(for: .seconds(6))
             withAnimation { bannerVisible = false }
         }
@@ -245,16 +236,10 @@ struct WatchView: View {
         case .channelUp: surfer.channelUp()
         case .channelDown: surfer.channelDown()
         case .showInfo: showInfo()
-        case .showInfoSlowly:
-            guard !bannerIsShowing else { return bannerRequests += 1 }   // already up: just keep it there
-            bannerFadeIn = Self.slowBannerFadeIn
-            bannerRequests += 1
         case .hideInfo:
-            // At once, no animation. (While paused, buffering or between
-            // programmes the banner stays: it's saying something.)
-            var instantly = Transaction()
-            instantly.disablesAnimations = true
-            withTransaction(instantly) { bannerVisible = false }
+            hideInfo()
+        case .hideInfoOrOpenGuide:
+            if bannerCanBeHidden { hideInfo() } else { show(.guide) }
         case .pauseOrJumpToLive: player.togglePause()
         case .openChannelList: show(.channelList)
         case .openGuide: show(.guide)
@@ -338,13 +323,22 @@ struct WatchView: View {
     }
 
     /// Show the banner, or if it's already showing, switch between end time
-    /// and time left (and keep it up). One press, one switch: a second
-    /// report of the same press within half a second is ignored.
+    /// and time left (and keep it up).
     private func showInfo() {
-        guard Date.now.timeIntervalSince(lastInfoPress) > Self.infoPressGap else { return }
-        lastInfoPress = .now
         if bannerIsShowing { timeDisplay.toggle() }
         bannerRequests += 1
+    }
+
+    /// The banner is up only because it was asked for (or a programme just
+    /// started), so hiding it would make it go. While paused, buffering,
+    /// surfing or between programmes it stays: it's saying something.
+    private var bannerCanBeHidden: Bool {
+        bannerVisible && surfer.preview == nil && player.status == .playing && !player.isBuffering
+    }
+
+    /// Puts the banner away now, before its timer would.
+    private func hideInfo() {
+        withAnimation { bannerVisible = false }
     }
 
     /// What was found in the commercials library, and how many clips were skipped.
