@@ -3,8 +3,8 @@ import GregularTVCore
 import Testing
 @testable import GregularTV
 
-/// Commercials never make the server re-encode video: the original file if it
-/// plays within the quality cap (or only needs a remux), else they're skipped.
+/// Commercials never make the server re-encode video: the original file,
+/// asked for with no bitrate cap (as-is or remuxed), else they're skipped.
 /// They never run a speed test.
 @MainActor @Suite(.serialized)
 struct CommercialQualityTests {
@@ -64,7 +64,7 @@ struct CommercialQualityTests {
         let player = try playerInABreak(server: server)
         player.tune()
         try await settle(server)
-        #expect(caps(server) == [String(StreamingQuality.fallbackAutoBitrate)], "Auto's cap, with no measurement yet")
+        #expect(caps(server) == [String(StreamingQuality.maximumBitrate)], "No cap, whatever the quality setting")
         #expect(server.speedTests == 0, "Even in Auto, commercials never run a speed test")
         player.stop()
     }
@@ -74,7 +74,7 @@ struct CommercialQualityTests {
         let player = try playerInABreak(server: server)
         player.tune()
         try await settle(server)
-        #expect(caps(server) == [String(StreamingQuality.fallbackAutoBitrate)])
+        #expect(caps(server) == [String(StreamingQuality.maximumBitrate)])
         player.stop()
     }
 
@@ -97,7 +97,7 @@ struct CommercialQualityTests {
         let player = try playerInABreak(server: server)
         player.tune()
         try await settle(server)
-        #expect(caps(server) == [String(StreamingQuality.fallbackAutoBitrate)], "Asked once; no lower-quality retry")
+        #expect(caps(server) == [String(StreamingQuality.maximumBitrate)], "Asked once; no lower-quality retry")
         guard case .betweenProgrammes = player.status else {
             Issue.record("A skipped commercial leaves the screen blank, not \(player.status)")
             return
