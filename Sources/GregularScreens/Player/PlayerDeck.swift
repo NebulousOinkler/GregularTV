@@ -27,6 +27,8 @@ import Foundation
     /// True: hold on the last frame when an item ends (the deck reports
     /// `.paused`). False: go straight on to the next item.
     var pausesAtItemEnd: Bool { get set }
+    /// Sound level, 0 (silent) to 1 (full), for every item on the deck.
+    var volume: Float { get set }
 
     var state: PlayerDeckState { get }
     func play()

@@ -84,6 +84,7 @@ Debug builds accept launch arguments. Release builds leave them out entirely.
 | Argument | Effect |
 |---|---|
 | `-handoffTest` | Shifts every channel so the current programme ends about 50 s after launch, to test the hand-off to the next programme quickly. |
+| `-breakEndTest` | Shifts every channel so launch lands 8 s before the end of the last commercial in a break between two programmes, to watch the fade into the Up next card and the programme without waiting. Add `late` (`-breakEndTest late`) to start that commercial from its beginning, so it runs late, as after a slow load. |
 | `-openChannelList` | Opens the channel list on launch, to check its focus handling without arrow keys. |
 | `-openGuide` | Opens the guide on launch, to check it without a Menu button. |
 | `-pretendCommercials` | Uses a dozen library videos, cut to 30–120 s, as commercials, to test breaks without a `Commercials` library. |
