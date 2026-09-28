@@ -14,17 +14,8 @@ struct RootView: View {
             case .loading:
                 BrandedWait(message: "Loading your library…")
             case .watching(let surfer):
-                WatchView(surfer: surfer,
-                          scheduleCode: app.scheduleCode,
-                          showsDiagnostics: app.showsDiagnostics,
-                          playsCommercials: app.playsCommercials,
-                          commercialsStatus: app.commercialsStatus,
-                          onQualityChange: { app.setStreamingQuality($0) },
-                          onScheduleCodeChange: { app.setScheduleCode($0) },
-                          onShowsDiagnosticsChange: { app.setShowsDiagnostics($0) },
-                          onPlaysCommercialsChange: { app.setPlaysCommercials($0) },
-                          onSignOut: { Task { await app.signOut() } })
-                    // A new schedule code brings a new surfer; start a fresh view for it.
+                WatchView(surfer: surfer, app: app)
+                    // A new schedule code (or new channels) brings a new surfer; start a fresh view for it.
                     .id(ObjectIdentifier(surfer))
             case .failed(let message):
                 VStack(spacing: 32) {

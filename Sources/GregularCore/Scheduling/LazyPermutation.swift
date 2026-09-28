@@ -2,14 +2,21 @@
 /// building it. Position 0, 1, 2… maps to a distinct index each time, and all
 /// `count` positions together cover every index exactly once.
 ///
-/// Strategies use it to shuffle thousands of items while only computing the
-/// few programmes the next couple of hours need.
+/// `ShuffledOrder` uses it for more than 10 items, to shuffle thousands while
+/// only computing the few programmes the next couple of hours need.
 ///
-/// How it works: a 4-round Feistel network (a standard way to build a
+/// How it works: a 12-round Feistel network (a standard way to build a
 /// bijection) over the smallest even-bit-width power of two ≥ `count`, with
 /// "cycle walking": results outside `0..<count` are permuted again until they
 /// land inside. Deterministic for a given seed, on every platform and Swift version.
+///
+/// Why 12 rounds: over small domains (16 or 64 numbers) 4 rounds make some
+/// orders far likelier than others, and favour each block of items at the
+/// matching block of positions. From 12 rounds the orders pass
+/// uniformity tests from 11 items up.
 public struct LazyPermutation: Sendable {
+    static let rounds = 12
+
     public let count: Int
     private let halfBits: Int
     private let roundKeys: [UInt64]
@@ -22,7 +29,7 @@ public struct LazyPermutation: Sendable {
         self.count = count
         halfBits = bits / 2
         var rng = SeededRandom(seed: seed)
-        roundKeys = (0..<4).map { _ in rng.next() }
+        roundKeys = (0..<Self.rounds).map { _ in rng.next() }
     }
 
     /// The index at `position`. Positions wrap, so any integer works.

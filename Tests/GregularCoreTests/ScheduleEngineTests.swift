@@ -57,7 +57,7 @@ struct ScheduleEngineTests {
     @Test func movieSlotsOnlyRoundUpToTheHalfHour() throws {
         // Mixed-length films in half-hour slots: the only longer gap is at the end of a run.
         let movies = (0..<40).map { Fixtures.movie("M\($0)", minutes: Double(85 + ($0 * 23) % 70)) }
-        let s = try schedule(movies, strategy: DerangedShows.id, padTo: 30)
+        let s = try schedule(movies, strategy: ShuffledShows.id, padTo: 30)
         let run = s.runDuration
         for airing in s.airings(from: later, to: later.addingTimeInterval(3 * 24 * 3600)) {
             let isLastInRun = airing.slotEnd.timeIntervalSince(epoch).truncatingRemainder(dividingBy: run) == 0
@@ -118,7 +118,7 @@ struct ScheduleEngineTests {
     private func withCommercials(_ items: [MediaItem], strategy: String = SequentialBySeries.id) throws -> ChannelSchedule {
         let ads = (0..<6).map { MediaItem(id: "ad\($0)", kind: .video, name: "Ad \($0)", duration: 30 + Double($0) * 15) }
         let channel = Channel(number: 1, name: "T", source: AllItemsSource(), strategyID: strategy,
-                              seed: 42, padToMinutes: 30, fillerID: DerangedCommercials.id)
+                              seed: 42, padToMinutes: 30, fillerID: ShuffledCommercials.id)
         return try #require(ChannelSchedule(channel: channel, items: items, fillerPool: ads))
     }
 
@@ -291,7 +291,7 @@ struct ScheduleEngineTests {
         }
     }
 
-    @Test func pullsAtMostADayOfProgrammesWhateverTheLibrarySize() throws {
+    @Test func pullsAtMostTwoDaysOfProgrammesWhateverTheLibrarySize() throws {
         func pullsToTune(libraryOf count: Int) throws -> Int {
             let items = (0..<count).map { MediaItem(id: "e\($0)", kind: .episode, name: "E", duration: 22 * 60) }
             let s = try #require(ChannelSchedule(channel: Fixtures.channel(), items: items, fillerPool: [],
@@ -303,13 +303,16 @@ struct ScheduleEngineTests {
         let small = try pullsToTune(libraryOf: 200)
         let huge = try pullsToTune(libraryOf: 20_000)
         #expect(small == huge, "Work depends on the time of day, not the library size")
-        #expect(huge <= 66 + ChannelSchedule.maxSkipsAtRunEnd + 1, "At most one run: a day of 22-minute programmes, plus any passed over at its end")
+        // This run and the one before it (for what aired last): each a day of
+        // 22-minute programmes, plus any passed over at its end or held back by a rule.
+        let run = 66 + ChannelSchedule.maxSkipsAtRunEnd + 1 + RuledStream.lookahead
+        #expect(huge <= 2 * run, "At most two runs")
     }
 
     @Test func noProgrammeRepeatsBackToBackWithinARun() throws {
         // 60 movies of mixed lengths: a day holds far fewer, so none should air twice in a run.
         let movies = (0..<60).map { Fixtures.movie("M\($0)", minutes: Double(80 + ($0 * 37) % 90)) }
-        for strategy in [RandomShuffle.id, DerangedShows.id] {
+        for strategy in [RandomShuffle.id, ShuffledShows.id] {
             let s = try schedule(movies, strategy: strategy, padTo: 30)
             let runStart = Channel.defaultEpoch.addingTimeInterval(3 * s.runDuration)
             // Whole programmes: the parts of a film split by mid-roll breaks aren't repeats.
@@ -323,27 +326,5 @@ struct ScheduleEngineTests {
         #expect(ChannelSchedule.floorDivide(-7, 3) == -3)
         #expect(ChannelSchedule.floorDivide(-6, 3) == -2)
         #expect(ChannelSchedule.floorDivide(0, 3) == 0)
-    }
-}
-
-struct LazyPermutationTests {
-    @Test(arguments: [1, 2, 3, 5, 16, 17, 100, 1_000])
-    func coversEveryIndexExactlyOnce(count: Int) {
-        let permutation = LazyPermutation(count: count, seed: 9)
-        let indices = (0..<count).map { permutation.index(at: $0) }
-        #expect(indices.sorted() == Array(0..<count))
-    }
-
-    @Test func isDeterministicAndSeedDependent() {
-        let a = (0..<50).map { LazyPermutation(count: 50, seed: 1).index(at: $0) }
-        #expect(a == (0..<50).map { LazyPermutation(count: 50, seed: 1).index(at: $0) })
-        #expect(a != (0..<50).map { LazyPermutation(count: 50, seed: 2).index(at: $0) })
-        #expect(a != Array(0..<50), "Actually shuffled")
-    }
-
-    @Test func positionsWrap() {
-        let p = LazyPermutation(count: 7, seed: 3)
-        #expect(p.index(at: 9) == p.index(at: 2))
-        #expect(p.index(at: -1) == p.index(at: 6))
     }
 }

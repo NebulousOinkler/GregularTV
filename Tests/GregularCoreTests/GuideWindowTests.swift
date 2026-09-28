@@ -51,7 +51,7 @@ struct GuideWindowTests {
     @Test func commercialBreaksFoldIntoTheirProgramme() throws {
         let ads = (0..<6).map { MediaItem(id: "ad\($0)", kind: .movie, name: "Ad", duration: 60) }
         let channel = Channel(number: 1, name: "T", source: AllItemsSource(), strategyID: RandomShuffle.id,
-                              seed: 1, padToMinutes: 30, fillerID: DerangedCommercials.id)
+                              seed: 1, padToMinutes: 30, fillerID: ShuffledCommercials.id)
         let schedule = try #require(ChannelSchedule(channel: channel, items: [Fixtures.episode("Show", s: 1, e: 1)],
                                                     fillerPool: ads))
 
