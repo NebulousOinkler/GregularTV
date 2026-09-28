@@ -1,0 +1,103 @@
+import Foundation
+import Testing
+@testable import GregularCore
+
+/// Random small channels, with and without programmes at set times, on every
+/// strategy: the rules hold, walks agree, and set times are kept. (Tiny
+/// libraries are the hard case: they leave the fewest ways to keep a rule.)
+struct RandomChannelTests {
+    static let zones = ["Europe/London", "America/New_York", "Australia/Sydney", "Asia/Tokyo"]
+    static let strategies = StrategyRegistry.all.map { $0.id }
+
+    struct Case {
+        let channel: Channel
+        let items: [MediaItem]
+        let schedule: ChannelSchedule
+        let calendar: Calendar
+        let start: Date
+    }
+
+    /// A random channel, or nil when its shuffle has only one programme (a repeat is then unavoidable).
+    static func randomCase(_ trial: Int, _ rng: inout SeededRandom) -> Case? {
+        let movies = (0..<(1 + rng.int(below: 9))).map { Fixtures.movie("M\($0)", minutes: Double(40 + rng.int(below: 140))) }
+        let shows = (0..<rng.int(below: 3)).flatMap { k in
+            Fixtures.series("S\(k)", seasons: 1, episodes: 1 + rng.int(below: 6), minutes: Double([22, 30, 44, 60][rng.int(below: 4)]))
+        }
+        let items = movies + shows
+        var fixed: [FixedProgramme] = []
+        var used = Set<Int>()
+        for _ in 0..<rng.int(below: 3) {
+            let times = Set((0..<(1 + rng.int(below: 3))).map { _ in rng.int(below: 96) * 15 }).subtracting(used).sorted()
+            guard !times.isEmpty else { continue }
+            used.formUnion(times)
+            let match: FixedProgramme.Match = !shows.isEmpty && rng.int(below: 2) == 0 ? .series("S0") : .item("M\(rng.int(below: movies.count))")
+            fixed.append(FixedProgramme(match: match, times: times, weekdays: rng.int(below: 3) == 0 ? [2, 4, 6] : [],
+                                        exclusive: rng.int(below: 4) == 0))
+        }
+        let zone = TimeZone(identifier: zones[trial % zones.count])!
+        let channel = Channel(number: 1, name: "T", source: AllItemsSource(), strategyID: strategies[trial % strategies.count],
+                              seed: UInt64(trial), padToMinutes: rng.int(below: 2) == 0 ? 30 : nil, timeZone: zone, fixed: fixed)
+        let shuffled = items.filter { item in !fixed.contains { $0.exclusive && $0.matches(item) } }
+        guard Set(shuffled.map(\.id)).count > 1, let schedule = ChannelSchedule(channel: channel, items: items) else { return nil }
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = zone
+        let start = Channel.defaultEpoch.addingTimeInterval(Double(rng.int(below: 1200)) * 86400 + Double(rng.int(below: 86400)))
+        return Case(channel: channel, items: items, schedule: schedule, calendar: calendar, start: start)
+    }
+
+    @Test func theRulesHoldAndEveryWalkAgrees() {
+        var rng = SeededRandom(seed: 991)
+        var checked = 0
+        for trial in 0..<80 {
+            guard let c = Self.randomCase(trial, &rng) else { continue }
+            checked += 1
+            let week = c.schedule.programmes(from: c.start, to: c.start.addingTimeInterval(7 * 86400))
+            for (a, b) in zip(week, week.dropFirst()) {
+                #expect(a.item.id != b.item.id, "trial \(trial): \(a.item.name) twice at \(b.start)")
+                #expect(a.slotEnd == b.start, "trial \(trial): back to back")
+            }
+            // Looked up on its own, each programme is the same as in the long walk.
+            for programme in week.dropFirst().prefix(20) {
+                let alone = c.schedule.programme(at: programme.start.addingTimeInterval(1))
+                #expect(alone.item.id == programme.item.id && alone.start == programme.start, "trial \(trial)")
+            }
+        }
+        #expect(checked > 50)
+    }
+
+    @Test func setTimesAreKeptUnlessTheyClash() {
+        var rng = SeededRandom(seed: 991)
+        var pins = 0
+        for trial in 0..<80 {
+            guard let c = Self.randomCase(trial, &rng) else { continue }
+            let shortest = c.items.map(\.duration).min() ?? 0
+            for day in 1..<5 {
+                let midnight = c.calendar.startOfDay(for: c.start.addingTimeInterval(Double(day) * 86400))
+                // This day's set times, and the day before's (one may run past midnight).
+                var times: [(Date, FixedProgramme)] = []
+                for date in [c.calendar.date(byAdding: .day, value: -1, to: midnight)!, midnight] {
+                    let weekday = c.calendar.component(.weekday, from: date)
+                    for entry in c.channel.fixed where entry.airsEveryDay || entry.weekdays.contains(weekday) {
+                        times += entry.times.map { (c.calendar.date(bySettingHour: $0 / 60, minute: $0 % 60, second: 0, of: date)!, entry) }
+                    }
+                }
+                var busyUntil = Date.distantPast
+                var lastPinned: MediaItem?
+                for (time, entry) in times.sorted(by: { $0.0 < $1.0 }) {
+                    let programme = c.schedule.programme(at: time.addingTimeInterval(1))
+                    if programme.start == time && entry.matches(programme.item) {
+                        busyUntil = programme.slotEnd
+                        lastPinned = programme.item
+                        continue
+                    }
+                    // Left out only if it overlaps the one before, or is the same
+                    // programme again with no room for another between.
+                    let sameAgain = lastPinned.map { entry.matches($0) && time.timeIntervalSince(busyUntil) < 3 * shortest + 3600 } ?? false
+                    #expect(time < midnight || time < busyUntil || sameAgain, "trial \(trial): \(entry.match) at \(time)")
+                }
+                pins += times.count
+            }
+        }
+        #expect(pins > 300)
+    }
+}

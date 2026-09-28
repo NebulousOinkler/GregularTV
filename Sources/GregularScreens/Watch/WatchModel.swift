@@ -81,8 +81,7 @@ public final class WatchModel {
         player.start()
         player.diagnosticsEnabled = showsDiagnostics
         #if DEBUG
-        if DebugOptions.opensChannelList { show(.channelList) }
-        if DebugOptions.opensGuide { show(.guide) }
+        if let screen = DebugOptions.screenOnLaunch { show(screen) }
         #endif
     }
 

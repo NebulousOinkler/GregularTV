@@ -9,8 +9,9 @@ import Foundation
 /// ```
 ///
 /// Optional keys: `itemTypes` (default: both), `padTo` (minutes; off by default),
-/// `filler` (what fills padding gaps, a `GapFiller` ID; default `"none"`), and
-/// `epoch` (ISO 8601; default `Channel.defaultEpoch`).
+/// `filler` (what fills padding gaps, a `GapFiller` ID; default `"none"`),
+/// `epoch` (ISO 8601; default `Channel.defaultEpoch`), and `fixed` with
+/// `timeZone` (programmes at set local times; see `FixedProgramme`).
 public struct Channel: Sendable {
     /// The shared starting point for every channel's clock. Changing it
     /// reshuffles what's on every channel right now.
@@ -28,6 +29,11 @@ public struct Channel: Sendable {
     /// The `GapFiller` for padding gaps.
     public let fillerID: String
     public let epoch: Date
+    /// The zone that `fixed` times are in. Every Apple TV must agree on what
+    /// "6:00 PM" means, so it's part of the channel, not the device's zone.
+    public let timeZone: TimeZone?
+    /// Programmes at set local times. With these, the channel's runs are local days.
+    public let fixed: [FixedProgramme]
 
     public init(
         number: Int,
@@ -38,7 +44,9 @@ public struct Channel: Sendable {
         seed: UInt64,
         padToMinutes: Int? = nil,
         fillerID: String = "none",
-        epoch: Date = Channel.defaultEpoch
+        epoch: Date = Channel.defaultEpoch,
+        timeZone: TimeZone? = nil,
+        fixed: [FixedProgramme] = []
     ) {
         self.number = number
         self.name = name
@@ -49,6 +57,14 @@ public struct Channel: Sendable {
         self.padToMinutes = padToMinutes
         self.fillerID = fillerID
         self.epoch = epoch
+        self.timeZone = timeZone
+        self.fixed = fixed
+    }
+
+    /// The same channel with its clock started at `epoch` instead.
+    public func withEpoch(_ epoch: Date) -> Channel {
+        Channel(number: number, name: name, itemTypes: itemTypes, source: source, strategyID: strategyID, seed: seed,
+                padToMinutes: padToMinutes, fillerID: fillerID, epoch: epoch, timeZone: timeZone, fixed: fixed)
     }
 
     /// True when the item should be on this channel.
@@ -61,7 +77,7 @@ public struct Channel: Sendable {
 
 extension Channel: Decodable {
     private enum CodingKeys: String, CodingKey {
-        case number, name, itemTypes, source, strategy, seed, padTo, filler, epoch
+        case number, name, itemTypes, source, strategy, seed, padTo, filler, epoch, timeZone, fixed
     }
 
     private enum SourceTypeKey: String, CodingKey {
@@ -77,6 +93,16 @@ extension Channel: Decodable {
         seed = UInt64(bitPattern: try c.decode(Int64.self, forKey: .seed))
         padToMinutes = try c.decodeIfPresent(Int.self, forKey: .padTo)
         epoch = try c.decodeIfPresent(Date.self, forKey: .epoch) ?? Channel.defaultEpoch
+        fixed = try c.decodeIfPresent([FixedProgramme].self, forKey: .fixed) ?? []
+        if let identifier = try c.decodeIfPresent(String.self, forKey: .timeZone) {
+            guard let zone = TimeZone(identifier: identifier) else {
+                throw DecodingError.dataCorruptedError(forKey: .timeZone, in: c,
+                                                       debugDescription: "Channel \(number): unknown time zone '\(identifier)'.")
+            }
+            timeZone = zone
+        } else {
+            timeZone = nil
+        }
 
         strategyID = try c.decode(String.self, forKey: .strategy)
         guard StrategyRegistry.contains(id: strategyID) else {

@@ -19,39 +19,21 @@ import SwiftUI
 /// - **Menu (or Back ‹):** hide the banner if it's up; otherwise the
 ///   programme guide. In the guide, Menu first moves up to its Settings
 ///   button, then goes back to the programme.
-/// - **Click and hold:** Settings (quality, schedule code, diagnostics, sign out).
+/// - **Click and hold:** Settings (quality, schedule code, your channels, diagnostics, sign out).
 /// - **Play/Pause:** pause, then press again to jump back to live.
 /// - **Digits** (keyboard only; the Siri Remote has none): type a channel number.
 struct WatchView: View {
-    let scheduleCode: ScheduleCode
-    let showsDiagnostics: Bool
-    let playsCommercials: Bool
-    let commercialsStatus: String?
-    let onQualityChange: (StreamingQuality) -> Void
-    let onScheduleCodeChange: (ScheduleCode) -> Void
-    let onShowsDiagnosticsChange: (Bool) -> Void
-    let onPlaysCommercialsChange: (Bool) -> Void
-    let onSignOut: () -> Void
+    /// The app's settings and actions, for Settings.
+    let app: AppModel
 
     @State private var model: WatchModel
     @Environment(\.scenePhase) private var scenePhase
     /// Focus is on the live-TV input layer (not in the list or guide).
     @FocusState private var watchingHasFocus: Bool
 
-    init(surfer: ChannelSurfer, scheduleCode: ScheduleCode, showsDiagnostics: Bool, playsCommercials: Bool,
-         commercialsStatus: String?, onQualityChange: @escaping (StreamingQuality) -> Void,
-         onScheduleCodeChange: @escaping (ScheduleCode) -> Void, onShowsDiagnosticsChange: @escaping (Bool) -> Void,
-         onPlaysCommercialsChange: @escaping (Bool) -> Void, onSignOut: @escaping () -> Void) {
+    init(surfer: ChannelSurfer, app: AppModel) {
         _model = State(initialValue: WatchModel(surfer: surfer))
-        self.scheduleCode = scheduleCode
-        self.showsDiagnostics = showsDiagnostics
-        self.playsCommercials = playsCommercials
-        self.commercialsStatus = commercialsStatus
-        self.onQualityChange = onQualityChange
-        self.onScheduleCodeChange = onScheduleCodeChange
-        self.onShowsDiagnosticsChange = onShowsDiagnosticsChange
-        self.onPlaysCommercialsChange = onPlaysCommercialsChange
-        self.onSignOut = onSignOut
+        self.app = app
     }
 
     private var player: ChannelPlayer { model.player }
@@ -124,25 +106,13 @@ struct WatchView: View {
         .animation(.default, value: model.showingList)
         .animation(.default, value: model.showingGuide)
         .sheet(isPresented: $model.showingSettings) {
-            SettingsView(current: player.quality,
-                         streamDescription: player.streamDescription,
-                         programmeTitle: player.fixableProgramme?.item.displayTitle,
-                         programmeFix: player.programmeFix,
-                         scheduleCode: scheduleCode,
-                         showsDiagnostics: showsDiagnostics,
-                         playsCommercials: playsCommercials,
-                         commercialsStatus: model.commercialsDiagnostics(playsCommercials: playsCommercials,
-                                                                         libraryStatus: commercialsStatus),
-                         onSelect: onQualityChange,
-                         onProgrammeFix: { player.setProgrammeFix($0) },
-                         onScheduleCodeChange: onScheduleCodeChange,
-                         onShowsDiagnosticsChange: onShowsDiagnosticsChange,
-                         onPlaysCommercialsChange: onPlaysCommercialsChange,
-                         onSignOut: onSignOut,
+            SettingsView(app: app, player: player,
+                         commercialsStatus: model.commercialsDiagnostics(playsCommercials: app.playsCommercials,
+                                                                         libraryStatus: app.commercialsStatus),
                          onRemote: model.perform)
         }
         .onAppear {
-            model.appeared(showsDiagnostics: showsDiagnostics)
+            model.appeared(showsDiagnostics: app.showsDiagnostics)
             UIApplication.shared.isIdleTimerDisabled = true
             watchingHasFocus = true
         }

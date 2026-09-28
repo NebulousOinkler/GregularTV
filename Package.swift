@@ -35,6 +35,6 @@ let package = Package(
         .target(name: "GregularScreens", dependencies: ["GregularCore", "GregularJellyfin"]),
         .testTarget(name: "GregularCoreTests", dependencies: ["GregularCore"]),
         .testTarget(name: "GregularJellyfinTests", dependencies: ["GregularJellyfin", "GregularCore"]),
-        .testTarget(name: "GregularScreensTests", dependencies: ["GregularScreens", "GregularCore"]),
+        .testTarget(name: "GregularScreensTests", dependencies: ["GregularScreens", "GregularCore", "GregularJellyfin"]),
     ]
 )

@@ -5,11 +5,14 @@ public struct ChannelLineup: Sendable {
     public enum LoadError: Error, Equatable, CustomStringConvertible {
         case missingBundledFile
         case duplicateChannelNumber(Int)
+        /// A `ChannelRule` found a problem.
+        case invalidChannel(String)
 
         public var description: String {
             switch self {
             case .missingBundledFile: "channels.json is missing from the app bundle"
             case .duplicateChannelNumber(let n): "channels.json defines channel \(n) more than once"
+            case .invalidChannel(let problem): problem
             }
         }
     }
@@ -24,6 +27,10 @@ public struct ChannelLineup: Sendable {
         var seen = Set<Int>()
         for channel in channels where !seen.insert(channel.number).inserted {
             throw LoadError.duplicateChannelNumber(channel.number)
+        }
+        let rules = ScheduleRules.rules(of: (any ChannelRule).self)
+        if let problem = channels.lazy.flatMap({ channel in rules.flatMap { $0.problems(with: channel) } }).first {
+            throw LoadError.invalidChannel(problem)
         }
         self.channels = channels.sorted { $0.number < $1.number }
         self.commercialsLibrary = commercialsLibrary
@@ -45,6 +52,18 @@ public struct ChannelLineup: Sendable {
         struct Commercials: Decodable { let library: String }
         let commercials: Commercials?
         let channels: [Channel]
+    }
+
+    /// This line-up with the viewer's custom channels added. Throws
+    /// `invalidChannel` if a `LineupRule` finds a problem, such as a number
+    /// that's taken.
+    public func adding(_ custom: [CustomChannel]) throws -> ChannelLineup {
+        let added = custom.map(\.channel)
+        let rules = ScheduleRules.rules(of: (any LineupRule).self)
+        if let problem = rules.flatMap({ $0.problems(withCustom: added, bundled: channels) }).first {
+            throw LoadError.invalidChannel(problem)
+        }
+        return try ChannelLineup(channels: channels + added, commercialsLibrary: commercialsLibrary)
     }
 
     /// The line-up that ships with the app (`Resources/channels.json`).

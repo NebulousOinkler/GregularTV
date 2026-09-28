@@ -1,5 +1,10 @@
 /// A lazy shuffle of `0..<count`, ported from `random_derangement.py`.
 ///
+/// **Not used by the schedule any more; kept for reference.** Its orders
+/// follow a fixed step, and a key can only produce about `count` different
+/// cyclic orders (`b` only moves the starting point), so the schedule uses
+/// `ShuffledOrder` instead.
+///
 /// Steps x = 0, 1, 2… through `(a·x + b) mod p` for a prime `p > count`, and
 /// keeps only the results below `count`. Because `a` isn't a multiple of `p`,
 /// `x ↦ (a·x + b) mod p` is a bijection on `0..<p`. So every run of `p` steps
