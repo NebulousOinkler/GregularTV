@@ -17,14 +17,15 @@ import GregularCore
 /// `-breakEndTest late` also starts that commercial from its beginning
 /// instead of joining it live, so it runs late, as after a slow load.
 ///
-/// `-openChannelList`: opens the channel list on launch, to check its focus
-/// handling without arrow keys. `-openGuide` does the same for the guide.
+/// `-openChannelList`, `-openGuide` and `-openSettings`: open that screen on
+/// launch, to check it (and its focus handling) without a remote.
+/// `-openSettings newChannel` also opens the channel editor.
 ///
 /// `-pretendCommercials`: borrows a dozen real videos from the library as
 /// 30–120 second "commercials", so breaks can be tested before a real
 /// commercials library exists. Each plays from its start and is cut at its
 /// pretend length.
-enum DebugOptions {
+public enum DebugOptions {
     static let handoffLeadTime: TimeInterval = 50
     static let breakEndLeadTime: TimeInterval = 8
 
@@ -36,13 +37,17 @@ enum DebugOptions {
         return arguments[flag + 1] == "late"
     }
 
-    static var opensChannelList: Bool {
-        arguments.contains("-openChannelList")
+    /// The screen `-openChannelList`, `-openGuide` or `-openSettings` asks for.
+    static var screenOnLaunch: WatchModel.Screen? {
+        let screens: [(String, WatchModel.Screen)] = [("-openChannelList", .channelList), ("-openGuide", .guide),
+                                                      ("-openSettings", .settings)]
+        return screens.first { arguments.contains($0.0) }?.1
     }
 
-    /// `-openGuide`: opens the guide on launch, to check it without a Menu button.
-    static var opensGuide: Bool {
-        arguments.contains("-openGuide")
+    /// `-openSettings newChannel`: Settings opens the channel editor too.
+    public static var opensChannelEditor: Bool {
+        guard let flag = arguments.firstIndex(of: "-openSettings"), flag + 1 < arguments.count else { return false }
+        return arguments[flag + 1] == "newChannel"
     }
 
     static func apply(to channels: [ChannelSchedule], items: [MediaItem], fillerPool: [MediaItem]) -> [ChannelSchedule] {
@@ -84,10 +89,7 @@ enum DebugOptions {
 
     private static func shifted(_ schedule: ChannelSchedule, by seconds: TimeInterval,
                                 items: [MediaItem], fillerPool: [MediaItem]) -> ChannelSchedule {
-        let c = schedule.channel
-        let shifted = Channel(number: c.number, name: c.name, itemTypes: c.itemTypes, source: c.source,
-                              strategyID: c.strategyID, seed: c.seed, padToMinutes: c.padToMinutes,
-                              fillerID: c.fillerID, epoch: c.epoch.addingTimeInterval(-seconds))
+        let shifted = schedule.channel.withEpoch(schedule.channel.epoch.addingTimeInterval(-seconds))
         let clipIDs = Set(fillerPool.map(\.id))
         return ChannelSchedule(channel: shifted, items: items.filter { !clipIDs.contains($0.id) },
                                fillerPool: fillerPool, code: schedule.code) ?? schedule

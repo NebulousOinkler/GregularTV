@@ -6,12 +6,7 @@ struct RandomShuffle: ScheduleStrategy {
     static let displayName = "Random Shuffle"
 
     func programmes(from content: ChannelContent, startingAt position: Int, rng: SeededRandom) -> AnyIterator<MediaItem> {
-        let count = content.items.count
-        return programmes(startingAt: position) { position in
-            // A different shuffle for each pass through the items, read at one position.
-            let pass = ChannelContent.pass(position, count)
-            let order = LazyPermutation(count: count, seed: content.seed &+ UInt64(bitPattern: Int64(pass)))
-            return content.items[order.index(at: position)]
-        }
+        let order = ShuffledOrder.Passes(count: content.items.count, seed: content.seed)
+        return programmes(startingAt: position) { content.items[order.index(at: $0)] }
     }
 }
