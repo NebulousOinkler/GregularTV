@@ -15,13 +15,23 @@ import Foundation
 ///   becomes a gap after the run's last programme, like padding, which the
 ///   channel's `GapFiller` may fill.
 ///
-/// Each run is worked out from the channel's key and the run number alone.
-/// To find any moment, the engine walks at most from the start of that run:
-/// about a day of programmes, however big the library or however many
-/// channels. It never builds a whole schedule, and never replays from the
-/// epoch. The one approximation: where one run meets the next (once a day),
-/// the next run's starting point is estimated, so one programme may repeat
-/// or be skipped there.
+/// Each run is worked out from the channel's key and the run number alone,
+/// never from the run before, so any walk gives the same result. To find any
+/// moment, the engine walks that run from its start, and the run before it
+/// for what aired last: about two days of programmes, however big the
+/// library or however many channels. It never builds a whole schedule, and
+/// never replays from the epoch. Where one run meets the next (once a day):
+/// - the next run's starting point is estimated, so a programme may repeat
+///   or be skipped there;
+/// - if the next run's first programme mustn't follow the last one (the
+///   `SequenceRule`s), a programme that the rules allow takes its slot.
+///
+/// **Special rules** (`ScheduleRules`) apply on top of the strategy: what
+/// may air straight after what, what the shuffle leaves out, and programmes
+/// at set local times. A channel with set times runs on local days
+/// (`RunCalendar`), and each pinned programme is a hard edge, like the end
+/// of a run: programmes that wouldn't finish before it wait until after it,
+/// and the time left before it is a break.
 ///
 /// Each programme gets a *slot*. With `padTo` (every bundled channel uses
 /// 30), a slot is rounded up to the next boundary, so every programme starts
@@ -49,6 +59,14 @@ public struct ChannelSchedule: Sendable {
     /// Every random choice on the channel comes from it.
     private let key: UInt64
     private let content: ChannelContent
+    private let calendar: RunCalendar
+    /// For each of the channel's `fixed` entries, what it can play.
+    private let pinnedProgrammes: [[MediaItem]]
+    private let pinRules: [any PinRule]
+    /// What may air straight after what (`SequenceRule`s for programmes).
+    private let programmeRules = ScheduleRules.sequenceRules(for: .programmes)
+    /// Fills a gap before a pinned programme when nothing else within reach fits.
+    private let shortestItem: MediaItem
     private let strategy: any ScheduleStrategy
     private let filler: any GapFiller
     private let fillerPool: [MediaItem]
@@ -75,8 +93,11 @@ public struct ChannelSchedule: Sendable {
     init?(channel: Channel, items: [MediaItem], fillerPool: [MediaItem], code: ScheduleCode = .standard,
           strategy: any ScheduleStrategy) {
         guard let filler = GapFillerRegistry.filler(withID: channel.fillerID) else { return nil }
-        let eligible = items.filter { channel.accepts($0) && $0.duration > 0 }
-        guard !eligible.isEmpty else { return nil }
+        let contentRules = ScheduleRules.rules(of: (any ContentRule).self)
+        let eligible = items.filter { item in
+            channel.accepts(item) && item.duration > 0 && contentRules.allSatisfy { $0.keepsInShuffle(item, on: channel) }
+        }
+        guard let shortestItem = eligible.min(by: { ($0.duration, $0.id) < ($1.duration, $1.id) }) else { return nil }
 
         self.channel = channel
         self.code = code
@@ -93,7 +114,11 @@ public struct ChannelSchedule: Sendable {
         let minimum = Int64(Self.minimumRunLength * 1000)
         let unit = Self.runRounding
         self.runLength = (max(minimum, slots.max() ?? minimum) + unit - 1) / unit * unit
-        self.shortestProgramme = eligible.map { Self.milliseconds(of: $0.duration) }.min() ?? 1
+        self.shortestItem = shortestItem
+        self.shortestProgramme = Self.milliseconds(of: shortestItem.duration)
+        self.calendar = RunCalendar(for: channel, length: runLength)
+        self.pinnedProgrammes = channel.fixed.map { $0.programmes(in: items) }
+        self.pinRules = channel.fixed.isEmpty ? [] : ScheduleRules.rules(of: (any PinRule).self)
         // As if each started on a boundary: only a guide to where each run's stream starts.
         let typicalSlots = eligible.map {
             Self.slotEnd(of: $0, startingAt: 0, padToMinutes: channel.padToMinutes)
@@ -130,7 +155,7 @@ public struct ChannelSchedule: Sendable {
     /// overlaps `start..<end`, in order. For guide listings.
     public func programmes(from start: Date, to end: Date) -> [Airing] {
         guard start < end else { return [] }
-        var walker = SlotWalker(self, startingAt: runIndex(containing: start))
+        var walker = walker(from: start)
         var result: [Airing] = []
         while true {
             let slot = walker.nextSlot()
@@ -177,7 +202,7 @@ public struct ChannelSchedule: Sendable {
     /// For listings of whole programmes, use `programmes(from:to:)`.
     public func airings(from start: Date, to end: Date) -> [Airing] {
         guard start < end else { return [] }
-        var walker = SlotWalker(self, startingAt: runIndex(containing: start))
+        var walker = walker(from: start)
         var result: [Airing] = []
         while true {
             let airings = walker.nextSlot()
@@ -189,13 +214,148 @@ public struct ChannelSchedule: Sendable {
 
     // MARK: - Runs and slots
 
-    private func runIndex(containing date: Date) -> Int {
-        Int(Self.floorDivide(milliseconds(since: channel.epoch, to: date), runLength))
+    /// A walker from the start of the run containing `date`. Runs start at
+    /// their `Join`, which can be a little after the calendar's midnight.
+    private func walker(from date: Date) -> SlotWalker {
+        let ms = milliseconds(since: channel.epoch, to: date)
+        var run = calendar.run(containing: ms)
+        var join = self.join(ofRun: run, after: lastProgramme(ofRun: run - 1))
+        if ms < join.start {
+            run -= 1
+            join = self.join(ofRun: run, after: lastProgramme(ofRun: run - 1))
+        }
+        return SlotWalker(self, startingAt: run, join: join)
+    }
+
+    /// The last programme of `run`. A run is laid out on its own, and what
+    /// aired before only changes how it starts (its `Join`), never what it
+    /// takes from the strategy, so this is one run's walk, not a chain.
+    private func lastProgramme(ofRun run: Int) -> MediaItem {
+        var walker = SlotWalker(self, startingAt: run, join: nil)
+        while true {
+            let slot = walker.place()
+            if walker.finishedRun { return slot.item }
+        }
+    }
+
+    /// Where a run meets the one before. Normally nothing changes, but if the
+    /// rules (`SequenceRule`) don't allow the run's first programme straight
+    /// after the last one before it:
+    /// - a programme they allow takes its slot, if one fits and may come
+    ///   before the next; or else
+    /// - the first slots are left out until one may follow, and their time
+    ///   is a break after the run before's last programme.
+    /// The rest of the run is the same either way, so every walk agrees.
+    private struct Join {
+        /// Takes the run's first slot.
+        var standIn: MediaItem?
+        /// How many of the run's first slots are left out.
+        var leftOut = 0
+        /// Where the run starts, after any slots left out.
+        var start: Int64
+    }
+
+    /// The most slots a join leaves out looking for one that may follow. If
+    /// none within that may (a channel with one programme), the rules give way.
+    static let maxLeftOutAtJoin = 4
+
+    /// How `run` joins the run before, whose last programme was `last`.
+    private func join(ofRun run: Int, after last: MediaItem) -> Join {
+        var walker = SlotWalker(self, startingAt: run, join: nil)
+        var slot = walker.place()
+        var join = Join(start: slot.start)
+        guard !slot.isPinned, !programmeRules.allow(slot.item, after: last) else { return join }
+        let next = walker.upcomingItem
+        join.standIn = standIns(from: slot.start, to: slot.end, after: last, before: next).first
+        guard join.standIn == nil else { return join }
+        let kept = join
+        repeat {
+            join.leftOut += 1
+            join.start = slot.end
+            slot = walker.place()
+            if slot.isPinned || programmeRules.allow(slot.item, after: last) { return join }
+        } while join.leftOut < Self.maxLeftOutAtJoin
+        return kept   // nothing within reach may follow: the rules give way
+    }
+
+    /// A programme's slot, in milliseconds since the epoch: from its start to
+    /// where the next programme starts.
+    private struct Slot {
+        let item: MediaItem
+        let start: Int64
+        var end: Int64
+        /// A programme at a set time.
+        var isPinned = false
+    }
+
+    /// The programmes at set times in `run`, in order. One is left out that
+    /// day if it would overlap the one before it (a programme from the day
+    /// before counts), or if it's the same one again with no room for
+    /// anything between (the sequence rules win).
+    private func pinnedSlots(inRun run: Int) -> [Slot] {
+        pinnedSlots(onDay: run, after: pinnedSlots(onDay: run - 1, after: nil).last)
+    }
+
+    /// `run`'s programmes at set times, checked in order against each other
+    /// and against `earlier`, the day before's last. (That one is checked
+    /// against its own day only, so days don't chain.)
+    private func pinnedSlots(onDay run: Int, after earlier: Slot?) -> [Slot] {
+        guard !pinRules.isEmpty, let day = calendar.day(run) else { return [] }
+        var slots: [Slot] = []
+        for pin in pinRules.flatMap({ $0.pins(on: channel, day: day, programmes: pinnedProgrammes) }).sorted(by: { $0.start < $1.start }) {
+            let start = milliseconds(since: channel.epoch, to: pin.start)
+            let slot = Slot(item: pin.item, start: start,
+                            end: Self.slotEnd(of: pin.item, startingAt: start, padToMinutes: channel.padToMinutes),
+                            isPinned: true)
+            if let last = slots.last ?? earlier, !mayFollow(last, slot) { continue }
+            slots.append(slot)
+        }
+        return slots
+    }
+
+    /// Whether a programme at a set time can come after an earlier one: it
+    /// doesn't overlap it, and either the rules allow it straight after, or a
+    /// programme they allow between the two fits there.
+    private func mayFollow(_ earlier: Slot, _ later: Slot) -> Bool {
+        guard later.start >= earlier.end else { return false }
+        return programmeRules.allow(later.item, after: earlier.item)
+            || standIns(from: earlier.end, to: later.start, after: earlier.item, before: later.item).first != nil
+    }
+
+    /// The channel's programmes that could fill the time from `start` to
+    /// `end`, when the stream has nothing suitable: they fit, and the rules
+    /// allow them straight after `previous` and straight before `next`.
+    private func standIns(from start: Int64, to end: Int64, after previous: MediaItem?,
+                          before next: MediaItem?) -> LazyFilterSequence<[MediaItem]> {
+        content.items.lazy.filter { item in
+            start + Self.milliseconds(of: item.duration) <= end
+                && (previous.map { self.programmeRules.allow(item, after: $0) } ?? true)
+                && (next.map { self.programmeRules.allow($0, after: item) } ?? true)
+        }
+    }
+
+    /// How `run` is laid out from its start, on its own: at its place in the
+    /// calendar, but later if a pinned programme from the day before is still
+    /// on, and at the day's first pinned programme if nothing fits before it.
+    /// When exactly one programme fits there, it's `onlyFiller`: it fills
+    /// that time as a stand-in, so the strategy's stream starts the same way
+    /// whatever happens at the join.
+    private func opening(ofRun run: Int) -> (start: Int64, onlyFiller: MediaItem?) {
+        var start = calendar.start(ofRun: run)
+        guard !pinRules.isEmpty else { return (start, nil) }
+        if let running = pinnedSlots(onDay: run - 1, after: nil).last?.end, running > start { start = running }
+        guard let first = pinnedSlots(inRun: run).first(where: { $0.start >= start }) else { return (start, nil) }
+        let fillers = Array(standIns(from: start, to: first.start, after: nil, before: first.item).prefix(2))
+        switch fillers.count {
+        case 0: return (first.start, nil)
+        case 1: return (start, fillers[0])
+        default: return (start, nil)
+        }
     }
 
     /// The programme and any filler after it, in the slot that contains `date`.
     private func slot(containing date: Date) -> [Airing] {
-        var walker = SlotWalker(self, startingAt: runIndex(containing: date))
+        var walker = walker(from: date)
         while true {
             let airings = walker.nextSlot()
             if let last = airings.last, last.slotEnd > date { return airings }
@@ -213,8 +373,7 @@ public struct ChannelSchedule: Sendable {
     /// The strategy's stream for one run. It starts at an estimate of how many
     /// programmes aired before the run, so sequences carry on from the day before.
     private func stream(forRun run: Int) -> AnyIterator<MediaItem> {
-        let runStart = Int64(run) * runLength
-        let position = Int((Double(runStart) / averageSlotLength).rounded(.down))
+        let position = Int((Double(calendar.start(ofRun: run)) / averageSlotLength).rounded(.down))
         return strategy.programmes(from: content, startingAt: position, rng: SeededRandom(seed: key, cycle: run))
     }
 
@@ -223,95 +382,234 @@ public struct ChannelSchedule: Sendable {
     static let maxSkipsAtRunEnd = 15
 
     /// Lays out the slots of one run after another, starting at the beginning
-    /// of a run. Programmes follow each other back to back; only the end of a
-    /// run is a hard edge.
+    /// of a run. Programmes follow each other back to back; the end of a run
+    /// and each programme at a set time are hard edges. Each run is laid out
+    /// on its own; only its `Join` depends on the run before.
     private struct SlotWalker {
         let schedule: ChannelSchedule
         private var run: Int
-        private var programmes: AnyIterator<MediaItem>
         /// Milliseconds since the epoch where the next slot starts.
-        private var cursor: Int64
-        /// Pulled, but only placed once we know whether it's the run's last slot.
-        private var upcoming: (item: MediaItem, start: Int64, end: Int64)?
+        private var cursor: Int64 = 0
+        /// Where this run ends, as far as choosing programmes goes. The last
+        /// slot reaches on to the next run's `Join`.
+        private var runEnd: Int64 = 0
+        /// This run's programmes at set times still to come.
+        private var pins: [Slot] = []
+        /// The next run's first programme, when it's at a set time right at this run's end.
+        private var pinAtRunEnd: Slot?
+        private var programmes: RuledStream
         /// This run's commercials, dealt break after break.
         private var commercials: CommercialQueue
+        /// Chosen, but only placed once we know whether it's the last before an edge.
+        private var upcoming: Slot?
+        /// Fills the time before this run's first pinned programme, if only one can.
+        private var openingFiller: MediaItem?
+        /// How this run meets the one before; nil lays runs out on their own.
+        private var join: Join?
+        /// Whether joins are worked out as runs end (false while working one out).
+        private let joinsRuns: Bool
+        /// The next slot is its run's first.
+        private var opensRun = true
+        /// True when the slot just placed was its run's last.
+        private(set) var finishedRun = false
 
-        init(_ schedule: ChannelSchedule, startingAt run: Int) {
+        /// - Parameter join: how the first run meets the one before, or nil to
+        ///   lay runs out on their own (to work out a `Join`, or a run's last programme).
+        init(_ schedule: ChannelSchedule, startingAt run: Int, join: Join?) {
             self.schedule = schedule
             self.run = run
-            programmes = schedule.stream(forRun: run)
-            commercials = CommercialQueue(schedule.commercials(forRun: run))
-            cursor = Int64(run) * schedule.runLength
+            self.join = join
+            joinsRuns = join != nil
+            programmes = RuledStream(AnyIterator { nil }, for: .programmes)
+            commercials = CommercialQueue(AnyIterator { nil })
+            begin(run)
         }
 
         /// The next slot's airings: its programme first, then any filler clips.
+        /// Slots a join leaves out are skipped, clips and all.
         mutating func nextSlot() -> [Airing] {
-            var slot = upcoming ?? takeFirstOfRun()
-            upcoming = take()
-            // Nothing else fits before the run ends: the leftover joins this slot.
-            if upcoming == nil {
-                slot.end = runEnd
-                cursor = runEnd
+            var slot = place()
+            while leftOut > 0 {
+                leftOut -= 1
+                slot = place()
             }
             return schedule.airingsInSlot(slot.item, slotStart: slot.start, slotEnd: slot.end, commercials: &commercials)
         }
 
-        private var runEnd: Int64 { Int64(run + 1) * schedule.runLength }
+        /// The programme after the slot just placed, if it's known yet.
+        var upcomingItem: MediaItem? { upcoming?.item }
 
-        /// Starts the next run. A run is at least as long as the longest slot,
-        /// so its first programme always fits.
-        private mutating func takeFirstOfRun() -> (item: MediaItem, start: Int64, end: Int64) {
-            if cursor >= runEnd {
-                run += 1
-                programmes = schedule.stream(forRun: run)
-                commercials = CommercialQueue(schedule.commercials(forRun: run))
-                cursor = Int64(run) * schedule.runLength
+        /// Slots of this run still to leave out at its join.
+        private var leftOut = 0
+
+        /// Lays out the next slot.
+        mutating func place() -> Slot {
+            var slot = upcoming ?? firstSlotOfRun()
+            let standIn = opensRun ? join?.standIn : nil
+            opensRun = false
+            let before = programmes.previous
+            programmes.aired(slot.item)
+            upcoming = following()
+            // Nothing else fits before the edge: the leftover joins this slot.
+            if upcoming == nil, let pin = edgePin, !programmes.allows(pin.item, after: slot.item) {
+                // The last before a programme at a set time that mustn't follow it:
+                // another fills the rest of the gap, or else (unless it's at a set
+                // time itself) takes its place.
+                if let item = schedule.standIns(from: slot.end, to: edge, after: slot.item, before: pin.item).first {
+                    upcoming = Slot(item: item, start: slot.end, end: edge)
+                    cursor = edge
+                } else if !slot.isPinned {
+                    slot = lastBefore(pin, instead: slot, after: before)
+                }
             }
-            if let slot = take() { return slot }
-            // Only a broken strategy gets here.
-            assertionFailure("Strategy '\(type(of: schedule.strategy).id)' produced nothing for a run")
-            let item = schedule.content.items[ChannelContent.wrap(run, schedule.content.items.count)]
-            cursor = runEnd
-            return (item, runEnd - schedule.runLength, runEnd)
+            finishedRun = upcoming == nil && pins.isEmpty
+            if upcoming == nil {
+                // The run's last slot reaches on to where the next run starts.
+                slot.end = finishedRun && joinsRuns ? nextJoin(after: slot.item).start : edge
+                cursor = slot.end
+                upcoming = following()   // the programme at a set time, if that's the edge
+            }
+            if let standIn { slot = Slot(item: standIn, start: slot.start, end: slot.end) }
+            if finishedRun { opensRun = true }
+            return slot
         }
 
-        /// The next programme that finishes before the run ends, or nil when
-        /// none does. Only near the end of a run does anything get passed over.
-        private mutating func take() -> (item: MediaItem, start: Int64, end: Int64)? {
-            guard runEnd - cursor >= schedule.shortestProgramme else { return nil }
+        /// Works out, and keeps for when it starts, how the next run meets this one.
+        private mutating func nextJoin(after last: MediaItem) -> Join {
+            let next = schedule.join(ofRun: run + 1, after: last)
+            join = next
+            return next
+        }
+
+        /// The next pinned programme's start, or the end of the run.
+        private var edge: Int64 { pins.first?.start ?? runEnd }
+
+        /// The programme at a set time right at the edge, if there is one.
+        private var edgePin: Slot? { pins.first ?? pinAtRunEnd }
+
+        /// Starts `run` afresh: nothing carries over from the run before.
+        private mutating func begin(_ run: Int) {
+            self.run = run
+            let opening = schedule.opening(ofRun: run)
+            cursor = opening.start
+            openingFiller = opening.onlyFiller
+            leftOut = join?.leftOut ?? 0
+            runEnd = schedule.opening(ofRun: run + 1).start
+            pins = schedule.pinnedSlots(inRun: run).filter { $0.start >= cursor }
+            pinAtRunEnd = schedule.pinnedSlots(inRun: run + 1).first { $0.start == runEnd }
+            programmes = RuledStream(schedule.stream(forRun: run), for: .programmes)
+            commercials = CommercialQueue(schedule.commercials(forRun: run))
+        }
+
+        /// The first slot of the next run. A run is at least as long as the
+        /// longest slot, so its first programme always fits unless a pinned
+        /// programme comes first.
+        private mutating func firstSlotOfRun() -> Slot {
+            if cursor >= runEnd { begin(run + 1) }
+            if let item = openingFiller {
+                openingFiller = nil
+                defer { cursor = edge }
+                return Slot(item: item, start: cursor, end: edge)
+            }
+            if let slot = following() { return slot }
+            // Nothing within reach fits before the first pinned programme: one of
+            // the channel's that the rules allow does, or else the shortest.
+            // (Without pins, only a broken strategy gets here.)
+            assert(!pins.isEmpty, "Strategy '\(type(of: schedule.strategy).id)' produced nothing for a run")
+            let item = edgePin.flatMap { schedule.standIns(from: cursor, to: edge, after: nil, before: $0.item).first }
+                ?? schedule.shortestItem
+            let end = min(edge, ChannelSchedule.slotEnd(of: item, startingAt: cursor, padToMinutes: schedule.channel.padToMinutes))
+            defer { cursor = end }
+            return Slot(item: item, start: cursor, end: end)
+        }
+
+        /// The programme at a set time starting now, or else the next one from
+        /// the stream that finishes before the edge. Nil when none does.
+        private mutating func following() -> Slot? {
+            if let pin = pins.first, pin.start <= cursor {
+                pins.removeFirst()
+                cursor = pin.end
+                return pin
+            }
+            return take(before: edge, pinned: edgePin?.item)
+        }
+
+        /// The next programme that finishes by `edge`. Programmes passed over
+        /// on the way wait, in order, for after the edge (at the end of a run
+        /// they're dropped). Before a programme at a set time (`pinned`), one
+        /// the rules don't allow straight before it only goes if an allowed one
+        /// could still follow it; with `last`, none can.
+        private mutating func take(before edge: Int64, pinned: MediaItem?, last: Bool = false) -> Slot? {
+            guard edge - cursor >= schedule.shortestProgramme else { return nil }
             let mayReorder = type(of: schedule.strategy).mayReorderToFit
             var passedOver: [MediaItem] = []
+            defer { programmes.putBack(passedOver) }
             while let item = programmes.next() {
                 let length = ChannelSchedule.milliseconds(of: item.duration)
                 // A show that was passed over keeps its place: its later episodes wait too.
                 let showIsWaiting = passedOver.contains { $0.seriesKey == item.seriesKey }
-                if cursor + length <= runEnd, !showIsWaiting {
-                    let end = min(runEnd, ChannelSchedule.slotEnd(of: item, startingAt: cursor,
-                                                                  padToMinutes: schedule.channel.padToMinutes))
-                    defer { cursor = end }
-                    return (item, cursor, end)
+                let fits = cursor + length <= edge && !showIsWaiting
+                if fits {
+                    let end = min(edge, ChannelSchedule.slotEnd(of: item, startingAt: cursor,
+                                                                padToMinutes: schedule.channel.padToMinutes))
+                    // Before a programme at a set time that mustn't follow this one,
+                    // it can only go if something allowed could still fit after it.
+                    let mayPrecedePin = pinned.map { pin in
+                        programmes.allows(pin, after: item)
+                            || !(last || edge - end < schedule.shortestProgramme)
+                            && schedule.standIns(from: end, to: edge, after: item, before: pin).first != nil
+                    } ?? true
+                    if mayPrecedePin {
+                        defer { cursor = end }
+                        return Slot(item: item, start: cursor, end: end)
+                    }
                 }
                 passedOver.append(item)
-                if !mayReorder || passedOver.count > ChannelSchedule.maxSkipsAtRunEnd { return nil }
+                // Held back by a rule (or replacing one that was), the search goes
+                // on whatever the strategy; otherwise passing over needs `mayReorderToFit`.
+                if (!fits && !mayReorder && !last) || passedOver.count > ChannelSchedule.maxSkipsAtRunEnd { return nil }
             }
             return nil
+        }
+
+        /// `slot` turned out to be the last before `pin`, which mustn't follow
+        /// it: another programme takes its place, and it waits. First choice is
+        /// the stream's next that fits; failing that, any of the channel's
+        /// programmes that fits (`standIns`). With neither, the rules give way.
+        private mutating func lastBefore(_ pin: Slot, instead slot: Slot, after before: MediaItem?) -> Slot {
+            cursor = slot.start
+            programmes.aired(before)
+            programmes.putBack([slot.item])
+            var chosen = take(before: edge, pinned: pin.item, last: true)
+            if chosen == nil {
+                programmes.withdraw(slot.item)
+                chosen = schedule.standIns(from: slot.start, to: edge, after: before, before: pin.item).first
+                    .map { Slot(item: $0, start: slot.start, end: edge) } ?? slot
+            }
+            programmes.aired(chosen!.item)
+            return chosen!
         }
     }
 
     /// A run's commercial stream, where a clip can be looked at before it's
     /// taken: one that doesn't fit this break waits to open the next.
     private struct CommercialQueue {
-        private let stream: AnyIterator<MediaItem>
+        private var stream: RuledStream
         private var waiting: MediaItem?
 
-        init(_ stream: AnyIterator<MediaItem>) { self.stream = stream }
+        init(_ clips: AnyIterator<MediaItem>) {
+            stream = RuledStream(clips, for: .commercials)
+        }
 
         mutating func peek() -> MediaItem? {
             if waiting == nil { waiting = stream.next() }
             return waiting
         }
 
-        mutating func take() { waiting = nil }
+        mutating func take() {
+            if let waiting { stream.aired(waiting) }
+            waiting = nil
+        }
     }
 
     /// A gap this long or shorter (milliseconds) gets no commercials: the

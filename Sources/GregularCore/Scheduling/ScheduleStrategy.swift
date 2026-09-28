@@ -10,7 +10,7 @@
 ///    content. Returning nil ends the run early (the rest becomes a gap), so
 ///    keep it for a genuine dead end.
 /// 2. **Be deterministic.** The same content, position and `rng` must give the
-///    same stream. Use only `rng` (or `LazyPermutation` with `content.seed`)
+///    same stream. Use only `rng` (or `ShuffledOrder` with `content.seed`)
 ///    for randomness.
 /// 3. **Treat `position` as "about this many programmes have aired before".**
 ///    Strategies that continue a sequence (episode 5 after episode 4) should

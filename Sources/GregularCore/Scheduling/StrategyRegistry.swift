@@ -10,7 +10,7 @@
 public enum StrategyRegistry {
     public static var all: [any ScheduleStrategy.Type] {
         [
-            DerangedShows.self,
+            ShuffledShows.self,
             RandomShuffle.self,
             SequentialBySeries.self,
             SeriesRoundRobin.self,

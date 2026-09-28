@@ -8,11 +8,11 @@ struct CommercialsTests {
     @Test func bundledLineupNamesTheCommercialsLibraryAndUsesItEverywhere() throws {
         let lineup = try ChannelLineup.bundled()
         #expect(lineup.commercialsLibrary == "Commercials")
-        #expect(lineup.channels.allSatisfy { $0.fillerID == "derangement" })
+        #expect(lineup.channels.allSatisfy { $0.fillerID == "shuffle" })
     }
 
     @Test func turningCommercialsOffLeavesProgrammeTimesExactlyTheSame() throws {
-        let json = #"[{ "number": 10, "name": "Movies", "itemTypes": ["Movie"], "source": { "type": "all" }, "strategy": "derangement", "seed": 1, "padTo": 30, "filler": "derangement" }]"#
+        let json = #"[{ "number": 10, "name": "Movies", "itemTypes": ["Movie"], "source": { "type": "all" }, "strategy": "shuffled-shows", "seed": 1, "padTo": 30, "filler": "shuffle" }]"#
         let lineup = try ChannelLineup.load(from: Data(json.utf8))
         let on = try #require(lineup.schedules(for: Fixtures.library, fillerPool: ads).first)
         let off = try #require(lineup.schedules(for: Fixtures.library, fillerPool: ads, playsCommercials: false).first)
@@ -36,7 +36,7 @@ struct CommercialsTests {
         // The same video in the library and in the commercials pool (a library
         // set up as "Movies" instead of "Home Videos"): it only ever plays as an ad.
         let clipAlsoInLibrary = MediaItem(id: "ad0", kind: .movie, name: "Ad 0", duration: 30)
-        let json = #"[{ "number": 10, "name": "Movies", "itemTypes": ["Movie"], "source": { "type": "all" }, "strategy": "random-shuffle", "seed": 1, "padTo": 30, "filler": "derangement" }]"#
+        let json = #"[{ "number": 10, "name": "Movies", "itemTypes": ["Movie"], "source": { "type": "all" }, "strategy": "random-shuffle", "seed": 1, "padTo": 30, "filler": "shuffle" }]"#
         let schedule = try #require(try ChannelLineup.load(from: Data(json.utf8))
             .schedules(for: Fixtures.library + [clipAlsoInLibrary], fillerPool: ads).first)
         let day = schedule.airings(from: Channel.defaultEpoch, to: Channel.defaultEpoch.addingTimeInterval(24 * 3600))
@@ -46,7 +46,7 @@ struct CommercialsTests {
 
     @Test func commercialsFillTheRunEndGapOnUnpaddedChannelsToo() throws {
         // 50-minute episodes: 28 fit in a day, leaving 40 minutes for ads.
-        let json = #"[{ "number": 1, "name": "T", "source": { "type": "all" }, "strategy": "sequential-by-series", "seed": 1, "filler": "derangement" }]"#
+        let json = #"[{ "number": 1, "name": "T", "source": { "type": "all" }, "strategy": "sequential-by-series", "seed": 1, "filler": "shuffle" }]"#
         let schedule = try #require(try ChannelLineup.load(from: Data(json.utf8))
             .schedules(for: Fixtures.series("Fifty", seasons: 1, episodes: 6, minutes: 50), fillerPool: ads).first)
         let day = schedule.airings(from: Channel.defaultEpoch, to: Channel.defaultEpoch.addingTimeInterval(24 * 3600 - 1))
@@ -58,7 +58,7 @@ struct CommercialsTests {
     }
 
     @Test func aBreakRunsFromItsFirstClipToTheNextProgramme() throws {
-        let json = #"[{ "number": 1, "name": "T", "source": { "type": "all" }, "strategy": "sequential-by-series", "seed": 1, "filler": "derangement" }]"#
+        let json = #"[{ "number": 1, "name": "T", "source": { "type": "all" }, "strategy": "sequential-by-series", "seed": 1, "filler": "shuffle" }]"#
         let schedule = try #require(try ChannelLineup.load(from: Data(json.utf8))
             .schedules(for: Fixtures.series("Fifty", seasons: 1, episodes: 6, minutes: 50), fillerPool: ads).first)
         let lastHour = schedule.airings(from: Channel.defaultEpoch.addingTimeInterval(23 * 3600),

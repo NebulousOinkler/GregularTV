@@ -86,14 +86,14 @@ enum Fixture {
 extension ChannelSchedule {
     /// Test channels numbered `numbers` (each seeded with its number), all
     /// playing `items`, with `ads` as commercials if there are any.
-    static func testing(_ numbers: [Int] = [1], strategy: String = "derangement", epoch: Date? = nil,
+    static func testing(_ numbers: [Int] = [1], strategy: String = "shuffled-shows", epoch: Date? = nil,
                         padTo: Int? = nil, items: [MediaItem], ads: [MediaItem] = [],
                         playsCommercials: Bool = true) throws -> [ChannelSchedule] {
         let channels = numbers.map { n in
             var fields = [#""number": \#(n)"#, #""name": "C\#(n)""#, #""source": { "type": "all" }"#,
                           #""strategy": "\#(strategy)""#, #""seed": \#(n)"#]
             if let padTo { fields.append(#""padTo": \#(padTo)"#) }
-            if !ads.isEmpty { fields.append(#""filler": "derangement""#) }
+            if !ads.isEmpty { fields.append(#""filler": "shuffle""#) }
             if let epoch { fields.append(#""epoch": "\#(ISO8601DateFormatter().string(from: epoch))""#) }
             return "{ " + fields.joined(separator: ", ") + " }"
         }

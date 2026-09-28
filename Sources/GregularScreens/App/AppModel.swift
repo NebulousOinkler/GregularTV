@@ -34,6 +34,8 @@ public final class AppModel {
     /// "Play commercials" in Settings. Off leaves every break blank, with the
     /// same programme times, so the schedule code still means the same schedule.
     public private(set) var playsCommercials: Bool
+    /// Channels made in Settings, added to the bundled line-up.
+    public private(set) var customChannels: [CustomChannel]
     public let identity: ClientIdentity
     private let store: any CredentialStore
     private let preferences: AppPreferences
@@ -59,6 +61,7 @@ public final class AppModel {
         identity = ClientIdentity(deviceID: store.deviceID())
         showsDiagnostics = preferences.showsDiagnostics
         playsCommercials = preferences.playsCommercials
+        customChannels = preferences.customChannels
         if let saved = preferences.scheduleCode {
             scheduleCode = saved
         } else {
@@ -105,10 +108,7 @@ public final class AppModel {
         guard plays != playsCommercials else { return }
         playsCommercials = plays
         preferences.playsCommercials = plays
-        guard case .watching(let surfer) = phase, let client else { return }
-        surfer.player.stop()
-        phase = watch(library: library, commercials: commercials, streams: client,
-                      preferring: surfer.player.schedule.channel.number)
+        rebuildChannels()
     }
 
     /// Rebuilds every channel from the new code and re-tunes the current channel.
@@ -116,6 +116,64 @@ public final class AppModel {
         guard code != scheduleCode else { return }
         scheduleCode = code
         preferences.scheduleCode = code
+        rebuildChannels()
+    }
+
+    // MARK: - Custom channels
+
+    /// An editor for a new custom channel, or for `channel`. Nil until the
+    /// library has loaded (its genres, series and tags are the choices).
+    public func makeChannelEditor(editing channel: CustomChannel? = nil) -> ChannelEditorModel? {
+        guard case .watching = phase else { return nil }
+        let others = customChannels.filter { $0 != channel }
+        guard let lineup = try? ChannelLineup.bundled().adding(others) else { return nil }
+        return ChannelEditorModel(editing: channel, library: library, lineup: lineup, code: scheduleCode)
+    }
+
+    /// Saves `channel` (in place of `original`, when editing) and rebuilds the
+    /// channels. Returns why it couldn't be saved, or nil.
+    @discardableResult
+    public func save(_ channel: CustomChannel, replacing original: CustomChannel? = nil) -> String? {
+        var channels = customChannels.filter { $0 != original }
+        channels.append(channel)
+        do {
+            _ = try ChannelLineup.bundled().adding(channels)
+        } catch {
+            return "\(error)"
+        }
+        setCustomChannels(channels.sorted { $0.number < $1.number })
+        return nil
+    }
+
+    /// Adds the channel a channel code describes. Returns why it couldn't, or nil.
+    public func addChannel(code: String) -> String? {
+        guard let channel = CustomChannel(code: code) else {
+            return "That isn't a channel code. Check it against the other Apple TV's Settings."
+        }
+        return save(channel)
+    }
+
+    public func delete(_ channel: CustomChannel) {
+        setCustomChannels(customChannels.filter { $0 != channel })
+    }
+
+    private func setCustomChannels(_ channels: [CustomChannel]) {
+        customChannels = channels
+        preferences.customChannels = channels
+        rebuildChannels()
+    }
+
+    /// The bundled channels and the custom ones. A custom channel that no
+    /// longer fits (a newer app took its number) is left out, not an error.
+    private func lineup() throws -> ChannelLineup {
+        try customChannels.reduce(ChannelLineup.bundled()) { lineup, custom in
+            (try? lineup.adding([custom])) ?? lineup
+        }
+    }
+
+    /// Rebuilds every channel after a setting changed, and re-tunes the
+    /// current channel. Programme times only change if the code did.
+    private func rebuildChannels() {
         guard case .watching(let surfer) = phase, let client else { return }
         surfer.player.stop()
         phase = watch(library: library, commercials: commercials, streams: client,
@@ -178,7 +236,7 @@ public final class AppModel {
     /// if that one is gone or empty.
     private func watch(library: [MediaItem], commercials: [MediaItem], streams: any StreamSource,
                        preferring preferred: Int?) -> Phase {
-        guard var channels = try? ChannelLineup.bundled()
+        guard var channels = try? lineup()
             .schedules(for: library, fillerPool: commercials, code: scheduleCode, playsCommercials: playsCommercials)
         else {
             return .failed("channels.json couldn't be read.")

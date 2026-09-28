@@ -25,8 +25,14 @@ struct PrivacyTests {
         #expect(prefs.playsCommercials)
         prefs.playsCommercials = false
         #expect(AppPreferences(defaults: defaults).playsCommercials == false)
+        #expect(prefs.customChannels.isEmpty)
+        let custom = CustomChannel(number: 25, name: "Comedy", rule: .genre("Comedy"))
+        prefs.customChannels = [custom]
+        #expect(AppPreferences(defaults: defaults).customChannels == [custom])
+        // Kept as the channel code: only what the viewer typed or picked.
+        #expect(defaults.stringArray(forKey: "customChannels") == [custom.code])
         #expect(defaults.persistentDomain(forName: suite)?.keys.sorted()
-                == ["lastChannelNumber", "playsCommercials", "scheduleCode", "showsDiagnostics", "streamingQuality"])
+                == ["customChannels", "lastChannelNumber", "playsCommercials", "scheduleCode", "showsDiagnostics", "streamingQuality"])
     }
 
     #if os(macOS)

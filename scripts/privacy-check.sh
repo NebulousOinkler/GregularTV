@@ -19,7 +19,8 @@ Sources/GregularCore/Preferences/AppPreferences.swift
 Sources/GregularJellyfin/HTTPTransport.swift
 '
 #   SecureStore.swift:    Keychain; the only credential storage (server URL, token, user ID, device ID).
-#   AppPreferences.swift: UserDefaults; last channel number and streaming quality only.
+#   AppPreferences.swift: UserDefaults; client settings only (last channel, quality, schedule code,
+#                         switches) and custom channels as the channel codes the viewer made.
 #   HTTPTransport.swift:  builds the one ephemeral URLSession, with cache and cookies switched off.
 
 violations=$(grep -rnE "$FORBIDDEN" Sources App/GregularTV --include='*.swift' \

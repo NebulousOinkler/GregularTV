@@ -2,14 +2,14 @@
 
 *We now return to your Gregular programming.*
 
-A Jellyfin client for Apple TV that plays your library as always-on TV channels. See [PLAN.md](PLAN.md) for the design, and [TODO.md](TODO.md) for planned features (custom channels, fixed-time programmes).
+A Jellyfin client for Apple TV that plays your library as always-on TV channels. See [PLAN.md](PLAN.md) for the design.
 
 ## IMPORTANT NOTE: 
 This is mostly AI coded. Why does this exist? I wanted a better shuffle algorithm than what I found in existing applications and I didn't want to make the rest of the bones just to watch videos from a Jellyfin server. I wrote the shuffle algorithm myself in python and had it translated to Swift by the LLM. It's mostly for personal use, but it's open source regardless. Have fun!
 
 ## Status
 
-Version 1.1. All seven milestones in [PLAN.md](PLAN.md) are done. The core package handles scheduling, the Jellyfin client and privacy, and the tvOS app has sign-in, live channels, surfing, a six-hour guide, quality settings, and commercial breaks (including mid-roll breaks in films) from a Jellyfin library named `Commercials` (see PLAN.md §9a).
+Version 1.2. All seven milestones in [PLAN.md](PLAN.md) are done, and so is everything that was in `TODO.md`. The core package handles scheduling, the Jellyfin client and privacy, and the tvOS app has sign-in, live channels, surfing, a six-hour guide, quality settings, commercial breaks (including mid-roll breaks in films) from a Jellyfin library named `Commercials` (see PLAN.md §9a), your own channels made in Settings, and programmes at set times.
 
 Open `App/GregularTV.xcodeproj` in Xcode and run the **GregularTV** scheme on an Apple TV simulator or device. Requires tvOS 17 or later and Jellyfin 10.9 or later.
 
@@ -43,14 +43,45 @@ Run app tests on a dedicated simulator ("GregularTV Tests"), not the one you're 
 
 ## Schedule code
 
-Every channel's running order comes from one 10-character **schedule code** (like `7KQM2-X9PDA`), shown and editable in Settings (click and hold while watching). The first launch picks a random one. Two Apple TVs with the same code, the same Jellyfin library and the same `channels.json` show the same programmes at the same time on every channel. Changing the code reshuffles everything. See PLAN.md §9b for how the code becomes each channel's derangement.
+Every channel's running order comes from one 10-character **schedule code** (like `7KQM2-X9PDA`), shown and editable in Settings (click and hold while watching). The first launch picks a random one. Two Apple TVs with the same code, the same Jellyfin library and the same `channels.json` show the same programmes at the same time on every channel. Changing the code reshuffles everything. See PLAN.md §9b for how the code becomes each channel's shuffle.
+
+## Your own channels
+
+**Settings › Your channels › Add a Channel** makes a channel on the Apple TV: a name, a number from 20 to 99, episodes or movies or both, and one rule (everything, a genre, a series, a range of years, or a tag), picked from your library. Half-hour slots and commercials are on by default, and it can have programmes at set times (below). A preview shows how many programmes match and the next few hours as they'd air. Custom channels join the guide like any other, and are hidden while nothing matches.
+
+Each channel has a **channel code**, shown in its editor. Type it into another Apple TV's Settings to add the same channel there: with the same schedule code, both show the same programmes. Custom channels are the one thing from your library the app keeps: each is saved as its channel code (the name, number and the genre, series or tag you picked), and Settings says so.
+
+## Programmes at set times
+
+A channel can air certain programmes at set local times, such as a series at 6:00 and 6:30 PM on weekdays, or a film every 2 February, with the shuffle filling the rest. In `channels.json`:
+
+```json
+"timeZone": "America/New_York",
+"fixed": [
+  { "series": "The Simpsons", "at": ["18:00", "18:30"], "days": ["Mon", "Tue", "Wed", "Thu", "Fri"] },
+  { "item": "Groundhog Day", "at": ["20:00"], "days": ["Feb 2"], "exclusive": true }
+]
+```
+
+A series plays its next episode at each airing. `exclusive` keeps it out of the shuffle, so it only airs then. Custom channels can have set times too, in the Apple TV's own time zone. See PLAN.md §9c.
+
+## Special rules
+
+A few things hold whatever a channel's strategy, and they're all in one registry, `ScheduleRules` (`Sources/GregularCore/Rules/`):
+- **The same movie (or the same episode) never airs twice in a row.** A show may follow itself with its next episode.
+- **The same commercial never plays twice in a row.**
+- **Programmes at set times air at exactly those times**, a series advancing one episode per airing, and exclusive ones stay out of the shuffle.
+- **Set times are checked** when the line-up loads: a time zone, and no two programmes at the same time on the same day.
+- **Custom channels use 20 to 99**, and no two channels share a number.
+
+See PLAN.md §9c for how the engine keeps them.
 
 ## Commercials
 
 Every programme starts on the half hour. The time from its end to the next half hour is commercials, from a Jellyfin library named `Commercials` (the name is set in `channels.json`):
 - **After a TV episode:** all of it, after the episode. An episode an hour or longer is treated like a film, below.
 - **In a film:** a film's leftover can be up to half an hour. Up to 10 minutes goes after the film. More is shared out evenly between the break after it and one or two **mid-roll** breaks inside it (halfway, or at a third and two thirds), each 10 minutes at most: one mid-roll for up to 20 minutes, two beyond that. At least 15 minutes of film plays between breaks, so a short film gets fewer mid-rolls (none under 30 minutes) and the rest goes after it. The film stops at the break and carries on from the same point after it.
-- Clips play in the order of the channel's derangement, with the same `a` and `b` as its shows, carrying on from break to break.
+- Each pass through the commercials plays every clip once, in a new shuffle (independent of the show order), carrying on from break to break. The same clip never plays twice in a row.
 - **At most 20 minutes of commercials in one break.** A longer break (after an episode that ends well before the half hour, a short film, or at the end of a day) is blank after that, with the "Up next" card, and the programme still starts on time.
 - A gap of a minute or less gets no commercials. When a clip ends, the next only starts if at least half of it will play before the last 15 seconds; otherwise the rest of the break is blank. A clip still playing then is cut off.
 - The last 15 seconds of every break are the "Up next" card: the last commercial fades out quickly into it, then the card fades to black and the programme fades in.
@@ -107,6 +138,7 @@ xcrun simctl launch booted dev.gregulartv.GregularTV -handoffTest
 | Connect a different media server | Implement `MediaLibrary` and `StreamSource` (`Sources/GregularCore/Services/MediaServices.swift`), and use it in `AppModel` |
 | Change the channel line-up | `Sources/GregularCore/Resources/channels.json`, then run `swift test` to validate it |
 | Add a shuffle/scheduling algorithm | New file in `Sources/GregularCore/Scheduling/Strategies/`, then add it to `StrategyRegistry.all` |
+| Add a special rule (something that must hold on every channel) | A type in `Sources/GregularCore/Rules/` conforming to one of the rule kinds in `ScheduleRule.swift`, then add it to `ScheduleRules.all` |
 | Add a way to choose channel content | New type in `Sources/GregularCore/Channels/Sources/`, then add it to `ChannelSourceRegistry.all` |
 | Change the order commercials play in | New `GapFiller` in `Sources/GregularCore/Scheduling/GapFiller.swift`, then add it to `GapFillerRegistry.all` and set `"filler"` in `channels.json` (see PLAN.md §9a) |
 | Change what the remote's buttons do | The tables at the top of `Sources/GregularScreens/Remote/RemoteControls.swift` (one per screen) |
@@ -135,7 +167,7 @@ The rules are documented on `ScheduleStrategy`:
 - **Never end:** wrap around or reshuffle.
 - **Be deterministic.**
 - **Continue from `position`** if your order is a sequence.
-- **Randomness:** use only the `rng` you're given, or `LazyPermutation` with `content.seed`. `SeededRandom` is deliberately *not* a `RandomNumberGenerator`, because the standard library's shuffle can change between Swift releases.
+- **Randomness:** use only the `rng` you're given, or `ShuffledOrder` with `content.seed`. `SeededRandom` is deliberately *not* a `RandomNumberGenerator`, because the standard library's shuffle can change between Swift releases.
 
 `StrategyConformanceTests` checks all of this for every registered strategy automatically.
 
@@ -150,8 +182,9 @@ Gregular TV is built to know as little as possible about your Jellyfin server, a
 | Server address, access token, user ID | Keychain, this device only (excluded from backups and iCloud) | To reconnect without signing in again |
 | A random device ID | Keychain, this device only | Jellyfin requires one; it's kept across sign-outs so your device list doesn't fill up |
 | Last channel number, streaming quality, schedule code, diagnostics and commercials switches | App preferences | Client settings; no server data |
+| Your custom channels, as their channel codes | App preferences | What you typed or picked: a name, a number, and the genre, series or tag chosen, with any set times |
 
-**Never stored:** your password (it's used for one sign-in request only), your library (titles, episodes, artwork), schedules, watch history, or logs. The library is fetched into memory at launch and is gone when the app quits. Schedules are recomputed from each channel's seed and the clock, so there's nothing to save.
+**Never stored:** your password (it's used for one sign-in request only), your library (titles, episodes, artwork; a custom channel keeps only the names you picked for it), schedules, watch history, or logs. The library is fetched into memory at launch and is gone when the app quits. Schedules are recomputed from each channel's seed and the clock, so there's nothing to save.
 
 **Never sent to Jellyfin:** what you're watching. The app makes no playback-reporting calls, so nothing appears under "Now Playing" and your watched status and resume points are untouched. The app also refuses remote control from other Jellyfin clients.
 
@@ -160,7 +193,7 @@ Gregular TV is built to know as little as possible about your Jellyfin server, a
 **Enforced, not just promised:**
 - **Network:** all requests go through one ephemeral `URLSession`, with no disk cache and no cookies.
 - **Privacy check:** [`scripts/privacy-check.sh`](scripts/privacy-check.sh) fails the app build, and `swift test`, if code outside the three allowed files uses anything that persists or leaks data. That covers `UserDefaults`, files, Core Data and SwiftData, caches, cookies, the Keychain, iCloud storage, and system logging (`Logger`, `os_log`, `NSLog`, `print`).
-- **Tests:** they check that no playback-reporting endpoint is ever called, that sign-out clears credentials even when the server is unreachable, and that preferences hold only the five client settings.
+- **Tests:** they check that no playback-reporting endpoint is ever called, that sign-out clears credentials even when the server is unreachable, and that preferences hold only the client settings and custom channel codes.
 - **No third-party code:** no analytics or crash reporting, only Apple frameworks. The app sends Apple nothing itself; only tvOS's own *Share Analytics* setting (the device owner's choice) sends crash reports.
 - **Privacy manifest:** `PrivacyInfo.xcprivacy` declares the same to Apple: no tracking, no data collected.
 - **Artwork:** the app icon and Top Shelf image are drawn by [`scripts/make-artwork.swift`](scripts/make-artwork.swift), never taken from your server.

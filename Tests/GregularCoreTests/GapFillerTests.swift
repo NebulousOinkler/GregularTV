@@ -10,7 +10,7 @@ struct GapFillerTests {
     let epoch = Channel.defaultEpoch
 
     /// One 22-minute episode padded to 30 minutes: an 8-minute gap.
-    private func schedule(filler: String = DerangedCommercials.id, pool: [MediaItem]? = nil) throws -> ChannelSchedule {
+    private func schedule(filler: String = ShuffledCommercials.id, pool: [MediaItem]? = nil) throws -> ChannelSchedule {
         let channel = Channel(number: 1, name: "Test", source: AllItemsSource(), strategyID: RandomShuffle.id,
                               seed: 7, padToMinutes: 30, fillerID: filler)
         return try #require(ChannelSchedule(channel: channel, items: [Fixtures.episode("Show", s: 1, e: 1)],
@@ -31,24 +31,6 @@ struct GapFillerTests {
         #expect(first == Array(filler.clips(from: pool, for: content, startingAt: 12).prefix(40)))
     }
 
-    @Test func derangementUsesTheShowsAAndB() {
-        let shows = LazyDerangement(count: content.series.count, key: content.seed)
-        let order = DerangedCommercials.order(forPoolOf: pool.count, content: content)
-        #expect(order.a == shows.a && order.b == shows.b, "The same a and b as the channel's shows")
-        #expect(order.prime > pool.count && order.prime > order.a && order.prime > order.b)
-        // Clip number (a·x + b) mod q at step x, keeping those below the pool size.
-        let expected = (0..<order.prime).map { (order.a * $0 + order.b) % order.prime }.filter { $0 < pool.count }
-        let clips = Array(DerangedCommercials().clips(from: pool, for: content, startingAt: 0).prefix(pool.count))
-        #expect(clips.map(\.id) == expected.map { pool[$0].id })
-    }
-
-    @Test func derangementPlaysEveryClipOncePerPassInTheSameOrder() {
-        let clips = Array(DerangedCommercials().clips(from: pool, for: content, startingAt: 0).prefix(pool.count * 3))
-        let passes = stride(from: 0, to: clips.count, by: pool.count).map { clips[$0..<$0 + pool.count].map(\.id) }
-        #expect(Set(passes[0]).count == pool.count, "Every clip once")
-        #expect(passes.allSatisfy { $0 == passes[0] }, "Each pass repeats the same order")
-    }
-
     @Test func shufflePlaysEveryClipOncePerPassInANewOrder() {
         let big = (0..<12).map { MediaItem(id: "c\($0)", kind: .video, name: "C\($0)", duration: 30) }
         let clips = Array(ShuffledCommercials().clips(from: big, for: content, startingAt: 0).prefix(big.count * 4))
@@ -58,6 +40,26 @@ struct GapFillerTests {
         // Starting partway gives the same clips as reading from the start.
         let fromSeven = Array(ShuffledCommercials().clips(from: big, for: content, startingAt: 7).prefix(20))
         #expect(fromSeven == Array(clips[7..<27]))
+    }
+
+    @Test func theSameClipNeverPlaysTwiceInARow() throws {
+        // Two clips: the passes' shuffles would often put one twice in a row.
+        let two = Array(pool.prefix(2))
+        let day = try schedule(pool: two).airings(from: epoch, to: epoch.addingTimeInterval(7 * 24 * 3600))
+        var checked = 0
+        for (a, b) in zip(day, day.dropFirst()) where a.isFiller && b.isFiller {
+            #expect(a.item.id != b.item.id)
+            checked += 1
+        }
+        #expect(checked > 100)
+    }
+
+    @Test func commercialsDontMirrorTheShowOrder() {
+        // Seven shows and seven clips: the orders are shuffled independently.
+        let clips = (0..<7).map { MediaItem(id: "c\($0)", kind: .video, name: "C\($0)", duration: 30) }
+        let ads = Array(ShuffledCommercials().clips(from: clips, for: content, startingAt: 0).prefix(21)).map { Int($0.id.dropFirst())! }
+        let shows = ShuffledOrder.Passes(count: 7, seed: content.seed)
+        #expect(ads != (0..<21).map(shows.index(at:)))
     }
 
     // MARK: In the schedule
@@ -110,7 +112,7 @@ struct GapFillerTests {
         func fillers(clip minutes: Double) throws -> [Airing] {
             let clip = MediaItem(id: "long", kind: .video, name: "Long", duration: minutes * 60)
             let channel = Channel(number: 1, name: "T", source: AllItemsSource(), strategyID: RandomShuffle.id,
-                                  seed: 7, padToMinutes: 30, fillerID: DerangedCommercials.id)
+                                  seed: 7, padToMinutes: 30, fillerID: ShuffledCommercials.id)
             let show = Fixtures.episode("S", s: 1, e: 1, minutes: 21)
             let s = try #require(ChannelSchedule(channel: channel, items: [show], fillerPool: [clip]))
             return s.airings(from: epoch, to: epoch.addingTimeInterval(30 * 60 - 1)).filter(\.isFiller)
@@ -129,14 +131,20 @@ struct GapFillerTests {
         let day = s.airings(from: epoch, to: epoch.addingTimeInterval(24 * 3600 - 1)).filter(\.isFiller)
         let channelContent = ChannelContent(items: [Fixtures.episode("Show", s: 1, e: 1)],
                                             seed: ScheduleCode.standard.key(forChannelSeed: 7))
-        let stream = DerangedCommercials().clips(from: pool, for: channelContent, startingAt: 0)
-        #expect(day.map(\.item.id) == Array(stream.prefix(day.count)).map(\.id))
+        // The filler's stream, with the rules applied: nothing twice in a row.
+        var stream = RuledStream(ShuffledCommercials().clips(from: pool, for: channelContent, startingAt: 0), for: .commercials)
+        let expected = (0..<day.count).map { _ in
+            let clip = stream.next()!
+            stream.aired(clip)
+            return clip.id
+        }
+        #expect(day.map(\.item.id) == expected)
     }
 
     @Test func aMinuteOrLessGetsNoCommercials() throws {
         func clipCount(gapSeconds: Double) throws -> Int {
             let channel = Channel(number: 1, name: "T", source: AllItemsSource(), strategyID: RandomShuffle.id,
-                                  seed: 7, padToMinutes: 30, fillerID: DerangedCommercials.id)
+                                  seed: 7, padToMinutes: 30, fillerID: ShuffledCommercials.id)
             let show = Fixtures.episode("S", s: 1, e: 1, minutes: 30 - gapSeconds / 60)
             let s = try #require(ChannelSchedule(channel: channel, items: [show], fillerPool: pool))
             return s.airings(from: epoch, to: epoch.addingTimeInterval(30 * 60 - 1)).filter(\.isFiller).count

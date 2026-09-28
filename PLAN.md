@@ -42,12 +42,13 @@ This design is what makes the privacy requirement cheap to meet. No schedule or 
 | Device ID (random UUID, made by the app) | Keychain | Jellyfin requires a stable device ID in the auth header |
 | Channel definitions (rules, seed, name) | App config (bundled JSON / Swift) | Client-side config, no library content |
 | Client settings: last channel **number**, streaming quality, schedule code, diagnostics and commercials switches | `UserDefaults`, through `AppPreferences` only | Client-side preferences; they hold no server data |
+| Custom channels, as their channel codes (name, number, rule, set times) | `UserDefaults`, through `AppPreferences` only | Client configuration the viewer typed or picked (decided 2026-09-28, option (a) of the old TODO): a rule may name a genre, series or tag, and nothing else from the library is kept |
 | Library metadata (titles, IDs, durations, artwork) | **RAM only**, gone on app exit | Needed to build the schedule and guide |
 | Password | **Never stored** | Only sent once to get a token (or use Quick Connect instead) |
 
 Enforcement:
 - **One network gateway (`JellyfinClient`)** built on `URLSessionConfiguration.ephemeral` with `urlCache = nil`, so nothing is cached to disk. The app loads no images from the server at all; its artwork is drawn by the app.
-- **No `UserDefaults`, Core Data, SwiftData, or file writes** outside two allowlisted files: `SecureStore.swift` (Keychain) and `AppPreferences.swift` (the five client settings above). A build-phase script fails the build if these APIs appear anywhere else.
+- **No `UserDefaults`, Core Data, SwiftData, or file writes** outside two allowlisted files: `SecureStore.swift` (Keychain) and `AppPreferences.swift` (the client settings and custom channels above). A build-phase script fails the build if these APIs appear anywhere else.
 - **No third-party SDKs**: no analytics or crash reporters. Everything uses Apple frameworks, with no external dependencies.
 - **Apple privacy manifest** (`App/GregularTV/PrivacyInfo.xcprivacy`): no tracking, no collected data types, and `UserDefaults` with reason CA92.1 (the app's own settings). The Info.plist sets `ITSAppUsesNonExemptEncryption = NO` (standard HTTPS only).
 - **No playback reporting.** The app never calls `/Sessions/Playing`, `/Sessions/Playing/Progress`, `/Sessions/Playing/Stopped` or `/UserPlayedItems`. There's no toggle, so the code path doesn't exist. As a result, nothing shows as "Now Playing", and watched status and resume points on the server stay untouched.
@@ -63,29 +64,35 @@ Four parts, each depending only on the ones before it. The first three are a Swi
 jellyfin_tv/
 ├─ Package.swift                    # GregularCore, GregularJellyfin (tvOS 17+, macOS for tests)
 ├─ Sources/GregularCore/            # 1. THE LOGIC: Foundation only
-│  ├─ Model/                        # MediaItem, Channel, Airing (+ Tuning, Onscreen)
+│  ├─ Model/                        # MediaItem, Channel, Airing (+ Tuning, Onscreen), FixedProgramme
 │  ├─ Services/MediaServices.swift  # what a media server must provide: MediaLibrary, StreamSource,
 │  │                                # MediaStream, MediaServiceFailure
+│  ├─ Rules/                        # ScheduleRules: the one registry of special rules (§9c), by kind:
+│  │                                # sequence (not twice in a row), content, pins (set times), checks
 │  ├─ Scheduling/
-│  │  ├─ ScheduleEngine.swift       # ChannelSchedule: day-long runs, slots, breaks, mid-rolls, tune(at:)
+│  │  ├─ ScheduleEngine.swift       # ChannelSchedule: runs, joins, set times, slots, breaks, mid-rolls, tune(at:)
+│  │  ├─ RunCalendar.swift          # where runs start: fixed lengths, or local days for set times
 │  │  ├─ ScheduleStrategy.swift     # protocol (see §5)
 │  │  ├─ StrategyRegistry.swift     # the one list of programme strategies
-│  │  ├─ Strategies/                # DerangedShows (default), RandomShuffle, SequentialBySeries,
+│  │  ├─ Strategies/                # ShuffledShows (default), RandomShuffle, SequentialBySeries,
 │  │  │                             # SeriesRoundRobin, ShuffledSeriesInOrder
-│  │  ├─ GapFiller.swift            # commercial order: protocol, registry, derangement / shuffle / none
+│  │  ├─ GapFiller.swift            # commercial order: protocol, registry, shuffle / none
 │  │  ├─ ChannelContent.swift       # a channel's programmes, grouped and sorted
-│  │  ├─ LazyDerangement.swift      # (a·x + b) mod p, from random_derangement.py
-│  │  ├─ LazyPermutation.swift      # Feistel shuffle, readable at any position
+│  │  ├─ LazyDerangement.swift      # (a·x + b) mod p, from random_derangement.py (unused, for reference)
+│  │  ├─ LazyPermutation.swift      # 12-round Feistel shuffle, readable at any position
+│  │  ├─ ShuffledOrder.swift        # every shuffle: Fisher–Yates up to 10 items, Feistel above; Passes
 │  │  ├─ ScheduleCode.swift         # the shared 10-character code → per-channel keys
 │  │  └─ SeededRandom.swift         # SplitMix64: deterministic, portable RNG
 │  ├─ Channels/
-│  │  ├─ ChannelLineup.swift        # loads channels.json, builds every channel's schedule
+│  │  ├─ ChannelLineup.swift        # loads channels.json, adds custom channels, builds every schedule
+│  │  ├─ CustomChannel.swift        # channels made in Settings, and their channel codes
+│  │  ├─ Crockford.swift            # the typing-friendly alphabet of schedule and channel codes
 │  │  ├─ ChannelSource.swift        # protocol + registry: what goes on a channel
 │  │  ├─ Sources/BasicSources.swift # all, genre, series, years, tag
 │  │  └─ ChannelNavigator.swift     # channel up/down, typed numbers
 │  ├─ Guide/GuideWindow.swift       # the guide's time window and cells
 │  ├─ Playback/StreamingQuality.swift  # quality caps, Auto's bitrate rule, step-down ladder
-│  ├─ Preferences/AppPreferences.swift # the only UserDefaults: 5 client settings
+│  ├─ Preferences/AppPreferences.swift # the only UserDefaults: client settings and custom channel codes
 │  └─ Resources/channels.json       # the channel line-up
 ├─ Sources/GregularJellyfin/        # 2. THE JELLYFIN CONNECTION: Foundation, GregularCore, Security
 │  ├─ HTTPTransport.swift           # the ONLY real network path (ephemeral, no cache/cookies)
@@ -106,6 +113,7 @@ jellyfin_tv/
 │  │  ├─ ChannelPlayer.swift        # every playback decision: tuning, hand-offs, breaks, retries, head
 │  │  │                             # starts, quality; plays on two PlayerDecks
 │  │  └─ ChannelSurfer.swift        # channel up/down with preview, typed numbers, the list
+│  ├─ Channels/ChannelEditorModel.swift  # making and editing a custom channel, with its preview
 │  ├─ Watch/WatchModel.swift        # the watch screen's rules: banner, overlays, curtain, remote actions,
 │  │                                # and the words on the banner, cards and badge
 │  ├─ Remote/RemoteControls.swift   # the button tables (one per screen) and hints
@@ -118,7 +126,7 @@ jellyfin_tv/
    ├─ GregularTVApp.swift, RootView.swift, DemoMode.swift   # launch; AppModel with AVFoundation decks
    ├─ Login/          LoginView (draws LoginModel)
    ├─ Player/         WatchView (draws WatchModel), AVPlayerDeck (PlayerDeck on AVQueuePlayer),
-   │                  VideoSurface, ChannelListView, SettingsView, BreakStyle
+   │                  VideoSurface, ChannelListView, SettingsView, ChannelEditorView, SettingsRows, BreakStyle
    ├─ Remote/         RemoteControls+SwiftUI (attaches the tables), RemoteGestures (clicks, slides, touches)
    ├─ Guide/          GuideView (scrolling EPG grid)
    └─ GregularTVTests/  app-hosted tests (Keychain, player on AVFoundation, commercials, surfing, remote)
@@ -175,7 +183,7 @@ struct SeriesRoundRobin: ScheduleStrategy {
 }
 ```
 
-`LazyPermutation` reads position N of a shuffled order without building it (a Feistel network with cycle-walking). That's how Random Shuffle plays every item once before repeating, across thousands of items, while computing only what's about to air.
+`ShuffledOrder` reads position N of a shuffled order: Fisher–Yates for up to 10 items, and above that `LazyPermutation`, which doesn't build the order (a Feistel network with cycle-walking). That's how Random Shuffle plays every item once before repeating, across thousands of items, while computing only what's about to air.
 
 The registry is one list (`StrategyRegistry.all`).
 
@@ -242,21 +250,23 @@ v1: a bundled `Resources/channels.json` that users edit by hand and then rebuild
 
 **Default line-up:**
 
-| # | Name | Source rule | Strategy |
-|---|---|---|---|
-| 1 | All TV | every Episode | `series-round-robin` |
-| 2 | Comedy | Episodes, genre Comedy/Sitcom | `series-round-robin` |
-| 3 | Drama | Episodes, genre Drama | `shuffled-series-in-order` |
-| 4 | Animation | Episodes + Movies, genre Animation | `random-shuffle` |
-| 5 | Sci-Fi | Episodes, genre Science Fiction/Sci-Fi/Sci-Fi & Fantasy | `shuffled-series-in-order` |
-| 6 | Kids & Family | Episodes + Movies, genre Family/Kids/Children | `random-shuffle` |
-| 7 | Documentary | Episodes + Movies, genre Documentary | `random-shuffle` |
-| 8 | Reality | Episodes, genre Reality | `random-shuffle` |
-| 10 | Movies | every Movie | `random-shuffle`, pad to 30 min |
-| 11 | Action Movies | Movies, genre Action/Adventure | `random-shuffle`, pad to 30 min |
-| 12 | Comedy Movies | Movies, genre Comedy | `random-shuffle`, pad to 30 min |
-| 13 | Horror & Thriller | Movies, genre Horror/Thriller | `random-shuffle`, pad to 30 min |
-| 14 | Classics | Movies, production year < 1980 | `random-shuffle`, pad to 30 min |
+Every default channel uses the `shuffled-shows` strategy, the `shuffle` commercials and 30-minute slots (`padTo`), each with its own seed:
+
+| # | Name | Source rule |
+|---|---|---|
+| 1 | All TV | every Episode |
+| 2 | Comedy | Episodes, genre Comedy/Sitcom |
+| 3 | Drama | Episodes, genre Drama |
+| 4 | Animation | Episodes + Movies, genre Animation |
+| 5 | Sci-Fi | Episodes, genre Science Fiction/Sci-Fi/Sci-Fi & Fantasy |
+| 6 | Kids & Family | Episodes + Movies, genre Family/Kids/Children |
+| 7 | Documentary | Episodes + Movies, genre Documentary |
+| 8 | Reality | Episodes, genre Reality |
+| 10 | Movies | every Movie |
+| 11 | Action Movies | Movies, genre Action/Adventure |
+| 12 | Comedy Movies | Movies, genre Comedy |
+| 13 | Horror & Thriller | Movies, genre Horror/Thriller |
+| 14 | Classics | Movies, production year < 1980 |
 
 Source types available: `all`, `genre`, `series`, `years`, `tag` (all matched case-insensitively by name). A channel's optional `itemTypes` narrows any source to `Episode` or `Movie`. The config format looks like this:
 
@@ -274,37 +284,66 @@ Source types available: `all`, `genre`, `series`, `years`, `tag` (all matched ca
 ]
 ```
 
-A test loads the bundled `channels.json` and checks every entry: each `strategy` ID exists in the registry, each `source` type is known, and channel numbers are unique. A typo in a hand edit then fails `swift test` rather than showing up as an empty channel on the TV.
+A test loads the bundled `channels.json` and checks every entry: each `strategy` ID exists in the registry, each `source` type is known, channel numbers are unique, and the `ChannelRule`s pass (§9c). A typo in a hand edit then fails `swift test` rather than showing up as an empty channel on the TV.
 
 Sources refer to things by **name or rule**, never by Jellyfin item ID. That keeps server identifiers out of config. The names are resolved to items in memory at launch.
 
-v2 (optional): an in-app channel editor. Because it needs persistence, it would save to the same JSON shape in the app container and hold rules only.
+Channels can also be made on the Apple TV, in Settings (custom channels, §9c).
 
-## 9b. Derangement strategy and the schedule code
+## 9b. Shuffled Shows strategy and the schedule code
 
-**Where it comes from:** `random_derangement.py`, ported to `LazyDerangement`.
-- **How it works:** for a prime `p > N`, step x = 0, 1, 2… through `(a·x + b) mod p`, keeping values below `N`. Every run of `p` steps (a pass) yields each of `0..<N` exactly once, O(1) per step.
-- **Changes from the Python, so a schedule is reproducible from its code:**
-  - `p` is the smallest prime above N.
-  - Miller–Rabin uses fixed bases, which are exact for 64-bit numbers.
-  - `a` and `b` come from a key instead of `random`.
-- **Not ported:** the harmonic-number and logarithm helpers, which only estimate selection probabilities for huge N.
+**The shuffle (`ShuffledOrder`):** a shuffled order of `0..<N`, readable at any position.
+- **Up to 10 items:** a seeded Fisher–Yates shuffle, worked out in full. Every order is exactly as likely.
+- **More than 10:** `LazyPermutation`, a 12-round Feistel network with cycle-walking, which reads any position without building the order.
+- **`ShuffledOrder.Passes`:** a new shuffle for each pass through the items (pass `⌊position / N⌋`), seeded by the key and the pass number. If a pass would open with the item that closed the pass before, its first two swap, so nothing plays twice in a row. With two items that leaves one order, used every pass.
 
-**How it's used (`DerangedShows`, id `derangement`; every default channel now uses it):**
+**Why it replaced the derangement (2026-09-28):** the first version ported `random_derangement.py` as `LazyDerangement`: step through `(a·x + b) mod p` for a prime `p > N`, keeping values below `N`. Testing it with many codes showed:
+- `b` only moves the starting point, so a channel had just `p − 1` different show loops (12 on a 12-show channel), whatever the code.
+- Each order steps by a fixed amount, so the first two shows almost decide the rest; some codes gave plain title order, and show 0 almost never came first.
+- Commercials reused the shows' `a` and `b`, so their order was a slow climb through the pool.
+
+A Feistel network has none of those limits, but with 4 rounds it was uneven over small domains, so it now has 12 rounds, and channels of 10 or fewer use Fisher–Yates, which is exact. After the change every tested size matched a perfect shuffle: every order of up to 9 items appears equally often, items land evenly across positions, and 20 million codes gave the number of distinct 12-show loops a perfect shuffle would. With 40 or more shows the limit is the code itself: 2⁵⁰ different schedules per channel. `LazyDerangement` and `Primes` are kept, unused, for reference.
+
+**How it's used (`ShuffledShows`, id `shuffled-shows`; every default channel uses it):**
 - **Show IDs:** each show or movie on a channel gets a numeric ID, its index among the channel's series sorted by title.
-- **Order:** the derangement of those IDs sets the order of shows. On pass `k`, a show plays its episode `k`, wrapping round, so each show advances one episode per pass.
+- **Order:** each pass plays every show once, in that pass's shuffle. On pass `k`, a show plays its episode `k`, wrapping round, so each show advances one episode per pass.
 - **Episodes only go forwards within a run.** The one exception: after a show's final episode, its next appearance cycles back to the pilot (its first available episode). Movies are exempt.
+- **Spacing:** a show's next episode comes after N shows on average, and at least one other show in between.
+- **Other strategies:** Random Shuffle uses `ShuffledOrder.Passes` over every item; Series Round Robin uses one `ShuffledOrder` for its fixed turn order.
 
 **The schedule code (`ScheduleCode`):**
 - **Format:** 10 Crockford base32 characters (`XXXXX-XXXXX`, 50 bits). It's shown and editable in Settings; the first launch picks a random one.
-- **How it becomes each channel's (a, b):**
+- **How it becomes each channel's shuffle:**
   1. `code ↔ value` is one-to-one.
   2. `value` + the channel's seed from `channels.json` gives a per-channel key, the intermediate integer (SplitMix64 mixing).
-  3. The key gives `a = 1 + key mod (p−1)` and `b = 1 + (key / (p−1)) mod (p−1)`, using that channel's own prime.
+  3. The key seeds the channel's `ShuffledOrder.Passes` (and every other random choice on the channel).
 - **Scope:** one code drives every channel, and every other random choice (other strategies, commercial breaks) too.
 - **Sharing:** two Apple TVs with the same code, library and `channels.json` show the same programmes at the same time. That was checked on the simulator: the same code gave an identical guide across relaunches, and a different code a different one.
 
 **Runs:** each run of about 24 hours is filled back to back from one stream, so nothing repeats or is skipped within a run. Looking up a moment fills at most one run, about a day of programmes, whatever the library size. Where runs meet, once a day, one programme may repeat or be skipped.
+
+## 9c. Special rules, set times and custom channels (built 2026-09-28)
+
+**The rules registry.** `ScheduleRules.all` (`Sources/GregularCore/Rules/`) lists every rule that must hold whatever a channel's strategy. Each rule is one of a few kinds, and the engine or the line-up asks the registry for the kind it needs:
+
+| Rule | Kind | What it guarantees |
+|---|---|---|
+| `NoProgrammeTwiceInARow` | sequence (programmes) | The same movie, or the same episode, never airs twice in a row. A show may follow itself with its next episode. |
+| `NoCommercialTwiceInARow` | sequence (commercials) | The same commercial never plays twice in a row. |
+| `PinnedProgrammes` | pin | Fixed programmes air at exactly their local times; a series plays its next episode at each airing. |
+| `PinnedShowsStayOutOfTheShuffle` | content | A fixed programme marked `exclusive` only airs at its set times. |
+| `FixedTimesAreValid` | channel check | Set times need a time zone, and no two may share a time on a day they both air. |
+| `CustomChannelNumbers` | line-up check | Custom channels use 20 to 99, and no two channels share a number. |
+
+**How the sequence rules are kept.** Streams go through `RuledStream`: an item a rule rejects waits and airs as soon as it may, so nothing is dropped and the order moves as little as possible. Three places need more than that, and each is handled without chaining one run to the next:
+- **Where runs meet.** Each run is laid out on its own; only its *join* depends on the run before, and never changes what it takes from the strategy. If the run's first programme mustn't follow the last one before it, a programme the rules allow takes its slot; failing that, the first slots are left out until one may follow, and their time is a break after the last programme. So every walk (from any starting run) gives the same schedule.
+- **Before a programme at a set time.** A programme the rules don't allow straight before it only goes if an allowed one could still fit after it; the last one before it is swapped for an allowed one if needed, or the gap after it is filled with one.
+- **Set times themselves.** A set time is left out that day if it would overlap the one before it, or if it's the same programme again with no allowed programme able to fit between.
+A channel whose shuffle has only one programme can't avoid repeating it: there, the rules give way.
+
+**Programmes at set times.** A channel's `fixed` list (with `timeZone`) names series or items and local times, with optional `days` (weekdays or dates) and `exclusive`. Such a channel's runs are local calendar days (`RunCalendar`), 23 or 25 hours on clock-change days, and each set time is a hard edge, like the end of a run: programmes that wouldn't finish in time wait until after it, and the time left becomes a break before it. A set programme that runs past midnight pushes the next day's start back. A series' episode at each airing comes from counting its airings since the channel's first day from the calendar, so any day is found without replaying the ones before. Tuning still walks at most two days.
+
+**Custom channels.** Settings › Your channels makes a channel on the Apple TV (`CustomChannel`, edited through `ChannelEditorModel`): a name, a number from 20 to 99, episodes, movies or both, one rule (everything, a genre, a series, years or a tag) picked from the library in memory, half-hour slots and commercials (both on by default), and optional set times in the Apple TV's time zone. The strategy, seed (1000 + the number) and filler take the defaults. The editor previews how many programmes match and the next three hours, with no server calls. A **channel code** packs the definition into Crockford base32 with a check byte (a mistyped code is rejected, never misread), to type into another Apple TV: with the same schedule code, both then show the same schedule. Custom channels are saved as their codes in `AppPreferences` (§3), and a saved one whose number a newer bundled line-up takes is left out rather than breaking the line-up.
 
 ## 9a. Gap filler (commercials): live
 
@@ -312,10 +351,9 @@ Movie channels round each slot up (`padTo`), which leaves gaps; a 100-minute fil
 
 **Already built:**
 - The `GapFiller` protocol and `GapFillerRegistry` (`Scheduling/GapFiller.swift`). This extension point works like `ScheduleStrategy`: one file plus one registry line.
-- Three fillers:
-  - `none`: the default, which shows the "Up next" card.
-  - `derangement` (the default): the commercials in the order of the same lazy derangement as the channel's shows, with the **same `a` and `b`**: clip `(a·x + b) mod q` at step `x`, keeping clip numbers below the pool size (clips numbered alphabetically). `q` is the smallest prime above the pool size, `a` and `b`, so they're used unchanged. Every pass plays each clip once, in the same order.
-  - `shuffle`: each pass through the pool is a fresh Fisher–Yates shuffle, seeded by the channel key and pass number.
+- Two fillers:
+  - `none`: used when a channel names no filler; the gaps show the "Up next" card.
+  - `shuffle` (every default channel): each pass through the pool plays every clip once, in a new `ShuffledOrder` shuffle seeded by the channel key (mixed with a constant, so it doesn't mirror the shows) and the pass number. The same clip never plays twice in a row. It replaced the `derangement` filler, which reused the shows' `a` and `b` (see §9b).
 - A per-channel `"filler": "<id>"` setting in `channels.json`, checked when the file loads.
 - **Engine:** clips become extra airings inside the programme's slot (`Airing.isFiller`), laid out back to back. A filler is one endless stream of clips per channel (like a strategy's programmes). Each run starts it at an estimate of how many clips aired before (the share of slot time that's gap, over the run, divided by the average clip), and deals from it break after break, so the order carries on across breaks. A clip that doesn't get halfway waits to open the next break. Deterministic, and nothing is stored. A clip still playing when the next programme starts is cut there (`Airing.end`, and the player's `forwardPlaybackEndTime`). A break's last clip that's running late (it started after a slow load) is stopped at its scheduled end, so the Up next card always gets its time; the picture and sound fade out together. Two rules decide what starts: a gap of a minute or less gets no commercials, and clips play back to back, each starting only if at least half of it will play before the next programme. Time without a clip is a blank screen with the "Up next" card and the banner.
 - **Helpers:** `ChannelSchedule.programme(at:)` and `airings(…, includingFillers: false)` give the guide and channel list the programme rather than the ad.
@@ -329,7 +367,7 @@ Movie channels round each slot up (`padTo`), which leaves gaps; a 100-minute fil
 - **Where the clips come from:** `channels.json` names a Jellyfin library at the top: `"commercials": { "library": "Commercials" }`. The file can still be a plain list of channels; then there are no commercials.
 - **Fetching:** `JellyfinClient.fetchLibrary(named:)` finds the library by name with `/UserViews`, then fetches its items (`Video`, `Movie` and `Episode`; home videos come back as `MediaItem.Kind.video`). If the library doesn't exist, the pool is empty and gaps show the "Up next" card as before.
 - **No ads as programmes:** `ChannelLineup.schedules(for:fillerPool:code:)` removes the clips from every programme channel, so an ad never airs as a "movie".
-- **All default channels** use `"filler": "derangement"` and `"padTo": 30`, so every programme starts on the half hour: a 22-minute episode is followed by 8 minutes of commercials, a 44-minute one by 16, and a 100-minute film by 20 minutes shared between a mid-roll halfway and the break after it.
+- **All default channels** use `"filler": "shuffle"` and `"padTo": 30`, so every programme starts on the half hour: a 22-minute episode is followed by 8 minutes of commercials, a 44-minute one by 16, and a 100-minute film by 20 minutes shared between a mid-roll halfway and the break after it.
 - **Scheduled length:** each item stops at its scheduled duration (`forwardPlaybackEndTime`), so clips and programmes keep to the schedule.
 - **Pretend commercials (debug builds):** the `-pretendCommercials` launch argument uses 12 ordinary library items, cut to 30–120 s, as the pool. Tested on the simulator against the real server with `-handoffTest`:
   - the "Commercial break · Back at h:mm" banner showed;
@@ -393,19 +431,24 @@ A record of what was built and checked, in order. Details like the remote contro
 ## 11. Testing strategy
 
 - **Determinism:** same seed + items + time → identical `nowPlaying` across runs, and when the input item order is shuffled first. We sort the input by a stable key before calling the strategy, so Jellyfin's API ordering can't change the schedule.
-- **Engine:** run boundaries, times before the epoch, a single-item channel, padding and run-end gaps, and sequences carrying on across runs. A laziness test checks that tuning into a 20,000-episode channel pulls at most a day of programmes. All the maths is in UTC.
+- **Engine:** run boundaries, times before the epoch, a single-item channel, padding and run-end gaps, and sequences carrying on across runs. A laziness test checks that tuning into a 20,000-episode channel pulls at most two days of programmes (the run, and the one before for what aired last). All the maths is in UTC.
 - **Strategies:** the shared conformance suite (§5), plus one behavioural test per strategy.
+- **Rules:** each rule on its own, set times for a year across clock changes, and `RandomChannelTests`: random small channels on every strategy, with and without set times, checking that nothing airs twice in a row, slots meet with no gaps, every walk agrees, and set times are kept.
 - **Privacy:** a test that runs a full session against a mock server, then checks that the app container has no new files and `UserDefaults` is empty.
 
 ## 12. Decisions and prerequisites
-
-**Next:** see [TODO.md](TODO.md) for planned features (custom channels from the Apple TV, and fixed-time programmes), each with a plan.
 
 **Decided (2026-09-23)**
 - **Pause:** allowed. Resuming jumps back to live (§7).
 - **Last channel:** saved as a single channel number in `AppPreferences` (§3, §8).
 - **Jellyfin dashboard:** the app stays invisible. There's no playback reporting of any kind, and no toggle (§3).
 - **Channel editing:** hand-edit `channels.json`, which ships with a generic default line-up (§9).
+
+**Decided (2026-09-28)**
+- **Shuffle:** every shuffle is a `ShuffledOrder` (Fisher–Yates up to 10 items, a 12-round Feistel network above), new each pass (§9b).
+- **Special rules** live in one registry, `ScheduleRules` (§9c).
+- **Custom channels** are made in Settings and saved as channel codes: privacy option (a), allowing exactly this in `AppPreferences` (§3, §9c).
+- **Programmes at set times** are built, in `channels.json` and in custom channels (§9c).
 
 **Prerequisites**
 - ✅ Xcode 27 with the licence accepted, the tvOS 27 SDK, and the tvOS 27 simulator runtime (verified 2026-09-23). `GregularCore` and `GregularJellyfin` tests pass on macOS and on the Apple TV 4K simulator.
