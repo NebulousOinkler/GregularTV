@@ -108,8 +108,8 @@ public final class AppModel {
         if case .watching(let surfer) = phase { surfer.player.diagnosticsEnabled = show }
     }
 
-    /// Rebuilds every channel with or without commercials, and re-tunes the
-    /// current channel. Programme times don't change.
+    /// Rebuilds every channel with or without commercials. Programme times
+    /// don't change, so the current channel only re-tunes during a break.
     public func setPlaysCommercials(_ plays: Bool) {
         guard plays != playsCommercials else { return }
         playsCommercials = plays
@@ -117,7 +117,7 @@ public final class AppModel {
         rebuildChannels()
     }
 
-    /// Rebuilds every channel from the new code and re-tunes the current channel.
+    /// Rebuilds every channel from the new code, which re-tunes the current channel.
     public func setScheduleCode(_ code: ScheduleCode) {
         guard code != scheduleCode else { return }
         scheduleCode = code
@@ -249,10 +249,14 @@ public final class AppModel {
         return lineup
     }
 
-    /// Rebuilds every channel after a setting changed, and re-tunes the
-    /// current channel. Programme times only change if the code did.
+    /// Rebuilds every channel after a setting changed. The channel playing
+    /// only re-tunes if what's on it now changed (`ChannelSurfer.replaceChannels`),
+    /// so changing another channel's set times never re-buffers it.
+    /// Programme times only change if the code did.
     private func rebuildChannels() {
         guard case .watching(let surfer) = phase, let client else { return }
+        if let channels = schedules(), surfer.replaceChannels(channels) { return }
+        // Nothing to watch any more: start again, which says why.
         surfer.player.stop()
         phase = watch(library: library, commercials: commercials, streams: client,
                       preferring: surfer.player.schedule.channel.number)
@@ -315,19 +319,27 @@ public final class AppModel {
         return usable
     }
 
+    /// Every channel's schedule, from the library, the schedule code and the
+    /// viewer's channels and set times. Nil if channels.json can't be read.
+    private func schedules(library: [MediaItem]? = nil, commercials: [MediaItem]? = nil) -> [ChannelSchedule]? {
+        let library = library ?? self.library, commercials = commercials ?? self.commercials
+        guard var channels = lineup(custom: customChannels, setTimes: setTimes)?
+            .schedules(for: library, fillerPool: commercials, code: scheduleCode, playsCommercials: playsCommercials)
+        else { return nil }
+        #if DEBUG
+        channels = DebugOptions.apply(to: channels, items: library, fillerPool: playsCommercials ? commercials : [])
+        #endif
+        return channels
+    }
+
     /// Builds every channel's schedule from the library and the schedule code,
     /// and starts watching: the preferred channel, or the lowest-numbered one
     /// if that one is gone or empty.
     private func watch(library: [MediaItem], commercials: [MediaItem], streams: any StreamSource,
                        preferring preferred: Int?) -> Phase {
-        guard var channels = lineup(custom: customChannels, setTimes: setTimes)?
-            .schedules(for: library, fillerPool: commercials, code: scheduleCode, playsCommercials: playsCommercials)
-        else {
+        guard let channels = schedules(library: library, commercials: commercials) else {
             return .failed("channels.json couldn't be read.")
         }
-        #if DEBUG
-        channels = DebugOptions.apply(to: channels, items: library, fillerPool: playsCommercials ? commercials : [])
-        #endif
         let navigator = ChannelNavigator(numbers: channels.map(\.channel.number))
         guard let number = navigator.startingChannel(preferred: preferred),
               let channel = channels.first(where: { $0.channel.number == number })

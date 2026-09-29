@@ -119,7 +119,6 @@ final class WalkthroughTests: XCTestCase {
         pause()
     }
 
-    /// Waits for live TV: the banner shows a channel's name when it starts.
     /// Presses Menu until the guide (its Settings button) is gone: in the
     /// guide, Menu first steps back to now, then closes.
     private func backToLiveTV() {
@@ -130,10 +129,10 @@ final class WalkthroughTests: XCTestCase {
         XCTAssertFalse(button("Settings").exists, "Couldn't get back to live TV")
     }
 
+    /// Waits for live TV: the banner, with its remote hint, shows when it starts.
     private func waitForWatching() {
-        let names = ["All TV", "Comedy", "Drama", "Animation", "Sci-Fi", "Kids", "Documentary"]
         let started = (0..<40).contains { _ in
-            if names.contains(where: { text($0).exists }) { return true }
+            if text("channel list").exists { return true }
             pause(1)
             return false
         }
@@ -292,6 +291,8 @@ final class WalkthroughTests: XCTestCase {
         capture("delete-set-times-asks")
         answerDialog("Delete Set Times")
         pause(4)
+        capture("after-deleting-set-times")
+        backToLiveTV()   // Settings was opened from the guide, so it went back there
         openSettings()
         XCTAssertFalse(button("1  All TV").exists, "The set times are still listed after deleting")
         closeSettings()
