@@ -144,6 +144,6 @@ public final class ChannelEditorModel {
     public func upcoming(from now: Date = .now, hours: Double = 3) -> [UpcomingProgramme] {
         guard let channel = channel?.channel, let schedule = ChannelSchedule(channel: channel, items: library, code: code)
         else { return [] }
-        return schedule.programmes(from: now, to: now.addingTimeInterval(hours * 3600)).map(UpcomingProgramme.init)
+        return schedule.programmes(from: now, to: now.addingTimeInterval(hours * 3600)).map { UpcomingProgramme($0, now: now) }
     }
 }

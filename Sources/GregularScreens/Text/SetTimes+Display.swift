@@ -2,8 +2,9 @@ import Foundation
 import GregularCore
 
 extension SetTimes {
-    /// What's set: "Alpha, Explosions".
+    /// What's set, each name once: "Alpha, Explosions".
     public var summary: String {
-        programmes.map(\.match.title).joined(separator: ", ")
+        var seen = Set<String>()
+        return programmes.map(\.match.title).filter { seen.insert($0.lowercased()).inserted }.joined(separator: ", ")
     }
 }

@@ -30,11 +30,16 @@ public struct LibraryChoices: Sendable {
 /// One line of an editor's preview: when, and what.
 public struct UpcomingProgramme: Sendable, Identifiable {
     public let start: Date
+    /// "Tomorrow 6:00 PM", so airings on different days never look alike.
+    public let when: String
+    /// The series or film, and the episode: "Far Signal · S1 E3 · The Letter".
     public let title: String
     public var id: Date { start }
 
-    init(_ airing: Airing) {
+    init(_ airing: Airing, now: Date) {
         start = airing.start
-        title = airing.item.displayTitle
+        when = airing.start.dayAndTime(from: now)
+        title = ([airing.item.displayTitle] + [airing.item.kind == .episode ? airing.item.displaySubtitle : nil].compactMap { $0 })
+            .joined(separator: " · ")
     }
 }

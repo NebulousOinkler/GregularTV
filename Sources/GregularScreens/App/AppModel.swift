@@ -147,14 +147,18 @@ public final class AppModel {
         /// "2  Comedy".
         public let title: String
         public let setTimes: SetTimes?
+        /// The set times' names this library doesn't have, so they never air.
+        public let missing: [String]
         public var id: Int { number }
     }
 
     /// Every channel set times can go on, in order.
     public var setTimesChannels: [SetTimesChannel] {
         (lineup(custom: customChannels, setTimes: [])?.channels ?? []).map { channel in
-            SetTimesChannel(number: channel.number, title: "\(channel.number)  \(channel.name)",
-                            setTimes: setTimes.first { $0.channelNumber == channel.number })
+            let times = setTimes.first { $0.channelNumber == channel.number }
+            return SetTimesChannel(number: channel.number, title: "\(channel.number)  \(channel.name)", setTimes: times,
+                                   // Nothing's known to be missing until the library has loaded.
+                                   missing: library.isEmpty ? [] : (times?.programmes ?? []).filter { !$0.isAvailable(in: library) }.map(\.match.title))
         }
     }
 
