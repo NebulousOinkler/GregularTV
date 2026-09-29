@@ -47,21 +47,36 @@ struct ExclusiveProgrammesOnlyAtSetTimes: CoverRule {
 }
 
 /// A channel's set times must make sense before it loads: a time zone to
-/// read them in, at least one time each, and no two programmes at the same
+/// read them in, at least one time each, times within a day and real dates,
+/// no more than `FixedProgramme.mostPerChannel` set times listing
+/// `mostTimesPerChannel` times in all, and no two programmes at the same
 /// time on a day they share. (One that overlaps an earlier one's slot, which
-/// depends on the library, is left out that day.)
+/// depends on the library, is left out that day.) Set times from a shared
+/// code are checked like any others, so a crafted code can't slip past.
 struct FixedTimesAreValid: ChannelRule {
     static let id = "fixed-times-are-valid"
-    static let summary = "Set times need a time zone, and no two may share a time on the same day."
+    static let summary = "Set times need a time zone, real times and dates, at most \(FixedProgramme.mostPerChannel) per channel (\(FixedProgramme.mostTimesPerChannel) times in all), and no two may share a time on the same day."
 
     func problems(with channel: Channel) -> [String] {
         var problems: [String] = []
         if channel.fixed.contains(where: { $0.timeZone == nil }) {
             problems.append("Channel \(channel.number): \"fixed\" programmes need a \"timeZone\", such as \"America/New_York\".")
         }
+        if channel.fixed.count > FixedProgramme.mostPerChannel {
+            problems.append("Channel \(channel.number) can have at most \(FixedProgramme.mostPerChannel) set times.")
+        }
+        if channel.fixed.reduce(0, { $0 + $1.times.count }) > FixedProgramme.mostTimesPerChannel {
+            problems.append("Channel \(channel.number)'s set times can list at most \(FixedProgramme.mostTimesPerChannel) times in all.")
+        }
         for (i, entry) in channel.fixed.enumerated() {
             if entry.times.isEmpty {
                 problems.append("Channel \(channel.number): a fixed programme has no times in \"at\".")
+            }
+            if entry.times.contains(where: { !(0..<(24 * 60)).contains($0) }) {
+                problems.append("Channel \(channel.number): set times must be between 00:00 and 23:59.")
+            }
+            if entry.dates.contains(where: { !$0.isReal }) || entry.weekdays.contains(where: { !(1...7).contains($0) }) {
+                problems.append("Channel \(channel.number): set times can only be on real days and dates.")
             }
             problems += entry.clashes(with: Array(channel.fixed.dropFirst(i + 1))).map {
                 "Channel \(channel.number): two fixed programmes at \(FixedProgramme.text(forMinutes: $0))."

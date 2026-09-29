@@ -50,6 +50,35 @@ struct JellyfinLibraryTests {
         #expect(items[2].genres == ["Drama"] && items[2].productionYear == 1999)
     }
 
+    @Test func aFalseTotalFromTheServerIsNotBelieved() async throws {
+        // A hostile server claims the most items there could be, then sends none.
+        mock.on("GET", "/Items") { request in
+            switch (request.queryValue("IncludeItemTypes"), request.queryValue("StartIndex")) {
+            case ("Episode,Movie", "0"):
+                return (200, self.page([self.episode("e1", season: 1, number: 1)], total: Int.max))
+            case ("Episode,Movie", _):
+                return (200, self.page([], total: Int.max))
+            default:
+                return (200, self.page([], total: 0))
+            }
+        }
+        let items = try await JellyfinFixtures.client(mock).fetchLibrary()
+        #expect(items.map(\.id) == ["e1"])
+        let pageRequests = mock.requests.filter { $0.queryValue("IncludeItemTypes") == "Episode,Movie" }.count
+        #expect(pageRequests <= 1 + 2 * LibraryQuery.maxConcurrentPages, "Stops once a page comes back empty")
+    }
+
+    @Test func aPageIsNeverMoreThanAPage() async throws {
+        // A server that ignores the page size can't grow the library past what was asked for.
+        let oversized = (0..<(LibraryQuery.pageSize + 50)).map { self.episode("e\($0)", season: 1, number: $0) }
+        mock.on("GET", "/Items") { request in
+            request.queryValue("IncludeItemTypes") == "Episode,Movie"
+                ? (200, self.page(oversized, total: oversized.count)) : (200, self.page([], total: 0))
+        }
+        let items = try await JellyfinFixtures.client(mock).fetchLibrary()
+        #expect(items.count <= 2 * LibraryQuery.pageSize)
+    }
+
     @Test func parsesJellyfinDates() {
         #expect(ItemDTO.parseDate("2008-09-22T00:00:00.0000000Z") == Date(timeIntervalSince1970: 1_222_041_600))
         #expect(ItemDTO.parseDate("2008-09-22T13:30:15Z") == Date(timeIntervalSince1970: 1_222_090_215))

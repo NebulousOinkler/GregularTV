@@ -57,6 +57,13 @@ Enforcement:
   - The app sends `/Sessions/Capabilities` with `SupportsMediaControl=false` and no supported commands, so other clients can't remote-control it.
 - **Logout** wipes the Keychain entries and drops the in-memory library.
 
+Security (untrusted input, checked 2026-09-29):
+- **Redirects** are followed only on the same server: the same scheme, host and port, or `http` up to `https` on the same host (`RedirectGuard`). URLSession drops `Authorization` on a cross-host redirect by itself, but it sends the body again, so a sign-in's password would follow a 307 to another host.
+- **Server replies:** the claimed item total is capped (`LibraryQuery.mostItems`), paging stops at an empty page, and each page counts for at most `pageSize` items, so a false total can't plan billions of pages and crash every launch. Server IDs go into URL paths, where they're percent-encoded: they can't change the host or add a query. `TranscodingUrl` keeps only its path and query. The `Authorization` header drops quotes, commas and control characters.
+- **Codes** (channel and set-times) are unauthenticated: the CRC-8 only catches typos. `FixedTimesAreValid` checks set times from a code like any others: times within a day, real dates, and at most `FixedProgramme.mostPerChannel` (24) set times listing `mostTimesPerChannel` (48) times in all per channel, which keeps placing them to a few milliseconds.
+- **Device type** is trusted nowhere: the app reads no other device's name, and Jellyfin authorises by token, not by name. The device name sent is the kind of device, from the app (`AppModel.deviceName`).
+- **Sign Out and deletes** ask for confirmation (`SettingsRows.confirmedRow`).
+
 ## 4. Architecture
 
 Four parts, each depending only on the ones before it. The first three are a Swift package, so they're testable with `swift test` on the Mac, without a simulator; only the fourth is Apple TV.
