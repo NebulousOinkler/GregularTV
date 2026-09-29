@@ -23,7 +23,9 @@ struct SetTimesEditorView: View {
                 "These air at exactly these times, in this Apple TV's time zone (\(model.timeZone.identifier)). The rest of the time, the channel is the same as for everyone with your schedule code.",
             ]) {
                 ForEach(model.programmes, id: \.self) { entry in
-                    SettingsRows.row(entry.match.title, detail: entry.summary, value: "Remove") { model.remove(entry) }
+                    SettingsRows.row(entry.match.title,
+                                     detail: model.isMissing(entry) ? "\(entry.summary) · Not in your library, so it won't air" : entry.summary,
+                                     value: "Remove") { model.remove(entry) }
                 }
             }
 
@@ -96,7 +98,7 @@ struct SetTimesEditorView: View {
             if upcoming.isEmpty { SettingsRows.info("Next two days", "Nothing set") }
             ForEach(upcoming) { entry in
                 HStack(spacing: 24) {
-                    Text(entry.start.clockTime).monospacedDigit().foregroundStyle(.secondary)
+                    Text(entry.when).monospacedDigit().foregroundStyle(.secondary)
                     Text(entry.title).lineLimit(1)
                 }
                 .padding(.horizontal, SettingsRowStyle.inset)

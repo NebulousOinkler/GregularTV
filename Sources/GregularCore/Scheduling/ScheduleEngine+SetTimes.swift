@@ -90,11 +90,16 @@ extension ChannelSchedule {
         guard !windows.isEmpty else { return shared }
 
         var pieces: [(airing: Airing, opensSlot: Bool)] = []
+        /// Whether a part of the current shared slot's programme has been
+        /// kept since it began or a window came: the next part only opens a
+        /// slot of its own if none has.
+        var programmeKept = false
         var nextWindow = 0
         func placeWindows(startingBy time: Int64) {
             while nextWindow < windows.count, windows[nextWindow].start <= time {
                 pieces += airings(in: windows[nextWindow]).enumerated().map { ($1, $0 == 0) }
                 nextWindow += 1
+                programmeKept = false
             }
         }
         /// Airtime from `from` to `to` added to the break before it, if there's one.
@@ -105,7 +110,7 @@ extension ChannelSchedule {
         }
         /// The part of `airing` from `from` to `to`, outside every window.
         /// `blank` leaves it out: its time is a break after what's before.
-        func keep(_ airing: Airing, from: Int64, to: Int64, opensSlot: Bool, blank: Bool) {
+        func keep(_ airing: Airing, from: Int64, to: Int64, blank: Bool) {
             placeWindows(startingBy: from)
             let start = milliseconds(since: channel.epoch, to: airing.start)
             let contentEnd = milliseconds(since: channel.epoch, to: airing.end)
@@ -115,6 +120,10 @@ extension ChannelSchedule {
                              slotEnd: date(atMilliseconds: to), isFiller: airing.isFiller,
                              mediaOffset: airing.mediaOffset + TimeInterval(from - start) / 1000,
                              programmeStart: airing.programmeStart)
+            // The programme's first part kept, from its start or joined partway
+            // through after a window, starts a slot; clips join the slot before.
+            let opensSlot = !airing.isFiller && !programmeKept
+            if !airing.isFiller { programmeKept = true }
             pieces.append((cut, opensSlot))
         }
 
@@ -126,13 +135,13 @@ extension ChannelSchedule {
             // (the rules): the part before the set time, or after it, is a break instead.
             let blankUntil = windows.first { slotStart < $0.start && $0.start <= slotEnd && !programmeRules.allow($0.item, after: item) }?.start
             let blankFrom = windows.first { slotStart <= $0.end && $0.end < slotEnd && !programmeRules.allow(item, after: $0.item) }?.end
-            for (index, airing) in slot.enumerated() {
+            programmeKept = false
+            for airing in slot {
                 let start = milliseconds(since: channel.epoch, to: airing.start)
                 let end = milliseconds(since: channel.epoch, to: airing.slotEnd)
                 var time = start
                 func keepPart(to: Int64) {
-                    // Joined partway through after a window, a programme starts a new slot.
-                    keep(airing, from: time, to: to, opensSlot: time == start ? index == 0 : !airing.isFiller,
+                    keep(airing, from: time, to: to,
                          blank: blankUntil.map { time < $0 } ?? false || blankFrom.map { time >= $0 } ?? false)
                 }
                 for window in windows where window.end > start && window.start < end {

@@ -76,6 +76,12 @@ public final class SetTimesEditorModel {
         return nil
     }
 
+    /// True when the library has nothing `entry` names, so it never airs
+    /// here (set with another library, and shared by code).
+    public func isMissing(_ entry: FixedProgramme) -> Bool {
+        !entry.isAvailable(in: library)
+    }
+
     public func remove(_ entry: FixedProgramme) {
         programmes.removeAll { $0 == entry }
     }
@@ -96,6 +102,6 @@ public final class SetTimesEditorModel {
         guard let channel = try? lineup.adding([], setTimes: [setTimes]).channels.first(where: { $0.number == channelNumber }),
               let schedule = ChannelSchedule(channel: channel, items: library, code: code)
         else { return [] }
-        return schedule.setTimeAirings(from: now, to: now.addingTimeInterval(days * 24 * 3600)).map(UpcomingProgramme.init)
+        return schedule.setTimeAirings(from: now, to: now.addingTimeInterval(days * 24 * 3600)).map { UpcomingProgramme($0, now: now) }
     }
 }
