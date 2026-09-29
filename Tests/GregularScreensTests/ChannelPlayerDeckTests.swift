@@ -20,6 +20,25 @@ struct ChannelPlayerDeckTests {
         #expect(deck.queue.isEmpty && deck.state == .paused)
     }
 
+    @Test func resumingSeeksToLiveWithoutLoadingAgain() async throws {
+        let surfer = try Fixture.surfer(elapsed: 600)
+        let player = surfer.player
+        player.tune()
+        try await Fixture.settle(player)
+        let deck = try #require(player.decks[player.activeIndex] as? FakeDeck)
+        let item = try #require(deck.queue.first)
+        player.togglePause()
+        #expect(deck.state == .paused)
+        deck.seek(to: 540)   // as if paused a minute ago
+        let tunes = player.tuneCount
+        player.togglePause()
+        #expect(player.status == .playing && deck.state == .playing)
+        #expect(player.tuneCount == tunes, "Not loaded again")
+        #expect(deck.queue.first === item, "The same stream carries on")
+        #expect(abs(deck.position - 600) < 2, "Back at live")
+        player.stop()
+    }
+
     @Test func aFailedStreamIsRetriedNotTreatedAsFinished() async throws {
         let surfer = try Fixture.surfer()
         let player = surfer.player

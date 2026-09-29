@@ -49,7 +49,7 @@ struct SetTimesEditorView: View {
                 SettingsRows.row("Cancel") { dismiss() }
             }
         }
-        #if DEBUG
+        #if DEBUG || (REMOTE_KEYS && targetEnvironment(simulator))
         .debugMenuKeyCloses()
         #endif
     }
@@ -63,7 +63,7 @@ struct SetTimesEditorView: View {
                 ForEach(model.choices.seriesNames, id: \.self) { name in draftChoice(.series(name)) }
                 ForEach(model.choices.movieNames, id: \.self) { name in draftChoice(.item(name)) }
             }
-            TextField("Times, like 18:00 or 18:00, 18:30", text: $model.draftTimes)
+            TextField(SetTimesEditorModel.timesPrompt, text: $model.draftTimes)
                 .autocorrectionDisabled()
             HStack(spacing: 12) {
                 ForEach(1...7, id: \.self) { weekday in

@@ -31,7 +31,9 @@ import Observation
 ///   end of a break, a skipped commercial, or every break with commercials
 ///   off) is a blank screen with an "Up next" card. The next item is still
 ///   queued 30 seconds ahead, but held until its start time.
-/// - **Pause** really pauses. Resuming jumps back to live (PLAN.md §7).
+/// - **Pause** really pauses. Resuming jumps back to live (PLAN.md §7): it
+///   seeks what's loaded to live if it's still on, and only tunes in afresh if
+///   the airing has changed (or a re-encoded one hasn't buffered that far).
 /// - **Drift:** if buffering leaves playback over a minute behind live, it re-tunes.
 /// - **Failures** (server down, network drop) retry with backoff: 5 s, 10 s,
 ///   20 s, 40 s, then every minute, so playback returns by itself when the
@@ -67,7 +69,7 @@ import Observation
 ///   no speed test ever runs.
 ///
 /// **The stream only restarts on an explicit change:** a different channel, a
-/// different quality, resuming from pause (which jumps to live), or recovery
+/// different quality, resuming from pause once the airing has changed, or recovery
 /// from a failure or stall. Opening menus, the guide or Settings, choosing the
 /// setting that's already selected, or the app briefly becoming inactive
 /// (a system overlay) never re-buffers what's playing.
@@ -305,13 +307,34 @@ public final class ChannelPlayer {
     public func togglePause() {
         switch status {
         case .paused:
-            tune()
+            if !resumeAtLive() { tune() }
         case .playing:
             player.pause()
             status = .paused(since: .now)
         default:
             break
         }
+    }
+
+    /// Resuming from pause: while what's loaded is still on, seek it to live
+    /// and play, rather than loading it afresh, which makes the server start
+    /// again (and a re-encoded programme wait for its head start). False if
+    /// it has to be loaded again: the airing has changed or is about to, or a
+    /// re-encoded programme hasn't buffered as far as live (seeking past what
+    /// the server has made would wait on it anyway).
+    private func resumeAtLive() -> Bool {
+        let now = Date.now
+        let tuning = schedule.tune(at: now)
+        guard let current, player.currentItem === current.item, !current.item.hasFailed,
+              !tuning.isInPadding, tuning.airing == current.airing,
+              current.airing.end.timeIntervalSince(now) > Self.prepareNextLead else { return false }
+        let behindLive = now.timeIntervalSince(current.airing.start) - (player.position - current.airing.mediaOffset)
+        if current.reencodes, behindLive > current.item.bufferedAhead { return false }
+        seek(to: now.timeIntervalSince(current.airing.start), in: current.airing)
+        lastProgress = nil   // the stall watchdog starts afresh: the pause wasn't a stall
+        player.play()
+        status = .playing
+        return true
     }
 
     /// Drops whatever is playing and joins the channel live.
@@ -571,6 +594,8 @@ public final class ChannelPlayer {
     /// Brings `standby`, with the programme after the break, to the front and
     /// plays it; the old player lets go of the commercial.
     private func switchToStandby() {
+        // Paused through the end of a break: stay paused; resuming tunes in.
+        if case .paused = status { return }
         guard nextIsOnStandby, let next else { return }
         standbyHandoff?.cancel()
         standbyHandoff = nil

@@ -7,6 +7,9 @@ struct RemoteControlsTests {
     @Test func hintsAreWrittenFromTheTables() {
         #expect(RemoteControls.hint(for: RemoteControls.watching)
                 == "click ◀▶: channels · touch: info · Menu: hide info, or guide · Play/Pause: pause · slide ◀: channel list · hold click: Settings")
+        #expect(RemoteControls.hint(for: RemoteControls.watching, paused: true).contains("Play/Pause: jump to live"))
+        #expect(RemoteControls.hint(for: RemoteControls.settings, onScreen: [.close: "Done"]) == "Play/Pause, Menu or Done: close")
+        #expect(RemoteControls.hint(for: [:], onScreen: [.close: "Done"]) == "Done: close")
         #expect(RemoteControls.hint(for: RemoteControls.channelList) == "Play/Pause: Settings · slide ▶ or Menu: close")
         #expect(RemoteControls.hint(for: RemoteControls.guide) == "Play/Pause: Settings · Menu: back")
         #expect(RemoteControls.hint(for: [.clickLeft: .channelUp, .menu: .close]) == "click ◀: channel up · Menu: close")
@@ -32,7 +35,7 @@ struct RemoteControlsTests {
         }
     }
 
-    #if DEBUG
+    #if DEBUG || (REMOTE_KEYS && targetEnvironment(simulator))
     @Test func debugKeysReachWhatTheKeyboardCant() {
         let keys = RemoteControls.debugKeys
         #expect(Set(keys.values).count == keys.count, "One key per button")
