@@ -67,9 +67,7 @@ struct ChannelEditorView: View {
                 SettingsRows.row("Cancel") { dismiss() }
             }
         }
-        #if DEBUG || (REMOTE_KEYS && targetEnvironment(simulator))
         .debugMenuKeyCloses()
-        #endif
     }
 
     /// The list to pick from, for the kind of rule chosen.
