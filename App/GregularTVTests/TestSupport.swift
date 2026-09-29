@@ -23,7 +23,7 @@ extension JellyfinClient {
     /// A client for a server that doesn't exist, whose every reply comes from `transport`.
     static func testing(_ transport: any HTTPTransport) -> JellyfinClient {
         JellyfinClient(credentials: Credentials(serverURL: URL(string: "https://tv.invalid")!, userID: "u", accessToken: "t"),
-                       identity: ClientIdentity(deviceID: "test"), transport: transport)
+                       identity: ClientIdentity(deviceID: "test", deviceName: "Apple TV"), transport: transport)
     }
 }
 

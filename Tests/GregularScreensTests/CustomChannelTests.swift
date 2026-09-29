@@ -73,7 +73,11 @@ struct ChannelEditorTests {
     // MARK: Saving
 
     private func app() -> AppModel {
-        AppModel(store: InMemoryCredentialStore(), preferences: Fixture.preferences(), makeDecks: FakeDeck.pair)
+        AppModel(deviceName: "Test Device", store: InMemoryCredentialStore(), preferences: Fixture.preferences(), makeDecks: FakeDeck.pair)
+    }
+
+    @Test func theAppNamesItsDevice() {
+        #expect(app().identity.deviceName == "Test Device")
     }
 
     @Test func savedChannelsAreKeptAndNumbersChecked() {
@@ -138,6 +142,20 @@ struct ChannelEditorTests {
         #expect(model.programmes.count == 1)
     }
 
+    @Test func aSetTimesRowSaysWhatWontAir() {
+        let times = SetTimes(channelNumber: 6, programmes: [FixedProgramme(match: .series("Far Signal"), times: [720]),
+                                                            FixedProgramme(match: .series("Orbit & Pip"), times: [1080])])
+        let row = AppModel.SetTimesChannel(number: 6, title: "6  Kids", setTimes: times, missing: ["Orbit & Pip"])
+        #expect(row.detail == "Far Signal, Orbit & Pip · Not in your library: Orbit & Pip")
+    }
+
+    @Test func setTimesKnowWhetherTheyreInThisTimeZone() throws {
+        #expect(try setTimesEditor().isInLocalTimeZone == (Self.newYork == .current))
+        let away = TimeZone(identifier: TimeZone.current.identifier == "Asia/Tokyo" ? "Europe/London" : "Asia/Tokyo")!
+        let shared = SetTimes(channelNumber: 2, programmes: [FixedProgramme(match: .series("Taskmaster"), times: [60])], timeZone: away)
+        #expect(try setTimesEditor(editing: shared).isInLocalTimeZone == false)
+    }
+
     @Test func renumberingAChannelMovesItsSetTimes() {
         let app = app()
         let custom = CustomChannel(number: 30, name: "Mine")
@@ -171,7 +189,7 @@ struct ChannelEditorTests {
         #expect(app.save(setTimes) == nil)
         #expect(app.setTimes == [setTimes])
         #expect(app.save(SetTimes(channelNumber: 77, programmes: setTimes.programmes)) == "There's no channel 77 for these set times.")
-        // A code from another Apple TV replaces this channel's set times.
+        // A code from another device replaces this channel's set times.
         let shared = SetTimes(channelNumber: 2, programmes: [FixedProgramme(match: .item("New Film"), times: [1200])],
                               timeZone: Self.newYork)
         #expect(app.addSetTimes(code: shared.code) == nil)
@@ -188,6 +206,8 @@ struct ChannelEditorTests {
         #expect(channels.first { $0.number == 2 }?.setTimes == shared)
         #expect(channels.filter { $0.setTimes != nil }.count == 2)
         #expect(channels.allSatisfy { $0.missing.isEmpty }, "Before the library loads, nothing is flagged")
+        #expect(channels.first { $0.number == 30 }?.detail == "New Film")
+        #expect(channels.first { $0.number == 3 }?.detail == nil, "No set times, no detail")
         app.delete(custom)
         #expect(app.setTimes == [shared])
         app.delete(shared)
