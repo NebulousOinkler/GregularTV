@@ -129,18 +129,18 @@ struct ChannelEditorTests {
         #expect(model.addDraft() == "Choose a series or film to set at a time.")
         model.draftProgramme = .series("Taskmaster")
         model.draftTimes = "18:00, 25:00"
-        #expect(model.addDraft() == "Enter times like 18:00, or several like 18:00, 18:30.")
+        #expect(model.addDraft() == "Enter times like \(SetTimesEditorModel.example(1)), or several like \(SetTimesEditorModel.example(2)).")
         model.draftTimes = "18:00, 18:30"
         model.draftWeekdays = [2, 3]
         #expect(model.addDraft() == nil)
         #expect(model.programmes == [FixedProgramme(match: .series("Taskmaster"), times: [1080, 1110], weekdays: [2, 3],
                                                     timeZone: Self.newYork)])
         #expect(model.draftProgramme == nil && model.draftTimes.isEmpty, "The form clears for the next one")
-        #expect(model.programmes[0].summary.hasPrefix("18:00, 18:30 · "))
+        #expect(model.programmes[0].summary.hasPrefix("\(SetTimesEditorModel.example(2)) · "))
 
         model.draftProgramme = .item("New Film")
         model.draftTimes = "18:30"
-        #expect(model.addDraft() == "Something else is already set at 18:30.")
+        #expect(model.addDraft() == "Something else is already set at \(FixedProgramme.clockText(forMinutes: 1110)).")
         model.draftWeekdays = [7]
         #expect(model.addDraft() == nil, "Another day may share the time")
         #expect(model.problem == nil)
@@ -149,6 +149,21 @@ struct ChannelEditorTests {
 
         model.remove(model.programmes[0])
         #expect(model.programmes.count == 1)
+    }
+
+    @Test func setTimesAreTypedInEitherClock() {
+        let us = Locale(identifier: "en_US"), uk = Locale(identifier: "en_GB")
+        #expect(FixedProgramme.typedTimes("18:00, 18:30", locale: us) == [1080, 1110])
+        #expect(FixedProgramme.typedTimes("18:00 18:30", locale: us) == [1080, 1110])
+        #expect(FixedProgramme.typedTimes("6:00 PM, 6:30 PM", locale: us) == [1080, 1110])
+        #expect(FixedProgramme.typedTimes("6pm 6:30pm", locale: us) == [1080, 1110])
+        #expect(FixedProgramme.typedTimes("6 p.m., 12 am, 12:15 PM", locale: us) == [1080, 0, 735])
+        #expect(FixedProgramme.typedTimes(FixedProgramme.clockText(forMinutes: 1110, locale: us), locale: us) == [1110],
+                "What the screen shows reads back")
+        #expect(FixedProgramme.clockText(forMinutes: 1110, locale: uk) == "18:30")
+        for bad in ["", "6", "13 pm", "25:00", "6:3 pm", "pm", "6:00 PM, later", "0 am"] {
+            #expect(FixedProgramme.typedTimes(bad, locale: us) == nil, "\(bad)")
+        }
     }
 
     @Test func aSetTimesRowSaysWhatWontAir() {

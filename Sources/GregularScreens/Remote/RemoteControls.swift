@@ -71,9 +71,10 @@ public enum RemoteControls {
         .playPause: .close,
     ]
 
-    #if DEBUG
-    /// Debug builds only: letter keys for the remote's buttons, for the
-    /// simulator, where some can't be pressed from a keyboard (slides, a
+    #if DEBUG || (REMOTE_KEYS && targetEnvironment(simulator))
+    /// Debug builds, and Release builds for the simulator made with the
+    /// `REMOTE_KEYS` flag (README, *Debug options*), which never reach a
+    /// device: letter keys for the remote's buttons, for the simulator, where some can't be pressed from a keyboard (slides, a
     /// light touch, click and hold) and a host may keep Escape for itself.
     /// Each key does whatever its button does on the screen showing. The
     /// arrow keys, Return, Escape and Space still work as usual.
@@ -165,6 +166,11 @@ public enum RemoteAction: Hashable, CaseIterable, Sendable {
     /// button (highlighted, not pressed), then back to watching. Elsewhere, `.close`.
     case stepBack
 
+    /// How hints describe the action while paused, if that's different.
+    public var pausedLabel: String {
+        self == .pauseOrJumpToLive ? "jump to live" : label
+    }
+
     /// How hints describe the action.
     public var label: String {
         switch self {
@@ -186,7 +192,12 @@ public enum RemoteAction: Hashable, CaseIterable, Sendable {
 extension RemoteControls {
     /// A one-line hint from a table, such as
     /// "click ◀▶: channels · slide ◀: channel list · click or touch: info".
-    public static func hint(for map: [RemoteButton: RemoteAction]) -> String {
+    /// - Parameters:
+    ///   - paused: live TV is paused, so Play/Pause jumps to live.
+    ///   - onScreen: buttons on the screen that do an action too, listed
+    ///     with the remote's: `[.close: "Done"]` gives "Menu or Done: close".
+    public static func hint(for map: [RemoteButton: RemoteAction], paused: Bool = false,
+                            onScreen: [RemoteAction: String] = [:]) -> String {
         // The usual pairings read better as one.
         let pairs: [(RemoteButton, RemoteButton, String)] = [
             (.clickDown, .clickUp, "click ▼▲"), (.clickLeft, .clickRight, "click ◀▶"),
@@ -198,16 +209,26 @@ extension RemoteControls {
         // Labels shared by several actions (info) are listed once.
         var labels: [String] = []
         var buttonsByLabel: [String: [RemoteButton]] = [:]
+        var namesByLabel: [String: [String]] = [:]
         for action in RemoteAction.allCases {
             let buttons = RemoteButton.allCases.filter { map[$0] == action && !pairedButtons.contains($0) }
-            guard !buttons.isEmpty else { continue }
-            if buttonsByLabel[action.label] == nil { labels.append(action.label) }
-            buttonsByLabel[action.label, default: []] += buttons
+            let name = onScreen[action]
+            guard !buttons.isEmpty || name != nil else { continue }
+            let label = paused ? action.pausedLabel : action.label
+            if buttonsByLabel[label] == nil { labels.append(label) }
+            buttonsByLabel[label, default: []] += buttons
+            if let name { namesByLabel[label, default: []].append(name) }
         }
         for label in labels {
             let buttons = RemoteButton.allCases.filter { buttonsByLabel[label]!.contains($0) }
-            parts.append(buttons.map(\.symbol).joined(separator: " or ") + ": " + label)
+            parts.append(orList(buttons.map(\.symbol) + namesByLabel[label, default: []]) + ": " + label)
         }
         return parts.joined(separator: " · ")
+    }
+
+    /// "A", "A or B", "A, B or C".
+    private static func orList(_ names: [String]) -> String {
+        guard names.count > 2 else { return names.joined(separator: " or ") }
+        return names.dropLast().joined(separator: ", ") + " or " + names.last!
     }
 }

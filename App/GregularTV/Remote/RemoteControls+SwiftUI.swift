@@ -36,7 +36,7 @@ private struct RemoteControlsModifier: ViewModifier {
             .onPlayPauseCommand(perform: onPlayPause)
             .onExitCommand(perform: onMenu)
             .modifier(clicks)
-            #if DEBUG
+            #if DEBUG || (REMOTE_KEYS && targetEnvironment(simulator))
             .onKeyPress(phases: .down) { press in
                 // `RemoteControls.debugKeys`: a key does what its button does here.
                 guard let key = press.characters.lowercased().first, let button = RemoteControls.debugKeys[key],
@@ -72,9 +72,9 @@ private struct RemoteControlsModifier: ViewModifier {
     }
 }
 
-#if DEBUG
+#if DEBUG || (REMOTE_KEYS && targetEnvironment(simulator))
 extension View {
-    /// Debug builds only: the Menu key in `RemoteControls.debugKeys` closes a
+    /// With the debug keys (see `RemoteControls.debugKeys`): the Menu key closes a
     /// screen that has no table of its own, such as an editor over Settings,
     /// as Menu on the remote does.
     func debugMenuKeyCloses() -> some View {

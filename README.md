@@ -128,6 +128,22 @@ Debug builds accept launch arguments. Release builds leave them out entirely.
 xcrun simctl launch booted dev.gregulartv.GregularTV -handoffTest
 ```
 
+**Remote keys in a Release build, for the simulator.** Debug builds let letter keys stand in for remote buttons the keyboard lacks (`m` Menu, `p` Play/Pause, `h` click and hold, `t` touch, `w`/`a`/`s`/`d` slides; see `RemoteControls.debugKeys`). To test the production build the same way, build it for the simulator with the `REMOTE_KEYS` flag. The keys only exist in a simulator build, so the flag can't reach an Apple TV or the App Store:
+
+```bash
+xcodebuild build -project App/GregularTV.xcodeproj -scheme GregularTV -configuration Release -destination 'platform=tvOS Simulator,name=GregularTV Screenshots' 'SWIFT_ACTIVE_COMPILATION_CONDITIONS=$(inherited) REMOTE_KEYS'
+```
+
+**A walk through every screen with the remote.** The `GregularTVWalkthrough` scheme runs UI tests (`App/GregularTVUITests`) that drive a simulated Siri Remote through watching, the guide, Settings, both editors, the confirmations, codes and signing out, against the demo server, never a real one. They save a screenshot at each step to `TEST_RUNNER_SHOTS_DIR` for a person to look over. They take a few minutes, so they're kept out of the `GregularTV` scheme's tests:
+
+```bash
+python3 scripts/demo-server.py
+```
+
+```bash
+TEST_RUNNER_SHOTS_DIR=/path/to/shots xcodebuild test -project App/GregularTV.xcodeproj -scheme GregularTVWalkthrough -destination 'platform=tvOS Simulator,name=GregularTV Tests'
+```
+
 **Playback diagnostics** are a setting, not a build type: turn on **Show playback diagnostics** in Settings (click and hold while watching) to add a technical line to the banner. It shows quality, whether the server is transcoding and why, buffering, and how far behind live playback is. It's off by default. It never shows the server address, token, user or stream URLs.
 
 **When Jellyfin can't re-encode fast enough** (a slow server converting a file the Apple TV can't play as-is), a programme that fails or stalls is retried with less work: 720p, then a step lower on each further failure, for that programme only (Settings shows it as the programme's fix). A programme Jellyfin would re-encode isn't started with under 3 minutes left; the screen shows "Up next" instead, so the server isn't asked for an expensive transcode for a minute of video.

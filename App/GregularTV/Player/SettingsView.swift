@@ -23,6 +23,8 @@ struct SettingsView: View {
     @State private var choosingChannel = false
     @State private var editor: Editor?
     @State private var setTimesEditor: SetTimesEditor?
+    /// Settings opens on the quality in use, not the top row.
+    @FocusState private var focusedQuality: StreamingQuality?
 
     /// The channel editor, while it's open.
     private struct Editor: Identifiable {
@@ -51,6 +53,7 @@ struct SettingsView: View {
                         app.setStreamingQuality(quality)
                         dismiss()
                     }
+                    .focused($focusedQuality, equals: quality)
                 }
             }
 
@@ -113,13 +116,19 @@ struct SettingsView: View {
                 }
             }
 
-            SettingsRows.section(nil, footer: ["\(RemoteControls.hint(for: RemoteControls.settings)) · Done to close"]) {
+            SettingsRows.section(nil, footer: [RemoteControls.hint(for: RemoteControls.settings, onScreen: [.close: "Done"])]) {
                 SettingsRows.row("Done") { dismiss() }
                 SettingsRows.confirmedRow(app.signOutConfirmation) {
                     dismiss()
                     Task { await app.signOut() }
                 }
             }
+        }
+        .defaultFocus($focusedQuality, player.quality)
+        .task {
+            // In case the default didn't take (it's the top row otherwise).
+            try? await Task.sleep(for: .milliseconds(100))
+            if focusedQuality == nil || focusedQuality == StreamingQuality.allCases.first { focusedQuality = player.quality }
         }
         .remoteControls(RemoteControls.settings) { action in
             if action == .close { dismiss() } else { onRemote(action) }
