@@ -1,8 +1,9 @@
 import GregularCore
 /// How this app introduces itself to Jellyfin in every request.
 ///
-/// The device name is deliberately generic ("Apple TV"), not the name the
-/// user gave their Apple TV, which often contains a person's name.
+/// The device name is the kind of device, from whichever app uses this
+/// (the Apple TV app says "Apple TV"), never the name the user gave their
+/// device, which often contains a person's name.
 public struct ClientIdentity: Sendable, Equatable {
     public static let clientName = "Gregular TV"
     public static let clientVersion = "1.0.0"
@@ -10,7 +11,8 @@ public struct ClientIdentity: Sendable, Equatable {
     public let deviceID: String
     public let deviceName: String
 
-    public init(deviceID: String, deviceName: String = "Apple TV") {
+    /// - Parameter deviceName: the kind of device, such as "Apple TV".
+    public init(deviceID: String, deviceName: String) {
         self.deviceID = deviceID
         self.deviceName = deviceName
     }

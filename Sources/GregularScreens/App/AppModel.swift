@@ -53,14 +53,17 @@ public final class AppModel {
     /// Settings with diagnostics on, so a missing or unscanned library is easy to spot.
     public private(set) var commercialsStatus: String?
 
-    /// - Parameter makeDecks: the two video decks for each channel player
-    ///   (see `PlayerDeck`): AVFoundation on Apple TV.
-    public init(store: any CredentialStore = KeychainStore(), preferences: AppPreferences = AppPreferences(),
+    /// - Parameters:
+    ///   - deviceName: the kind of device, as Jellyfin lists it, such as
+    ///     "Apple TV" (never the name the user gave their device).
+    ///   - makeDecks: the two video decks for each channel player
+    ///     (see `PlayerDeck`): AVFoundation on Apple TV.
+    public init(deviceName: String, store: any CredentialStore = KeychainStore(), preferences: AppPreferences = AppPreferences(),
                 makeDecks: @escaping @MainActor () -> [any PlayerDeck]) {
         self.makeDecks = makeDecks
         self.store = store
         self.preferences = preferences
-        identity = ClientIdentity(deviceID: store.deviceID())
+        identity = ClientIdentity(deviceID: store.deviceID(), deviceName: deviceName)
         showsDiagnostics = preferences.showsDiagnostics
         playsCommercials = preferences.playsCommercials
         customChannels = preferences.customChannels
@@ -150,6 +153,14 @@ public final class AppModel {
         /// The set times' names this library doesn't have, so they never air.
         public let missing: [String]
         public var id: Int { number }
+
+        /// The line under its row: what's set, and anything that won't air,
+        /// "Far Signal · Not in your library: Orbit & Pip". Nil with no set times.
+        public var detail: String? {
+            guard let setTimes else { return nil }
+            let missingNote = missing.isEmpty ? nil : "Not in your library: \(missing.joined(separator: ", "))"
+            return [setTimes.summary, missingNote].compactMap { $0 }.joined(separator: " · ")
+        }
     }
 
     /// Every channel set times can go on, in order.
@@ -188,7 +199,7 @@ public final class AppModel {
     /// Adds the channel a channel code describes. Returns why it couldn't, or nil.
     public func addChannel(code: String) -> String? {
         guard let channel = CustomChannel(code: code) else {
-            return "That isn't a channel code. Check it against the other Apple TV's Settings."
+            return "That isn't a channel code. Check it against the Settings it came from."
         }
         return save(channel)
     }
@@ -196,7 +207,7 @@ public final class AppModel {
     /// Adds the set times a set-times code describes. Returns why it couldn't, or nil.
     public func addSetTimes(code: String) -> String? {
         guard let setTimes = SetTimes(code: code) else {
-            return "That isn't a set-times code. Check it against the other Apple TV's Settings."
+            return "That isn't a set-times code. Check it against the Settings it came from."
         }
         return save(setTimes, replacing: self.setTimes.first { $0.channelNumber == setTimes.channelNumber })
     }
