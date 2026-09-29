@@ -126,6 +126,7 @@ public final class ChannelEditorModel {
     public var problem: String? {
         guard let channel else { return "Choose \(ruleKind.label.lowercased()) for the channel." }
         if channel.name.isEmpty { return "Give the channel a name." }
+        if channel.name.count > CustomChannel.longestName { return "Keep the name to \(CustomChannel.longestName) characters." }
         do {
             _ = try lineup.adding([channel])
         } catch {

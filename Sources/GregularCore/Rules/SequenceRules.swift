@@ -27,8 +27,10 @@ struct NoCommercialTwiceInARow: NotTwiceInARow {
 /// first, so nothing is dropped and the order moves by as little as possible.
 struct RuledStream {
     /// How many new items to look at for one that's allowed. Past that the
-    /// rules give way, for a channel with only one movie.
-    static let lookahead = 8
+    /// rules give way, for a channel with only one movie. A random strategy
+    /// can pick the same film several times running (ten in a row has come
+    /// up with three films), so this is well beyond any such streak.
+    static let lookahead = 64
 
     private let source: AnyIterator<MediaItem>
     private let rules: [any SequenceRule]
