@@ -6,6 +6,8 @@ public enum JellyfinError: Error, Equatable, Sendable {
     case unauthorized
     case httpStatus(Int)
     case invalidResponse
+    /// The server sent far more than any reply should be (see `URLSessionTransport.largestResponse`).
+    case responseTooLarge
     case quickConnectDisabled
     /// Jellyfin returned no media source this device can play.
     case noPlayableSource(itemID: String)
@@ -19,6 +21,7 @@ extension JellyfinError: MediaServiceFailure {
         case .unauthorized: "Your Jellyfin sign-in has expired or was revoked. Please sign in again."
         case .httpStatus(let code): "The Jellyfin server returned an error (HTTP \(code))."
         case .invalidResponse: "The server didn't respond like a Jellyfin server."
+        case .responseTooLarge: "The server sent far more than expected, so the app stopped it."
         case .quickConnectDisabled: "Quick Connect is turned off on this server. Sign in with a password instead."
         case .noPlayableSource: "Jellyfin couldn't provide a playable stream for this programme."
         }
