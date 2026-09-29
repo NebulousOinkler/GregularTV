@@ -264,6 +264,24 @@ public final class ChannelPlayer {
         status = .tuning
     }
 
+    /// The same channel's schedule, rebuilt after a setting changed (set
+    /// times, custom channels, commercials). Playback carries on untouched
+    /// while what's on now, and anything already loaded for later, is the
+    /// same under the new schedule; otherwise it tunes in afresh.
+    public func replaceSchedule(_ schedule: ChannelSchedule) {
+        let old = self.schedule
+        self.schedule = schedule
+        guard heartbeat != nil else { return }   // not playing: `start()` tunes with it
+        func unchanged(_ airing: Airing?) -> Bool {
+            airing.map { schedule.tune(at: $0.start).airing == $0 } ?? true
+        }
+        let now = Date.now
+        let before = old.tune(at: now), after = schedule.tune(at: now)
+        guard after.airing == before.airing, after.isInPadding == before.isInPadding,
+              unchanged(current?.airing), unchanged(next?.airing), unchanged(afterBreak?.airing)
+        else { return tune() }
+    }
+
     public func switchTo(_ schedule: ChannelSchedule) {
         self.schedule = schedule
         consecutiveFailures = 0   // a new channel starts with the shortest retry wait
