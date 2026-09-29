@@ -3,8 +3,9 @@ import Testing
 @testable import GregularCore
 
 /// Random small channels, with and without programmes at set times, on every
-/// strategy: the rules hold, walks agree, and set times are kept. (Tiny
-/// libraries are the hard case: they leave the fewest ways to keep a rule.)
+/// strategy: the rules hold, walks agree, set times are kept, and at every
+/// other time the channel is the shared schedule. (Tiny libraries are the
+/// hard case: they leave the fewest ways to keep a rule.)
 struct RandomChannelTests {
     static let zones = ["Europe/London", "America/New_York", "Australia/Sydney", "Asia/Tokyo"]
     static let strategies = StrategyRegistry.all.map { $0.id }
@@ -35,8 +36,9 @@ struct RandomChannelTests {
                                         exclusive: rng.int(below: 4) == 0))
         }
         let zone = TimeZone(identifier: zones[trial % zones.count])!
+        fixed = fixed.map { $0.in(zone) }
         let channel = Channel(number: 1, name: "T", source: AllItemsSource(), strategyID: strategies[trial % strategies.count],
-                              seed: UInt64(trial), padToMinutes: rng.int(below: 2) == 0 ? 30 : nil, timeZone: zone, fixed: fixed)
+                              seed: UInt64(trial), padToMinutes: rng.int(below: 2) == 0 ? 30 : nil, fixed: fixed)
         let shuffled = items.filter { item in !fixed.contains { $0.exclusive && $0.matches(item) } }
         guard Set(shuffled.map(\.id)).count > 1, let schedule = ChannelSchedule(channel: channel, items: items) else { return nil }
         var calendar = Calendar(identifier: .gregorian)
@@ -52,8 +54,11 @@ struct RandomChannelTests {
             guard let c = Self.randomCase(trial, &rng) else { continue }
             checked += 1
             let week = c.schedule.programmes(from: c.start, to: c.start.addingTimeInterval(7 * 86400))
+            // Set the same film at two times close together, and it may be on twice in a row: that's the user's choice.
+            let setTimes = Set(c.schedule.setTimeAirings(from: c.start.addingTimeInterval(-86400), to: c.start.addingTimeInterval(8 * 86400)).map(\.start))
             for (a, b) in zip(week, week.dropFirst()) {
-                #expect(a.item.id != b.item.id, "trial \(trial): \(a.item.name) twice at \(b.start)")
+                let bothSet = setTimes.contains(a.start) && setTimes.contains(b.start)
+                #expect(a.item.id != b.item.id || bothSet, "trial \(trial): \(a.item.name) twice at \(b.start)")
                 #expect(a.slotEnd == b.start, "trial \(trial): back to back")
             }
             // Looked up on its own, each programme is the same as in the long walk.
@@ -70,7 +75,6 @@ struct RandomChannelTests {
         var pins = 0
         for trial in 0..<80 {
             guard let c = Self.randomCase(trial, &rng) else { continue }
-            let shortest = c.items.map(\.duration).min() ?? 0
             for day in 1..<5 {
                 let midnight = c.calendar.startOfDay(for: c.start.addingTimeInterval(Double(day) * 86400))
                 // This day's set times, and the day before's (one may run past midnight).
@@ -91,13 +95,47 @@ struct RandomChannelTests {
                         continue
                     }
                     // Left out only if it overlaps the one before, or is the same
-                    // programme again with no room for another between.
-                    let sameAgain = lastPinned.map { entry.matches($0) && time.timeIntervalSince(busyUntil) < 3 * shortest + 3600 } ?? false
+                    // programme again straight after it.
+                    let sameAgain = lastPinned.map { entry.matches($0) && time == busyUntil } ?? false
                     #expect(time < midnight || time < busyUntil || sameAgain, "trial \(trial): \(entry.match) at \(time)")
                 }
                 pins += times.count
             }
         }
         #expect(pins > 300)
+    }
+
+    @Test func atEveryOtherTimeItsTheSharedSchedule() {
+        // Set times of films on channels of episodes: the films never air in the
+        // shared schedule, so nothing is covered and every other moment must match.
+        var rng = SeededRandom(seed: 5150)
+        var compared = 0
+        for trial in 0..<40 {
+            let shows = (0..<(2 + rng.int(below: 3))).flatMap { k in
+                Fixtures.series("S\(k)", seasons: 1, episodes: 2 + rng.int(below: 6), minutes: Double([22, 30, 44, 60][rng.int(below: 4)]))
+            }
+            let films = (0..<3).map { Fixtures.movie("F\($0)", minutes: Double(40 + rng.int(below: 140))) }
+            let zone = TimeZone(identifier: Self.zones[trial % Self.zones.count])!
+            let times = Set((0..<(1 + rng.int(below: 4))).map { _ in rng.int(below: 96) * 15 }).sorted()
+            let shared = Channel(number: 1, name: "T", itemTypes: [.episode], source: AllItemsSource(),
+                                 strategyID: Self.strategies[trial % Self.strategies.count], seed: UInt64(trial),
+                                 padToMinutes: rng.int(below: 2) == 0 ? 30 : nil)
+            let withSetTimes = shared.adding([FixedProgramme(match: .item("F\(rng.int(below: 3))"), times: times, timeZone: zone)])
+            guard let a = ChannelSchedule(channel: withSetTimes, items: shows + films),
+                  let c = ChannelSchedule(channel: shared, items: shows + films) else { continue }
+            let start = Channel.defaultEpoch.addingTimeInterval(Double(rng.int(below: 1200)) * 86400 + Double(rng.int(below: 86400)))
+            let windows = a.setTimeAirings(from: start.addingTimeInterval(-86400), to: start.addingTimeInterval(3 * 86400))
+            for minute in stride(from: 0, to: 2 * 24 * 60, by: 11) {
+                let t = start.addingTimeInterval(Double(minute) * 60)
+                guard !windows.contains(where: { $0.start <= t && t < $0.slotEnd }) else { continue }
+                let ta = a.tune(at: t), tc = c.tune(at: t)
+                // Blank airtime after a programme looks the same whichever programme it follows.
+                if t >= ta.airing.end && t >= tc.airing.end && !ta.airing.isFiller && !tc.airing.isFiller { continue }
+                #expect(ta.airing.item.id == tc.airing.item.id, "trial \(trial) at \(t)")
+                #expect(abs((ta.airing.mediaOffset + ta.offset) - (tc.airing.mediaOffset + tc.offset)) < 0.01, "trial \(trial) at \(t)")
+                compared += 1
+            }
+        }
+        #expect(compared > 5000)
     }
 }

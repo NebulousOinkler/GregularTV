@@ -42,7 +42,8 @@ This design is what makes the privacy requirement cheap to meet. No schedule or 
 | Device ID (random UUID, made by the app) | Keychain | Jellyfin requires a stable device ID in the auth header |
 | Channel definitions (rules, seed, name) | App config (bundled JSON / Swift) | Client-side config, no library content |
 | Client settings: last channel **number**, streaming quality, schedule code, diagnostics and commercials switches | `UserDefaults`, through `AppPreferences` only | Client-side preferences; they hold no server data |
-| Custom channels, as their channel codes (name, number, rule, set times) | `UserDefaults`, through `AppPreferences` only | Client configuration the viewer typed or picked (decided 2026-09-28, option (a) of the old TODO): a rule may name a genre, series or tag, and nothing else from the library is kept |
+| Custom channels, as their channel codes (name, number, rule) | `UserDefaults`, through `AppPreferences` only | Client configuration the viewer typed or picked (decided 2026-09-28, option (a) of the old TODO): a rule may name a genre, series or tag, and nothing else from the library is kept |
+| Set times, as their set-times codes (channel number, time zone, series or film names, times, days) | `UserDefaults`, through `AppPreferences` only | The same option (a): only the names the viewer picked |
 | Library metadata (titles, IDs, durations, artwork) | **RAM only**, gone on app exit | Needed to build the schedule and guide |
 | Password | **Never stored** | Only sent once to get a token (or use Quick Connect instead) |
 
@@ -68,10 +69,10 @@ jellyfin_tv/
 │  ├─ Services/MediaServices.swift  # what a media server must provide: MediaLibrary, StreamSource,
 │  │                                # MediaStream, MediaServiceFailure
 │  ├─ Rules/                        # ScheduleRules: the one registry of special rules (§9c), by kind:
-│  │                                # sequence (not twice in a row), content, pins (set times), checks
+│  │                                # sequence (not twice in a row), pins (set times), covers, checks
 │  ├─ Scheduling/
-│  │  ├─ ScheduleEngine.swift       # ChannelSchedule: runs, joins, set times, slots, breaks, mid-rolls, tune(at:)
-│  │  ├─ RunCalendar.swift          # where runs start: fixed lengths, or local days for set times
+│  │  ├─ ScheduleEngine.swift       # ChannelSchedule: the shared schedule's runs, joins, slots, breaks, mid-rolls, tune(at:)
+│  │  ├─ ScheduleEngine+SetTimes.swift # set times laid over the shared schedule: windows, cuts, covering
 │  │  ├─ ScheduleStrategy.swift     # protocol (see §5)
 │  │  ├─ StrategyRegistry.swift     # the one list of programme strategies
 │  │  ├─ Strategies/                # ShuffledShows (default), RandomShuffle, SequentialBySeries,
@@ -330,20 +331,30 @@ A Feistel network has none of those limits, but with 4 rounds it was uneven over
 |---|---|---|
 | `NoProgrammeTwiceInARow` | sequence (programmes) | The same movie, or the same episode, never airs twice in a row. A show may follow itself with its next episode. |
 | `NoCommercialTwiceInARow` | sequence (commercials) | The same commercial never plays twice in a row. |
-| `PinnedProgrammes` | pin | Fixed programmes air at exactly their local times; a series plays its next episode at each airing. |
-| `PinnedShowsStayOutOfTheShuffle` | content | A fixed programme marked `exclusive` only airs at its set times. |
+| `PinnedProgrammes` | pin | Set times air at exactly their local times, over the shared schedule; a series plays its next episode at each airing. |
+| `ExclusiveProgrammesOnlyAtSetTimes` | cover | A set programme marked `exclusive` only airs at its set times: its other airings get a stand-in. |
 | `FixedTimesAreValid` | channel check | Set times need a time zone, and no two may share a time on a day they both air. |
 | `CustomChannelNumbers` | line-up check | Custom channels use 20 to 99, and no two channels share a number. |
+| `SetTimesNeedTheirChannel` | line-up check | Set times belong to a channel in the line-up, one set per channel. |
 
 **How the sequence rules are kept.** Streams go through `RuledStream`: an item a rule rejects waits and airs as soon as it may, so nothing is dropped and the order moves as little as possible. Three places need more than that, and each is handled without chaining one run to the next:
 - **Where runs meet.** Each run is laid out on its own; only its *join* depends on the run before, and never changes what it takes from the strategy. If the run's first programme mustn't follow the last one before it, a programme the rules allow takes its slot; failing that, the first slots are left out until one may follow, and their time is a break after the last programme. So every walk (from any starting run) gives the same schedule.
-- **Before a programme at a set time.** A programme the rules don't allow straight before it only goes if an allowed one could still fit after it; the last one before it is swapped for an allowed one if needed, or the gap after it is filled with one.
-- **Set times themselves.** A set time is left out that day if it would overlap the one before it, or if it's the same programme again with no allowed programme able to fit between.
+- **Next to a set time.** The shared schedule's programme just before a set time, or still on after it, is swapped for a stand-in that fits its slot if the rules don't allow it next to the set programme. If none fits, that part of it becomes a break instead. Only that slot changes.
+- **Set times themselves.** A set time is left out that day if it would overlap the one before it, or if it's the same programme straight after it. Two set times of the same film close together are the viewer's choice, and may air with only a break between.
 A channel whose shuffle has only one programme can't avoid repeating it: there, the rules give way.
 
-**Programmes at set times.** A channel's `fixed` list (with `timeZone`) names series or items and local times, with optional `days` (weekdays or dates) and `exclusive`. Such a channel's runs are local calendar days (`RunCalendar`), 23 or 25 hours on clock-change days, and each set time is a hard edge, like the end of a run: programmes that wouldn't finish in time wait until after it, and the time left becomes a break before it. A set programme that runs past midnight pushes the next day's start back. A series' episode at each airing comes from counting its airings since the channel's first day from the calendar, so any day is found without replaying the ones before. Tuning still walks at most two days.
+**Programmes at set times: an overlay (changed 2026-09-28).** Set times name series or items and local times, with optional `days` (weekdays or dates) and `exclusive`, each read in its own time zone. They come from a channel's `fixed` list in `channels.json` (with the channel's `timeZone`), or from a household's `SetTimes`, made in Settings › Set times for any channel.
 
-**Custom channels.** Settings › Your channels makes a channel on the Apple TV (`CustomChannel`, edited through `ChannelEditorModel`): a name, a number from 20 to 99, episodes, movies or both, one rule (everything, a genre, a series, years or a tag) picked from the library in memory, half-hour slots and commercials (both on by default), and optional set times in the Apple TV's time zone. The strategy, seed (1000 + the number) and filler take the defaults. The editor previews how many programmes match and the next three hours, with no server calls. A **channel code** packs the definition into Crockford base32 with a check byte (a mistyped code is rejected, never misread), to type into another Apple TV: with the same schedule code, both then show the same schedule. Custom channels are saved as their codes in `AppPreferences` (§3), and a saved one whose number a newer bundled line-up takes is left out rather than breaking the line-up.
+The first version wove set times into the schedule: runs became local days and each set time a hard edge. That moved everything around it, so two households sharing a schedule code, one with a set time, agreed on only about 11% of moments (0% with `exclusive`). Now there are two layers:
+- The **shared schedule** comes from the code and the channel alone, in uniform runs, exactly as without set times.
+- Each set time is a **window**, from its time to the end of its programme's slot. Inside it, its programme is on, with its own breaks. Outside every window, the shared schedule is on: a programme cut by a window's start stops there, and one still on at its end is joined partway through (`mediaOffset`), as when changing channel.
+- The only other change is **covering**: an `exclusive` programme's other airings, and a shared programme the rules don't allow next to an adjacent set time, get a stand-in that fits their slot.
+
+So outside the windows and covered slots, every household with the same code sees the same programme at the same point (tested with random channels in `RandomChannelTests`). A series' episode at each set time comes from counting its airings since the channel's first day from the calendar, so any day is found without replaying the ones before. Tuning still walks at most two days.
+
+A household's set times on one channel are a `SetTimes`, with a **set-times code** (the channel number, time zone and set times, in the same Crockford base32 with a check byte as channel codes, through `CodeWriter`/`CodeReader`) to share them with another Apple TV. They're saved as their codes in `AppPreferences` (§3).
+
+**Custom channels.** Settings › Your channels makes a channel on the Apple TV (`CustomChannel`, edited through `ChannelEditorModel`): a name, a number from 20 to 99, episodes, movies or both, one rule (everything, a genre, a series, years or a tag) picked from the library in memory, half-hour slots and commercials (both on by default). Set times on it are made in Settings › Set times, like any channel's. The strategy, seed (1000 + the number) and filler take the defaults. The editor previews how many programmes match and the next three hours, with no server calls. A **channel code** packs the definition into Crockford base32 with a check byte (a mistyped code is rejected, never misread), to type into another Apple TV: with the same schedule code, both then show the same schedule. Custom channels are saved as their codes in `AppPreferences` (§3), and a saved one whose number a newer bundled line-up takes is left out rather than breaking the line-up.
 
 ## 9a. Gap filler (commercials): live
 
@@ -433,7 +444,7 @@ A record of what was built and checked, in order. Details like the remote contro
 - **Determinism:** same seed + items + time → identical `nowPlaying` across runs, and when the input item order is shuffled first. We sort the input by a stable key before calling the strategy, so Jellyfin's API ordering can't change the schedule.
 - **Engine:** run boundaries, times before the epoch, a single-item channel, padding and run-end gaps, and sequences carrying on across runs. A laziness test checks that tuning into a 20,000-episode channel pulls at most two days of programmes (the run, and the one before for what aired last). All the maths is in UTC.
 - **Strategies:** the shared conformance suite (§5), plus one behavioural test per strategy.
-- **Rules:** each rule on its own, set times for a year across clock changes, and `RandomChannelTests`: random small channels on every strategy, with and without set times, checking that nothing airs twice in a row, slots meet with no gaps, every walk agrees, and set times are kept.
+- **Rules:** each rule on its own, set times for a year across clock changes, and `RandomChannelTests`: random small channels on every strategy, with and without set times, checking that nothing airs twice in a row, slots meet with no gaps, every walk agrees, set times are kept, and at every other time the channel is the shared schedule.
 - **Privacy:** a test that runs a full session against a mock server, then checks that the app container has no new files and `UserDefaults` is empty.
 
 ## 12. Decisions and prerequisites
@@ -448,7 +459,8 @@ A record of what was built and checked, in order. Details like the remote contro
 - **Shuffle:** every shuffle is a `ShuffledOrder` (Fisher–Yates up to 10 items, a 12-round Feistel network above), new each pass (§9b).
 - **Special rules** live in one registry, `ScheduleRules` (§9c).
 - **Custom channels** are made in Settings and saved as channel codes: privacy option (a), allowing exactly this in `AppPreferences` (§3, §9c).
-- **Programmes at set times** are built, in `channels.json` and in custom channels (§9c).
+- **Programmes at set times** are built, in `channels.json` and in Settings for any channel (§9c).
+- **Set times are an overlay** on the shared schedule, so households sharing a code stay in step outside their set times; a household's set times are shared by set-times code (§9c).
 
 **Prerequisites**
 - ✅ Xcode 27 with the licence accepted, the tvOS 27 SDK, and the tvOS 27 simulator runtime (verified 2026-09-23). `GregularCore` and `GregularJellyfin` tests pass on macOS and on the Apple TV 4K simulator.
