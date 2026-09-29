@@ -47,15 +47,6 @@ struct JellyfinPrivacyTests {
         #expect((body["SupportedCommands"] as? [String])?.isEmpty == true)
     }
 
-    @Test func networkSessionNeverCachesToDisk() {
-        let config = URLSessionTransport.makeConfiguration()
-        #expect(config.urlCache == nil)
-        #expect(config.httpCookieStorage == nil)
-        #expect(config.httpShouldSetCookies == false)
-        #expect(config.urlCredentialStorage == nil)
-        #expect(config.requestCachePolicy == .reloadIgnoringLocalCacheData)
-    }
-
     @Test func signOutClearsLocalCredentialsEvenIfServerUnreachable() async {
         let mock = MockJellyfin()   // every route returns 404
         let store = InMemoryCredentialStore(credentials: JellyfinFixtures.credentials)

@@ -4,15 +4,23 @@
 # web page (see Package.swift):
 #
 #   Sources/GregularCore       the logic. Imports Foundation only.
-#   Sources/GregularJellyfin   the Jellyfin connection. Imports Foundation,
-#                              GregularCore and Security (the Keychain) only.
+#   Sources/GregularJellyfin   the Jellyfin connection. Imports Foundation and
+#                              GregularCore only, so it runs on any platform.
+#   Sources/GregularKeychain   Apple only: the sign-in in the Keychain. Imports
+#                              Foundation, Security and GregularJellyfin only.
+#                              Only the Apple TV app uses it.
 #   Sources/GregularScreens    what the screens do, without drawing them.
 #                              Imports Foundation, Observation, GregularCore,
 #                              and GregularJellyfin in SCREENS_JELLYFIN only.
 #                              No SwiftUI, UIKit or AVFoundation.
 #   App/GregularTV             Apple TV: views, AVFoundation, the remote.
 #                              Never imports GregularJellyfin: it gets
-#                              everything through GregularScreens.
+#                              everything through GregularScreens (and its
+#                              sign-in storage from GregularKeychain).
+#
+# Also a contract no script can check: every string GregularScreens hands a
+# front end is plain text. SwiftUI's Text shows it as such; a web front end
+# must escape it (names come from the server, so they're untrusted).
 #
 # Runs as a unit test (LayerTests). To allow a new import, think about which
 # part the code belongs in first.
@@ -32,7 +40,9 @@ violations=$(
     grep -rn '^import ' Sources/GregularCore --include='*.swift' \
         | grep -vE ':import Foundation$' || true
     grep -rn '^import ' Sources/GregularJellyfin --include='*.swift' \
-        | grep -vE ':import (Foundation|GregularCore|Security)$' || true
+        | grep -vE ':import (Foundation|GregularCore)$' || true
+    grep -rn '^import ' Sources/GregularKeychain --include='*.swift' \
+        | grep -vE ':import (Foundation|Security|GregularJellyfin)$' || true
     grep -rn '^import ' Sources/GregularScreens --include='*.swift' \
         | grep -vE ':import (Foundation|Observation|GregularCore|GregularJellyfin)$' || true
     grep -rn '^import GregularJellyfin' Sources/GregularScreens --include='*.swift' \

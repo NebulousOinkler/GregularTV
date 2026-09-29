@@ -59,8 +59,7 @@ struct ChannelEditorView: View {
                 }
                 .disabled(model.problem != nil)
                 if let onDelete {
-                    SettingsRows.confirmedRow("Delete Channel", asking: "Delete channel \(model.number)?",
-                                              detail: "Any set times on it go too. To get it back, you'd need its channel code.") {
+                    SettingsRows.confirmedRow(model.deleteConfirmation) {
                         dismiss()
                         onDelete()
                     }

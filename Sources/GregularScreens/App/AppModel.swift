@@ -58,7 +58,7 @@ public final class AppModel {
     ///     "Apple TV" (never the name the user gave their device).
     ///   - makeDecks: the two video decks for each channel player
     ///     (see `PlayerDeck`): AVFoundation on Apple TV.
-    public init(deviceName: String, store: any CredentialStore = KeychainStore(), preferences: AppPreferences = AppPreferences(),
+    public init(deviceName: String, store: any CredentialStore, preferences: AppPreferences = AppPreferences(),
                 makeDecks: @escaping @MainActor () -> [any PlayerDeck]) {
         self.makeDecks = makeDecks
         self.store = store
@@ -212,12 +212,14 @@ public final class AppModel {
         return save(setTimes, replacing: self.setTimes.first { $0.channelNumber == setTimes.channelNumber })
     }
 
-    /// Deletes a custom channel, and any set times on it.
+    /// Deletes a custom channel, and any set times on it. Ask the editor's
+    /// `deleteConfirmation` first.
     public func delete(_ channel: CustomChannel) {
         _ = apply(custom: customChannels.filter { $0 != channel },
                   setTimes: setTimes.filter { $0.channelNumber != channel.number })
     }
 
+    /// Ask the editor's `deleteConfirmation` first.
     public func delete(_ setTimes: SetTimes) {
         _ = apply(custom: customChannels, setTimes: self.setTimes.filter { $0 != setTimes })
     }
@@ -254,6 +256,12 @@ public final class AppModel {
         surfer.player.stop()
         phase = watch(library: library, commercials: commercials, streams: client,
                       preferring: surfer.player.schedule.channel.number)
+    }
+
+    /// Ask this before `signOut()`.
+    public var signOutConfirmation: Confirmation {
+        Confirmation(action: "Sign Out", question: "Sign out of Jellyfin?",
+                     detail: "You'll need to sign in again to watch. Your channels and set times stay on this \(identity.deviceName).")
     }
 
     public func signOut() async {

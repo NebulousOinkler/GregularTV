@@ -49,7 +49,7 @@ This design is what makes the privacy requirement cheap to meet. No schedule or 
 
 Enforcement:
 - **One network gateway (`JellyfinClient`)** built on `URLSessionConfiguration.ephemeral` with `urlCache = nil`, so nothing is cached to disk. The app loads no images from the server at all; its artwork is drawn by the app.
-- **No `UserDefaults`, Core Data, SwiftData, or file writes** outside two allowlisted files: `SecureStore.swift` (Keychain) and `AppPreferences.swift` (the client settings and custom channels above). A build-phase script fails the build if these APIs appear anywhere else.
+- **No `UserDefaults`, Core Data, SwiftData, or file writes** outside a few allowlisted files: `KeychainStore.swift` (Keychain), `HTTPTransport.swift` (the ephemeral session) and `AppPreferences.swift` (the client settings and custom channels above). A build-phase script fails the build if these APIs appear anywhere else.
 - **No third-party SDKs**: no analytics or crash reporters. Everything uses Apple frameworks, with no external dependencies.
 - **Apple privacy manifest** (`App/GregularTV/PrivacyInfo.xcprivacy`): no tracking, no collected data types, and `UserDefaults` with reason CA92.1 (the app's own settings). The Info.plist sets `ITSAppUsesNonExemptEncryption = NO` (standard HTTPS only).
 - **No playback reporting.** The app never calls `/Sessions/Playing`, `/Sessions/Playing/Progress`, `/Sessions/Playing/Stopped` or `/UserPlayedItems`. There's no toggle, so the code path doesn't exist. As a result, nothing shows as "Now Playing", and watched status and resume points on the server stay untouched.
@@ -58,11 +58,13 @@ Enforcement:
 - **Logout** wipes the Keychain entries and drops the in-memory library.
 
 Security (untrusted input, checked 2026-09-29):
-- **Redirects** are followed only on the same server: the same scheme, host and port, or `http` up to `https` on the same host (`RedirectGuard`). URLSession drops `Authorization` on a cross-host redirect by itself, but it sends the body again, so a sign-in's password would follow a 307 to another host.
-- **Server replies:** the claimed item total is capped (`LibraryQuery.mostItems`), paging stops at an empty page, and each page counts for at most `pageSize` items, so a false total can't plan billions of pages and crash every launch. Every reply is gathered as it arrives and stopped past `URLSessionTransport.largestResponse` (16 MB; the speed test is 3 MB), or turned down at once if it announces more (`BoundedLoad`), so no single reply can fill the app's memory. Server IDs go into URL paths, where they're percent-encoded: they can't change the host or add a query. `TranscodingUrl` keeps only its path and query. The `Authorization` header drops quotes, commas and control characters.
+- **Plain http only on the local network** (`ServerAddress.isAllowed`): localhost, unqualified and `.local`/`.home.arpa` names, and loopback, private, link-local and carrier-grade NAT addresses (Tailscale). `JellyfinAPI` refuses anything else before sending, on every platform; on Apple TV, App Transport Security is a second line of defence.
+- **Transport rules** (`TransportRules`, which every `HTTPTransport` must follow and `TransportConformanceTests` checks): redirects are followed only on the same server (the same scheme, host and port, or `http` up to `https` on the same host), replies are stopped past `largestResponse` (16 MB) as they arrive, and nothing is stored. URLSession drops `Authorization` on a cross-host redirect by itself, but it sends the body again, so a sign-in's password would follow a 307 to another host. `JellyfinAPI` checks the redirect and size rules again on every reply, whatever the transport.
+- **Server replies:** the claimed item total is capped (`LibraryQuery.mostItems`), paging stops at an empty page, and each page counts for at most `pageSize` items, so a false total can't plan billions of pages and crash every launch. Server IDs go into URL paths, where they're percent-encoded: they can't change the host or add a query. `TranscodingUrl` keeps only its path and query. The `Authorization` header drops quotes, commas and control characters. Every string Screens hands a front end is plain text; a web front end must escape it.
+- **Credentials** are kept by a `CredentialStore` that each platform brings, on the device only and in its secure storage (`KeychainStore` in `GregularKeychain` on Apple's). The shared code has no store of its own, so it can't fall back to an insecure one.
 - **Codes** (channel and set-times) are unauthenticated: the CRC-8 only catches typos. `FixedTimesAreValid` checks set times from a code like any others: times within a day, real dates, and at most `FixedProgramme.mostPerChannel` (24) set times listing `mostTimesPerChannel` (48) times in all per channel, which keeps placing them to a few milliseconds.
 - **Device type** is trusted nowhere: the app reads no other device's name, and Jellyfin authorises by token, not by name. The device name sent is the kind of device, from the app (`AppModel.deviceName`).
-- **Sign Out and deletes** ask for confirmation (`SettingsRows.confirmedRow`).
+- **Sign Out and deletes** ask first. Screens decides which actions need it and what's asked (`Confirmation`: `AppModel.signOutConfirmation`, each editor's `deleteConfirmation`); the tvOS app presents it (`SettingsRows.confirmedRow`).
 
 ## 4. Architecture
 
@@ -102,16 +104,17 @@ jellyfin_tv/
 │  ├─ Playback/StreamingQuality.swift  # quality caps, Auto's bitrate rule, step-down ladder
 │  ├─ Preferences/AppPreferences.swift # the only UserDefaults: client settings and custom channel codes
 │  └─ Resources/channels.json       # the channel line-up
-├─ Sources/GregularJellyfin/        # 2. THE JELLYFIN CONNECTION: Foundation, GregularCore, Security
-│  ├─ HTTPTransport.swift           # the ONLY real network path (ephemeral, no cache/cookies)
+├─ Sources/GregularJellyfin/        # 2. THE JELLYFIN CONNECTION: Foundation, GregularCore (any platform)
+│  ├─ HTTPTransport.swift           # the ONLY real network path (ephemeral, no cache/cookies), TransportRules
 │  ├─ JellyfinAPI.swift             # request building, auth header, JellyfinError
 │  ├─ JellyfinServer.swift          # pre-login: server check, Quick Connect, password → Credentials
 │  ├─ JellyfinClient.swift          # signed in: libraries, playback sources, speed test, stop transcode,
 │  │                                # sign out; conforms to MediaLibrary and StreamSource
 │  ├─ LibraryQuery.swift            # paged /Items → [MediaItem] (Jellyfin types → MediaItem.Kind)
 │  ├─ Playback.swift                # DeviceProfile, PlaybackSource (→ MediaStream)
-│  ├─ SecureStore.swift             # Credentials, Keychain (server, token, user ID, device ID)
-│  └─ ServerAddress.swift, ClientIdentity.swift, JellyfinJSON.swift
+│  ├─ CredentialStore.swift         # Credentials, the CredentialStore every platform brings, in-memory store
+│  └─ ServerAddress.swift, ClientIdentity.swift, JellyfinJSON.swift   # ServerAddress: plain http only on the LAN
+├─ Sources/GregularKeychain/        # APPLE ONLY: KeychainStore, the CredentialStore on Apple platforms
 ├─ Sources/GregularScreens/         # 3. WHAT THE SCREENS DO, not how they're drawn: Foundation, Observation,
 │  │                                #    GregularCore (and GregularJellyfin, for sign-in only)
 │  ├─ App/                          # AppModel (signed out / loading / watching), LoginModel, FriendlyError,
@@ -408,7 +411,7 @@ Movie channels round each slot up (`padTo`), which leaves gaps; a 100-minute fil
 A record of what was built and checked, in order. Details like the remote controls have changed since; README describes the app as it is now.
 
 1. ✅ **Core package + tests** (no UI): models, `SeededRandom`, `ChannelSchedule`, 4 strategies, and the shared strategy test suite. Runs with `swift test` on the Mac.
-2. ✅ **Jellyfin client:** auth (Quick Connect + password), item queries, `PlaybackInfo`/stream URLs, `SecureStore` and `AppPreferences`. Tested against a mock server, and checked live against Jellyfin 10.11.1 on 2026-09-23: sign-in, a 5,927-item library, all 13 default channels, HLS stream URLs, stopping transcodes, and sign-out. (The Keychain test runs in the app's own tests, since milestone 3.)
+2. ✅ **Jellyfin client:** auth (Quick Connect + password), item queries, `PlaybackInfo`/stream URLs, the credential store (now `KeychainStore`) and `AppPreferences`. Tested against a mock server, and checked live against Jellyfin 10.11.1 on 2026-09-23: sign-in, a 5,927-item library, all 13 default channels, HLS stream URLs, stopping transcodes, and sign-out. (The Keychain test runs in the app's own tests, since milestone 3.)
 3. ✅ **Playback MVP:** the tvOS app (`App/GregularTV.xcodeproj`). Sign-in with Quick Connect or a password (with no http/https typed, it tries https, then http), loading the library (pages fetched in parallel), and one channel (the last watched, or the lowest-numbered). It tunes in live, queues the next programme 30 s ahead, shows a card during padding, and pause jumps back to live. It re-tunes if more than 60 s behind live. Failures retry with backoff (5 s up to 60 s), and startup errors retry every 30 s. The Keychain test runs in the app's own tests.
    - Verified on the simulator against the real server (2026-09-23): sign-in, restoring the saved sign-in, joining live mid-programme, the banner, pause then jump to live, recovering by itself after a server outage, and the seamless hand-off to the next programme. The hand-off was tested with the `-handoffTest` debug flag.
    - Added during testing:
@@ -430,7 +433,7 @@ A record of what was built and checked, in order. Details like the remote contro
    - The window maths (`GuideWindow`, `GuideCell`) is in the core and unit-tested. Commercial breaks and padding fold into their programme's cell, so the guide never lists ads.
    - Checked on the simulator against the real server. Moving around the grid uses the tvOS focus engine and wasn't checked here, because the simulator tool can't send arrow keys.
 6. ✅ **Privacy hardening:**
-   - `scripts/privacy-check.sh` runs as the app's first build phase (with script sandboxing off for the app target, because it reads the source tree) and as a `swift test` test. It fails on persistence and logging APIs outside `SecureStore.swift`, `AppPreferences.swift` and `HTTPTransport.swift`. It was checked by adding a violating file: the build failed and named the line.
+   - `scripts/privacy-check.sh` runs as the app's first build phase (with script sandboxing off for the app target, because it reads the source tree) and as a `swift test` test. It fails on persistence and logging APIs outside `KeychainStore.swift`, `AppPreferences.swift` and `HTTPTransport.swift`. It was checked by adding a violating file: the build failed and named the line.
    - Tests cover: no playback-reporting endpoints, the ephemeral session settings, sign-out wiping credentials, and preferences holding only client settings. The Keychain round-trip test runs in the app's own tests.
    - When the app is launched to host tests, it stays signed out and doesn't play.
    - The README has a privacy statement.
