@@ -8,10 +8,11 @@ import Foundation
 /// Every rule is in `ScheduleRules.all`, and each is one of these kinds,
 /// which says where it applies:
 /// - `SequenceRule`: what may air straight after what.
-/// - `ContentRule`: which of a channel's programmes its shuffle may use.
-/// - `PinRule`: programmes at set times, placed before the shuffle fills the rest.
+/// - `PinRule`: programmes at set times, laid over the shared schedule.
+/// - `CoverRule`: which of the shared schedule's airings set times cover
+///   with a stand-in.
 /// - `ChannelRule`: checks a channel's definition when a line-up is built.
-/// - `LineupRule`: checks custom channels against the rest of the line-up.
+/// - `LineupRule`: checks custom channels and set times against the line-up.
 ///
 /// **To add a rule:** create a type conforming to one of those protocols in
 /// `Rules/`, and add it to `ScheduleRules.all`. The engine and the line-up
@@ -32,9 +33,10 @@ public enum ScheduleRules {
             NoProgrammeTwiceInARow.self,
             NoCommercialTwiceInARow.self,
             PinnedProgrammes.self,
-            PinnedShowsStayOutOfTheShuffle.self,
+            ExclusiveProgrammesOnlyAtSetTimes.self,
             FixedTimesAreValid.self,
             CustomChannelNumbers.self,
+            SetTimesNeedTheirChannel.self,
             // ← add new rules here
         ]
     }
@@ -74,9 +76,10 @@ public protocol SequenceRule: ScheduleRule {
     func allows(_ next: MediaItem, after previous: MediaItem) -> Bool
 }
 
-/// Decides which of a channel's programmes its strategy may shuffle.
-public protocol ContentRule: ScheduleRule {
-    func keepsInShuffle(_ item: MediaItem, on channel: Channel) -> Bool
+/// Decides which airings of the shared schedule a channel's set times cover:
+/// each is swapped for a stand-in that fits its slot, and nothing else moves.
+public protocol CoverRule: ScheduleRule {
+    func covers(_ item: MediaItem, on channel: Channel) -> Bool
 }
 
 /// A programme at a set time.
@@ -85,24 +88,23 @@ public struct Pin: Sendable, Equatable {
     public let start: Date
 }
 
-/// One local day of a channel with programmes at set times (a run; see
-/// `RunCalendar`).
+/// One local day, in a set time's time zone.
 public struct ScheduleDay: Sendable {
-    /// Days since the channel's first local day.
+    /// Days since the local day the channel's clock starts in.
     public let index: Int
     /// Its local midnight.
     public let start: Date
-    /// In the channel's `timeZone`.
+    /// In the set time's `timeZone`.
     public let calendar: Calendar
-    /// The channel's first local day.
+    /// The local day the channel's clock starts in.
     public let firstDay: Date
 }
 
-/// Places programmes at set times. The strategy then fills the time between them.
+/// Places a set time's programmes, laid over the shared schedule.
 public protocol PinRule: ScheduleRule {
-    /// The pinned programmes on `day`, from `programmes`: for each of the
-    /// channel's `fixed` entries, what it can play (see `FixedProgramme.programmes(in:)`).
-    func pins(on channel: Channel, day: ScheduleDay, programmes: [[MediaItem]]) -> [Pin]
+    /// Where `entry` airs on `day`, from `programmes`, what it can play (see
+    /// `FixedProgramme.programmes(in:)`).
+    func pins(for entry: FixedProgramme, programmes: [MediaItem], on day: ScheduleDay) -> [Pin]
 }
 
 /// Checks one channel's definition. Any problem stops the line-up loading.
@@ -110,7 +112,14 @@ public protocol ChannelRule: ScheduleRule {
     func problems(with channel: Channel) -> [String]
 }
 
-/// Checks custom channels against the bundled ones.
+/// What a `LineupRule` checks: the bundled channels, and what the viewer added.
+public struct LineupAdditions: Sendable {
+    public let bundled: [Channel]
+    public let custom: [Channel]
+    public let setTimes: [SetTimes]
+}
+
+/// Checks custom channels and set times against the line-up.
 public protocol LineupRule: ScheduleRule {
-    func problems(withCustom custom: [Channel], bundled: [Channel]) -> [String]
+    func problems(with additions: LineupAdditions) -> [String]
 }
