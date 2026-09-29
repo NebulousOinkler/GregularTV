@@ -14,8 +14,8 @@ public final class SetTimesEditorModel {
     public private(set) var programmes: [FixedProgramme]
     public let timeZone: TimeZone
 
-    /// A set time being added: what (a series or a film), when ("18:00,
-    /// 18:30"), on which weekdays (none means every day), and whether its
+    /// A set time being added: what (a series or a film), when ("6:00 PM,
+    /// 6:30 PM", or "18:00, 18:30"), on which weekdays (none means every day), and whether its
     /// other airings on the channel get a stand-in.
     public var draftProgramme: FixedProgramme.Match?
     public var draftTimes = ""
@@ -62,10 +62,8 @@ public final class SetTimesEditorModel {
     @discardableResult
     public func addDraft() -> String? {
         guard let match = draftProgramme else { return "Choose a series or film to set at a time." }
-        let parts = draftTimes.split(whereSeparator: { $0 == "," || $0 == " " })
-        let times = parts.compactMap { FixedProgramme.minutes(from: String($0)) }
-        guard !times.isEmpty, times.count == parts.count else {
-            return "Enter times like 18:00, or several like 18:00, 18:30."
+        guard let times = FixedProgramme.typedTimes(draftTimes) else {
+            return "Enter times like \(Self.example(1)), or several like \(Self.example(2))."
         }
         guard programmes.count < FixedProgramme.mostPerChannel else {
             return "A channel can have at most \(FixedProgramme.mostPerChannel) set times."
@@ -76,7 +74,7 @@ public final class SetTimesEditorModel {
         let entry = FixedProgramme(match: match, times: times, weekdays: draftWeekdays, exclusive: draftExclusive,
                                    timeZone: timeZone)
         if let clash = entry.clashes(with: programmes).first {
-            return "Something else is already set at \(FixedProgramme.text(forMinutes: clash))."
+            return "Something else is already set at \(FixedProgramme.clockText(forMinutes: clash))."
         }
         programmes.append(entry)
         draftProgramme = nil
@@ -84,6 +82,17 @@ public final class SetTimesEditorModel {
         draftWeekdays = []
         draftExclusive = false
         return nil
+    }
+
+    /// The times field's prompt, in the viewer's clock format: "Times, like
+    /// 6:00 PM or 6:00 PM, 6:30 PM".
+    public static var timesPrompt: String {
+        "Times, like \(example(1)) or \(example(2))"
+    }
+
+    /// One or two example times, 6:00 PM and 6:30 PM, as the viewer's clock shows them.
+    static func example(_ count: Int) -> String {
+        [1080, 1110].prefix(count).map { FixedProgramme.clockText(forMinutes: $0) }.joined(separator: ", ")
     }
 
     /// True when the library has nothing `entry` names, so it never airs

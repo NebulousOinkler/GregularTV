@@ -67,7 +67,7 @@ struct ChannelEditorView: View {
                 SettingsRows.row("Cancel") { dismiss() }
             }
         }
-        #if DEBUG
+        #if DEBUG || (REMOTE_KEYS && targetEnvironment(simulator))
         .debugMenuKeyCloses()
         #endif
     }
