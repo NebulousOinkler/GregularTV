@@ -87,6 +87,10 @@ public final class ChannelPlayer {
         /// Buffering ahead of live while the server re-encodes; plays at `at`.
         case startingSoon(at: Date)
         case failed(message: String, retryAt: Date)
+
+        public var isPaused: Bool { if case .paused = self { true } else { false } }
+        public var isFailed: Bool { if case .failed = self { true } else { false } }
+        public var isBetweenProgrammes: Bool { if case .betweenProgrammes = self { true } else { false } }
     }
 
     /// A viewer's choice, from Settings, for just the programme on now.
@@ -328,13 +332,17 @@ public final class ChannelPlayer {
         guard let current, player.currentItem === current.item, !current.item.hasFailed,
               !tuning.isInPadding, tuning.airing == current.airing,
               current.airing.end.timeIntervalSince(now) > Self.prepareNextLead else { return false }
-        let behindLive = now.timeIntervalSince(current.airing.start) - (player.position - current.airing.mediaOffset)
-        if current.reencodes, behindLive > current.item.bufferedAhead { return false }
+        if current.reencodes, secondsBehindLive(in: current.airing, at: now) > current.item.bufferedAhead { return false }
         seek(to: now.timeIntervalSince(current.airing.start), in: current.airing)
         lastProgress = nil   // the stall watchdog starts afresh: the pause wasn't a stall
         player.play()
         status = .playing
         return true
+    }
+
+    /// How far the on-screen deck, playing `airing`, is behind live at `now`.
+    private func secondsBehindLive(in airing: Airing, at now: Date) -> TimeInterval {
+        now.timeIntervalSince(airing.start) - (player.position - airing.mediaOffset)
     }
 
     /// Drops whatever is playing and joins the channel live.
@@ -500,15 +508,14 @@ public final class ChannelPlayer {
             fail(StallError(), airing: current.airing)
             return
         }
+        let behindLive = secondsBehindLive(in: current.airing, at: now)
         if diagnosticsEnabled {
-            diagnostics = player.diagnostics(
-                                              behindLive: now.timeIntervalSince(current.airing.start) - (position - current.airing.mediaOffset),
-                                              conversionReasons: current.transcodeReasons,
-                                              preloaded: (nextIsOnStandby ? next : afterBreak)?.item)
+            diagnostics = player.diagnostics(behindLive: behindLive,
+                                             conversionReasons: current.transcodeReasons,
+                                             preloaded: (nextIsOnStandby ? next : afterBreak)?.item)
         }
 
         // A long buffering stall left us well behind live, so jump back.
-        let behindLive = now.timeIntervalSince(current.airing.start) - (position - current.airing.mediaOffset)
         if player.state == .playing, behindLive > Self.maxDriftBehindLive {
             tune()
             return
@@ -595,7 +602,7 @@ public final class ChannelPlayer {
     /// plays it; the old player lets go of the commercial.
     private func switchToStandby() {
         // Paused through the end of a break: stay paused; resuming tunes in.
-        if case .paused = status { return }
+        if status.isPaused { return }
         guard nextIsOnStandby, let next else { return }
         standbyHandoff?.cancel()
         standbyHandoff = nil

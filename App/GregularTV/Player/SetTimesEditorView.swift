@@ -49,9 +49,7 @@ struct SetTimesEditorView: View {
                 SettingsRows.row("Cancel") { dismiss() }
             }
         }
-        #if DEBUG || (REMOTE_KEYS && targetEnvironment(simulator))
         .debugMenuKeyCloses()
-        #endif
     }
 
     /// A form to add another set time.
