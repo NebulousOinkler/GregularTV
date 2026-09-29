@@ -138,6 +138,19 @@ struct ChannelEditorTests {
         #expect(model.programmes.count == 1)
     }
 
+    @Test func renumberingAChannelMovesItsSetTimes() {
+        let app = app()
+        let custom = CustomChannel(number: 30, name: "Mine")
+        #expect(app.save(custom) == nil)
+        let setTimes = SetTimes(channelNumber: 30, programmes: [FixedProgramme(match: .series("Taskmaster"), times: [1080])],
+                                timeZone: Self.newYork)
+        #expect(app.save(setTimes) == nil)
+        let renumbered = CustomChannel(number: 31, name: "Mine")
+        #expect(app.save(renumbered, replacing: custom) == nil)
+        #expect(app.setTimes.map(\.channelNumber) == [31])
+        #expect(app.setTimes.first?.programmes == setTimes.programmes)
+    }
+
     @Test func setTimesSayWhatIsntInTheLibrary() throws {
         let model = try setTimesEditor()
         model.draftProgramme = .series("Not Here")
