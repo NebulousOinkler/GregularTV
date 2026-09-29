@@ -122,6 +122,12 @@ public final class ChannelEditorModel {
                              rule: rule, halfHourSlots: halfHourSlots, commercials: commercials)
     }
 
+    /// Ask this before deleting the channel being edited.
+    public var deleteConfirmation: Confirmation {
+        Confirmation(action: "Delete Channel", question: "Delete channel \(original?.number ?? number)?",
+                     detail: "Any set times on it go too. To get it back, you'd need its channel code.")
+    }
+
     /// Why it can't be saved yet, in plain words, or nil if it can.
     public var problem: String? {
         guard let channel else { return "Choose \(ruleKind.label.lowercased()) for the channel." }

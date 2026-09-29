@@ -35,7 +35,9 @@ public final class LoginModel {
     public func connect() async {
         let candidates = ServerAddress.candidates(for: address)
         guard !candidates.isEmpty else {
-            errorMessage = "That doesn't look like a server address. Try something like 192.168.1.10:8096."
+            errorMessage = ServerAddress.normalize(address) == nil
+                ? "That doesn't look like a server address. Try something like 192.168.1.10:8096."
+                : JellyfinError.insecureAddress.errorDescription
             return
         }
         errorMessage = nil

@@ -96,6 +96,12 @@ public final class SetTimesEditorModel {
         programmes.removeAll { $0 == entry }
     }
 
+    /// Ask this before deleting the set times being edited.
+    public var deleteConfirmation: Confirmation {
+        Confirmation(action: "Delete Set Times", question: "Delete the set times on channel \(channelNumber)?",
+                     detail: "The channel goes back to the shared schedule. To get them back, you'd need their set-times code.")
+    }
+
     /// Why they can't be saved yet, in plain words, or nil if they can.
     public var problem: String? {
         guard !programmes.isEmpty else { return "Add a set time first." }

@@ -1,3 +1,4 @@
+import GregularKeychain
 import GregularScreens
 
 extension AppModel {
@@ -15,6 +16,6 @@ extension AppModel {
             return AppModel(deviceName: deviceName, store: demo, makeDecks: AVPlayerDeck.pair)
         }
         #endif
-        return AppModel(deviceName: deviceName, makeDecks: AVPlayerDeck.pair)
+        return AppModel(deviceName: deviceName, store: KeychainStore(), makeDecks: AVPlayerDeck.pair)
     }
 }

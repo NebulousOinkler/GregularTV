@@ -1,3 +1,4 @@
+import GregularScreens
 import SwiftUI
 
 /// The pieces Settings and the channel editor are built from: sections of
@@ -39,11 +40,9 @@ enum SettingsRows {
     }
 
     /// A row that does something that can't be undone (signing out,
-    /// deleting), only once the viewer confirms it: one stray click, or a
-    /// button pressed by anything paired with the Apple TV, isn't enough.
-    static func confirmedRow(_ title: String, asking question: String, detail: String,
-                             action: @escaping () -> Void) -> some View {
-        ConfirmedRow(title: title, question: question, detail: detail, action: action)
+    /// deleting), only once the viewer answers the model's `Confirmation`.
+    static func confirmedRow(_ confirmation: Confirmation, action: @escaping () -> Void) -> some View {
+        ConfirmedRow(confirmation: confirmation, action: action)
     }
 
     /// A small button in a row of several, such as a day of the week: its
@@ -124,19 +123,17 @@ struct SettingsRowStyle: ButtonStyle {
 
 /// See `SettingsRows.confirmedRow`.
 private struct ConfirmedRow: View {
-    let title: String
-    let question: String
-    let detail: String
+    let confirmation: Confirmation
     let action: () -> Void
     @State private var asking = false
 
     var body: some View {
-        SettingsRows.row(title, role: .destructive) { asking = true }
-            .confirmationDialog(question, isPresented: $asking, titleVisibility: .visible) {
-                Button(title, role: .destructive, action: action)
+        SettingsRows.row(confirmation.action, role: .destructive) { asking = true }
+            .confirmationDialog(confirmation.question, isPresented: $asking, titleVisibility: .visible) {
+                Button(confirmation.action, role: .destructive, action: action)
                 Button("Cancel", role: .cancel) {}
             } message: {
-                Text(detail)
+                Text(confirmation.detail)
             }
     }
 }

@@ -10,6 +10,7 @@
 		5DC6E38EC18FAA932A196971 /* GregularCore in Frameworks */ = {isa = PBXBuildFile; productRef = 39239ABE91B67D192800D71C /* GregularCore */; };
 		A1C0DE5E0000000000000001 /* GregularJellyfin in Frameworks */ = {isa = PBXBuildFile; productRef = A1C0DE5E0000000000000002 /* GregularJellyfin */; };
 		A1C0DE5E0000000000000003 /* GregularScreens in Frameworks */ = {isa = PBXBuildFile; productRef = A1C0DE5E0000000000000004 /* GregularScreens */; };
+		A1C0DE5E0000000000000005 /* GregularKeychain in Frameworks */ = {isa = PBXBuildFile; productRef = A1C0DE5E0000000000000006 /* GregularKeychain */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -61,6 +62,7 @@
 				5DC6E38EC18FAA932A196971 /* GregularCore in Frameworks */,
 				A1C0DE5E0000000000000001 /* GregularJellyfin in Frameworks */,
 				A1C0DE5E0000000000000003 /* GregularScreens in Frameworks */,
+				A1C0DE5E0000000000000005 /* GregularKeychain in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -116,6 +118,7 @@
 				39239ABE91B67D192800D71C /* GregularCore */,
 				A1C0DE5E0000000000000002 /* GregularJellyfin */,
 				A1C0DE5E0000000000000004 /* GregularScreens */,
+				A1C0DE5E0000000000000006 /* GregularKeychain */,
 			);
 			productName = GregularTV;
 			productReference = 81918909E83595C8F4212CCC /* GregularTV.app */;
@@ -427,6 +430,10 @@
 		A1C0DE5E0000000000000004 /* GregularScreens */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = GregularScreens;
+		};
+		A1C0DE5E0000000000000006 /* GregularKeychain */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = GregularKeychain;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};
