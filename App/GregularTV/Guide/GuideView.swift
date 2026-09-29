@@ -85,8 +85,7 @@ struct GuideView: View {
     /// The programmes, scrolling both ways. Focus moving off the edge scrolls it.
     private func grid(window: GuideWindow, now: Date) -> some View {
         let startFocus = nowID(channel: currentNumber, window: window, at: now)
-        return
-        ScrollViewReader { proxy in
+        return ScrollViewReader { proxy in
             ScrollView([.horizontal, .vertical]) {
                 // Lazy: rows (and their programmes) are only worked out as they
                 // scroll into view, so any number of channels is fine.
