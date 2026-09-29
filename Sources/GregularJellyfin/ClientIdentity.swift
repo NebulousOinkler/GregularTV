@@ -1,3 +1,4 @@
+import Foundation
 import GregularCore
 /// How this app introduces itself to Jellyfin in every request.
 ///
@@ -31,8 +32,12 @@ public struct ClientIdentity: Sendable, Equatable {
             .joined(separator: ", ")
     }
 
-    /// Quotes and commas would break the header format.
+    /// Quotes and commas would break the header format, and a line break
+    /// or other control character could start a header of its own.
     private static func sanitize(_ value: String) -> String {
-        value.filter { $0 != "\"" && $0 != "," }
+        value.filter { character in
+            character != "\"" && character != ","
+                && !character.unicodeScalars.contains { CharacterSet.controlCharacters.contains($0) }
+        }
     }
 }

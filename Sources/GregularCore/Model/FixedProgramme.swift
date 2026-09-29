@@ -38,7 +38,20 @@ public struct FixedProgramme: Sendable, Hashable {
             self.month = month
             self.day = day
         }
+
+        /// Whether it's a date in some year (February 29 counts).
+        public var isReal: Bool {
+            (1...12).contains(month) && (1...Self.longestMonths[month - 1]).contains(day)
+        }
+
+        static let longestMonths = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
     }
+
+    /// The most set times one channel can have, and the most times they can
+    /// list in all. Plenty for a household, and they keep the work of
+    /// placing them small, whatever a shared code holds.
+    public static let mostPerChannel = 24
+    public static let mostTimesPerChannel = 48
 
     public let match: Match
     /// Minutes after local midnight, in order.
@@ -211,8 +224,7 @@ extension FixedProgramme: Decodable {
         let parts = text.split(separator: " ")
         guard parts.count == 2, let month = monthNames.firstIndex(of: parts[0].lowercased().prefix(3).description),
               let day = Int(parts[1]) else { return nil }
-        let lengths = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-        guard (1...lengths[month]).contains(day) else { return nil }
-        return MonthDay(month: month + 1, day: day)
+        let date = MonthDay(month: month + 1, day: day)
+        return date.isReal ? date : nil
     }
 }

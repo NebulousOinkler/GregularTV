@@ -33,6 +33,12 @@ struct ClientIdentityTests {
                 == #"MediaBrowser Client="Gregular TV", Device="Apple TV", DeviceId="abc", Version="\#(ClientIdentity.clientVersion)""#)
     }
 
+    @Test func aDeviceNameCantAddAHeader() {
+        let header = ClientIdentity(deviceID: "abc", deviceName: "TV\r\nX-Evil: 1\u{0}").authorizationHeader(token: nil)
+        #expect(header.contains(#"Device="TVX-Evil: 1""#))
+        #expect(!header.contains("\r") && !header.contains("\n") && !header.contains("\u{0}"))
+    }
+
     @Test func theAppUsingItNamesTheDevice() {
         // Nothing here assumes an Apple TV: a web version names its own kind of device.
         #expect(ClientIdentity(deviceID: "abc", deviceName: "Web Browser").authorizationHeader(token: nil).contains(#"Device="Web Browser""#))

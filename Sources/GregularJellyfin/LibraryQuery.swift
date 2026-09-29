@@ -10,6 +10,10 @@ struct LibraryQuery: Sendable {
     /// Parallel page requests. Kept low so a small server (such as a
     /// Raspberry Pi) isn't swamped.
     static let maxConcurrentPages = 4
+    /// The most items fetched of one kind, whatever total the server claims.
+    /// Far beyond any real library; it stops a false total from planning
+    /// billions of pages (and the app running out of memory at every launch).
+    static let mostItems = 200_000
 
     let api: JellyfinAPI
     let userID: String
@@ -36,26 +40,33 @@ struct LibraryQuery: Sendable {
     }
 
     /// The first page reports the total. The rest are then fetched in
-    /// parallel, a few at a time, and put back together in order.
+    /// parallel, a few at a time, and put back together in order. The total
+    /// is only the server's word: it's capped at `mostItems`, pages stop
+    /// being asked for once one comes back empty, and each page counts for
+    /// at most `pageSize` items.
     private func fetchPages(types: String, parentID: String? = nil) async throws -> [ItemDTO] {
         let first = try await fetchPage(types: types, parentID: parentID, startIndex: 0)
-        let starts = Array(stride(from: first.items.count, to: first.totalRecordCount, by: Self.pageSize))
-        guard !first.items.isEmpty, !starts.isEmpty else { return first.items }
+        let firstItems = Array(first.items.prefix(Self.pageSize))
+        let total = min(first.totalRecordCount, Self.mostItems)
+        let starts = Array(stride(from: firstItems.count, to: total, by: Self.pageSize))
+        guard !firstItems.isEmpty, !starts.isEmpty else { return firstItems }
 
         var pages: [Int: [ItemDTO]] = [:]
         try await withThrowingTaskGroup(of: (Int, [ItemDTO]).self) { group in
             var pending = starts.makeIterator()
+            var reachedTheEnd = false
             func addNext() {
-                guard let start = pending.next() else { return }
+                guard !reachedTheEnd, let start = pending.next() else { return }
                 group.addTask { (start, try await fetchPage(types: types, parentID: parentID, startIndex: start).items) }
             }
             for _ in 0..<Self.maxConcurrentPages { addNext() }
             while let (start, items) = try await group.next() {
-                pages[start] = items
+                pages[start] = Array(items.prefix(Self.pageSize))
+                if items.isEmpty { reachedTheEnd = true }
                 addNext()
             }
         }
-        return first.items + starts.flatMap { pages[$0] ?? [] }
+        return firstItems + starts.flatMap { pages[$0] ?? [] }
     }
 
     private func fetchPage(types: String, parentID: String?, startIndex: Int) async throws -> ItemsPage {
