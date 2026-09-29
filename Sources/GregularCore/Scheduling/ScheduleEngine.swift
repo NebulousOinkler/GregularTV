@@ -72,6 +72,8 @@ public struct ChannelSchedule: Sendable {
     let setProgrammes: [[MediaItem]]
     /// The longest set time's slot (milliseconds), to look back far enough for one still on.
     let longestSetTime: Int64
+    /// The longest slot in the shared schedule (milliseconds).
+    private let longestSlot: Int64
     /// Milliseconds.
     let runLength: Int64
     /// The shortest programme: a run with less than this left has no room for another.
@@ -112,6 +114,7 @@ public struct ChannelSchedule: Sendable {
         self.fillerPool = pool
 
         let slots = eligible.map { Self.slotLength(of: $0, padToMinutes: channel.padToMinutes) }
+        self.longestSlot = slots.max() ?? 0
         let minimum = Int64(Self.minimumRunLength * 1000)
         let unit = Self.runRounding
         self.runLength = (max(minimum, slots.max() ?? minimum) + unit - 1) / unit * unit
@@ -203,7 +206,10 @@ public struct ChannelSchedule: Sendable {
     /// starts at or after `end`, with set times laid over the shared schedule.
     /// Each slot is a programme's airings: its parts, then its clips.
     private func slots(from start: Date, to end: Date) -> [[Airing]] {
-        var walker = walker(from: start)
+        // With set times, from a slot earlier: a programme next to a set time
+        // may become a break after the one before it, which must be there.
+        let from = channel.fixed.isEmpty ? start : start.addingTimeInterval(-TimeInterval(longestSlot) / 1000)
+        var walker = walker(from: from)
         var shared: [[Airing]] = []
         repeat { shared.append(walker.nextSlot()) } while shared[shared.count - 1][0].start < end
         // Every set time up to the last shared slot's end, even past `end`: one may cut a slot before `end`.
@@ -271,7 +277,7 @@ public struct ChannelSchedule: Sendable {
         var slot = walker.place()
         var join = Join(after: last, start: slot.start)
         guard !programmeRules.allow(slot.item, after: last) else { return join }
-        join.standIn = standIns(fitting: slot, after: last, before: walker.upcomingItem).first
+        join.standIn = standIns(fitting: slot, after: last, before: walker.upcomingItem).first { _ in true }
         guard join.standIn == nil else { return join }
         let kept = join
         repeat {
@@ -293,9 +299,14 @@ public struct ChannelSchedule: Sendable {
 
     /// The channel's programmes that could take `slot`, when the one there
     /// can't stay: they fit, and the rules allow them straight after
-    /// `previous` and straight before `next`.
-    private func standIns(fitting slot: Slot, after previous: MediaItem?, before next: MediaItem?) -> LazyFilterSequence<[MediaItem]> {
-        content.items.lazy.filter { item in
+    /// `previous` and straight before `next`. The search starts at a point
+    /// picked from the channel's key and the slot, so stand-ins vary from
+    /// slot to slot, yet every walk picks the same one.
+    private func standIns(fitting slot: Slot, after previous: MediaItem?, before next: MediaItem?) -> some Sequence<MediaItem> {
+        let items = content.items
+        var rng = SeededRandom(seed: key, cycle: Int(Self.floorDivide(slot.start, 60_000)))
+        let first = rng.int(below: items.count)
+        return (0..<items.count).lazy.map { items[(first + $0) % items.count] }.filter { item in
             slot.start + Self.milliseconds(of: item.duration) <= slot.end
                 && (previous.map { self.programmeRules.allow(item, after: $0) } ?? true)
                 && (next.map { self.programmeRules.allow($0, after: item) } ?? true)

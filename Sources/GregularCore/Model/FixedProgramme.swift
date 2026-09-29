@@ -103,6 +103,12 @@ public struct FixedProgramme: Sendable, Hashable {
         }
     }
 
+    /// Whether `library` has anything it names, to play. A set time made
+    /// with another library (from a shared code) may not.
+    public func isAvailable(in library: [MediaItem]) -> Bool {
+        library.contains { matches($0) && $0.duration > 0 }
+    }
+
     /// What it can play from `library`: a series' episodes in aired order,
     /// or the one item (the earliest, if several share the name).
     func programmes(in library: [MediaItem]) -> [MediaItem] {

@@ -107,7 +107,7 @@ struct ChannelEditorView: View {
             SettingsRows.info("Programmes that match", "\(model.matchingCount)")
             ForEach(upcoming) { entry in
                 HStack(spacing: 24) {
-                    Text(entry.start.clockTime).monospacedDigit().foregroundStyle(.secondary)
+                    Text(entry.when).monospacedDigit().foregroundStyle(.secondary)
                     Text(entry.title).lineLimit(1)
                 }
                 .padding(.horizontal, SettingsRowStyle.inset)
