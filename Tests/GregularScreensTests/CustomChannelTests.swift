@@ -156,6 +156,11 @@ struct ChannelEditorTests {
         #expect(app.save(custom) == nil)
         let onCustom = SetTimes(channelNumber: 30, programmes: shared.programmes, timeZone: Self.newYork)
         #expect(app.save(onCustom) == nil)
+        // Settings lists every channel, custom ones too, with its set times.
+        let channels = app.setTimesChannels
+        #expect(channels.first { $0.number == 30 }.map { $0.title == "30  Mine" && $0.setTimes == onCustom } == true)
+        #expect(channels.first { $0.number == 2 }?.setTimes == shared)
+        #expect(channels.filter { $0.setTimes != nil }.count == 2)
         app.delete(custom)
         #expect(app.setTimes == [shared])
         app.delete(shared)

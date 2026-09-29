@@ -36,6 +36,15 @@ private struct RemoteControlsModifier: ViewModifier {
             .onPlayPauseCommand(perform: onPlayPause)
             .onExitCommand(perform: onMenu)
             .modifier(clicks)
+            #if DEBUG
+            .onKeyPress(phases: .down) { press in
+                // `RemoteControls.debugKeys`: a key does what its button does here.
+                guard let key = press.characters.lowercased().first, let button = RemoteControls.debugKeys[key],
+                      let action = map[button] else { return .ignored }
+                perform(action)
+                return .handled
+            }
+            #endif
     }
 
     private var hasArrows: Bool {
@@ -62,6 +71,29 @@ private struct RemoteControlsModifier: ViewModifier {
         return { perform(action) }
     }
 }
+
+#if DEBUG
+extension View {
+    /// Debug builds only: the Menu key in `RemoteControls.debugKeys` closes a
+    /// screen that has no table of its own, such as an editor over Settings,
+    /// as Menu on the remote does.
+    func debugMenuKeyCloses() -> some View {
+        modifier(DebugMenuKey())
+    }
+}
+
+private struct DebugMenuKey: ViewModifier {
+    @Environment(\.dismiss) private var dismiss
+
+    func body(content: Content) -> some View {
+        content.onKeyPress(phases: .down) { press in
+            guard let key = press.characters.lowercased().first, RemoteControls.debugKeys[key] == .menu else { return .ignored }
+            dismiss()
+            return .handled
+        }
+    }
+}
+#endif
 
 /// Click and click-and-hold, only when mapped: a tap gesture on a container
 /// would otherwise take clicks meant for the buttons inside it.
