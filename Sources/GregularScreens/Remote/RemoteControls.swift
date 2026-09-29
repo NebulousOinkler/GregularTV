@@ -70,6 +70,24 @@ public enum RemoteControls {
         .menu: .close,
         .playPause: .close,
     ]
+
+    #if DEBUG
+    /// Debug builds only: letter keys for the remote's buttons, for the
+    /// simulator, where some can't be pressed from a keyboard (slides, a
+    /// light touch, click and hold) and a host may keep Escape for itself.
+    /// Each key does whatever its button does on the screen showing. The
+    /// arrow keys, Return, Escape and Space still work as usual.
+    public static let debugKeys: [Character: RemoteButton] = [
+        "m": .menu,
+        "p": .playPause,
+        "h": .clickAndHold,
+        "t": .touchTap,
+        "w": .swipeUp,
+        "a": .swipeLeft,
+        "s": .swipeDown,
+        "d": .swipeRight,
+    ]
+    #endif
 }
 
 // MARK: - Buttons and actions

@@ -47,6 +47,9 @@ struct SetTimesEditorView: View {
                 SettingsRows.row("Cancel") { dismiss() }
             }
         }
+        #if DEBUG
+        .debugMenuKeyCloses()
+        #endif
     }
 
     /// A form to add another set time.
