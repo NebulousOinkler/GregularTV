@@ -38,14 +38,18 @@ struct GuideView: View {
     }
 
     @FocusState private var focusedID: String?
-    /// Where the grid's top-left corner is, relative to what's on screen: it
-    /// goes negative as the grid scrolls. The ruler and channel names follow it.
-    @State private var gridOrigin: CGPoint = .zero
+    /// Where the grid has scrolled to. Only the ruler and the channel names
+    /// read it, so scrolling redraws just them, never the grid.
+    @State private var gridOrigin = GridOrigin()
+    /// Each channel's blocks, worked out once per guide window rather than on
+    /// every redraw (a move of focus, a minute passing). The guide is made
+    /// afresh each time it opens, and the channels only change in Settings,
+    /// which closes it, so this can't go stale.
+    @State private var cells = GuideCells()
 
     var body: some View {
         TimelineView(.periodic(from: .now, by: 60)) { context in
             let window = GuideWindow(containing: context.date)
-            let startFocus = nowID(channel: currentNumber, window: window, at: context.date)
 
             VStack(alignment: .leading, spacing: 24) {
                 header(window: window, now: context.date)
@@ -54,17 +58,17 @@ struct GuideView: View {
                 // grid's scroll position, so they never change the guide's size.
                 Color.clear
                     .frame(height: TimeRuler.height)
-                    .overlay(alignment: .leading) { TimeRuler(window: window).offset(x: gridOrigin.x) }
+                    .overlay(alignment: .leading) { TimeRuler(window: window, origin: gridOrigin) }
                     .clipped()
                     .padding(.leading, Self.channelColumnWidth)
                 HStack(alignment: .top, spacing: 0) {
                     Color.clear
                         .frame(width: Self.channelColumnWidth)
                         .overlay(alignment: .top) {
-                            ChannelColumn(channels: channels, currentNumber: currentNumber).offset(y: gridOrigin.y)
+                            ChannelColumn(channels: channels, currentNumber: currentNumber, origin: gridOrigin)
                         }
                         .clipped()
-                    grid(window: window, now: context.date, startFocus: startFocus)
+                    grid(window: window, now: context.date)
                 }
             }
             .padding(.horizontal, 80)
@@ -79,14 +83,17 @@ struct GuideView: View {
     }
 
     /// The programmes, scrolling both ways. Focus moving off the edge scrolls it.
-    private func grid(window: GuideWindow, now: Date, startFocus: String?) -> some View {
+    private func grid(window: GuideWindow, now: Date) -> some View {
+        let startFocus = nowID(channel: currentNumber, window: window, at: now)
+        return
         ScrollViewReader { proxy in
             ScrollView([.horizontal, .vertical]) {
                 // Lazy: rows (and their programmes) are only worked out as they
                 // scroll into view, so any number of channels is fine.
                 LazyVStack(alignment: .leading, spacing: Self.rowSpacing) {
                     ForEach(channels, id: \.channel.number) { schedule in
-                        GuideRow(schedule: schedule, window: window, focusedID: $focusedID, onSelect: onSelect)
+                        GuideRow(schedule: schedule, cells: cells.cells(for: schedule, in: window), window: window,
+                                 focusedID: $focusedID, onSelect: onSelect)
                             .id(schedule.channel.number)
                     }
                 }
@@ -101,7 +108,7 @@ struct GuideView: View {
             .coordinateSpace(name: ContentOriginKey.space)
             .scrollIndicators(.hidden)
             .clipped()   // tvOS doesn't clip scroll views; keep programmes off the channel names
-            .modifier(ReportsContentOrigin(origin: $gridOrigin))
+            .modifier(ReportsContentOrigin(origin: gridOrigin))
             .defaultFocus($focusedID, startFocus)
             .task {
                 // Scroll the current channel's row into existence, at the start
@@ -138,7 +145,7 @@ struct GuideView: View {
     /// Focus ID of what's on now on `channel`.
     private func nowID(channel: Int, window: GuideWindow, at date: Date) -> String? {
         schedule(number: channel).flatMap { schedule in
-            window.cells(for: schedule).first { $0.contains(date) }.map { Self.id(schedule, $0) }
+            cells.cells(for: schedule, in: window).first { $0.contains(date) }.map { Self.id(schedule, $0) }
         }
     }
 
@@ -147,7 +154,7 @@ struct GuideView: View {
     private func header(window: GuideWindow, now: Date) -> some View {
         let number = focusedID?.split(separator: "|").first.flatMap { Int($0) }
         let focused = number.flatMap(schedule(number:)).flatMap { schedule in
-            window.cells(for: schedule).first { Self.id(schedule, $0) == focusedID }.map { (schedule, $0) }
+            cells.cells(for: schedule, in: window).first { Self.id(schedule, $0) == focusedID }.map { (schedule, $0) }
         }
 
         return HStack(alignment: .top) {
@@ -190,10 +197,36 @@ struct GuideView: View {
     }
 }
 
-/// Keeps `origin` up to date with where a scroll view's content is: (0, 0)
-/// at rest, going negative as it scrolls right and down.
+/// Where the grid's top-left corner is, relative to what's on screen: (0, 0)
+/// at rest, going negative as it scrolls right and down. Observed, so only
+/// the views that read `point` redraw as it scrolls.
+@MainActor @Observable
+private final class GridOrigin {
+    var point: CGPoint = .zero
+}
+
+/// Each channel's guide blocks for one window, kept until the window moves
+/// on. Not observed: filling it never redraws anything.
+@MainActor
+private final class GuideCells {
+    private var window: GuideWindow?
+    private var byChannel: [Int: [GuideCell]] = [:]
+
+    func cells(for schedule: ChannelSchedule, in window: GuideWindow) -> [GuideCell] {
+        if window != self.window {
+            self.window = window
+            byChannel = [:]
+        }
+        if let cells = byChannel[schedule.channel.number] { return cells }
+        let cells = window.cells(for: schedule)
+        byChannel[schedule.channel.number] = cells
+        return cells
+    }
+}
+
+/// Keeps `origin` up to date with where a scroll view's content is.
 private struct ReportsContentOrigin: ViewModifier {
-    @Binding var origin: CGPoint
+    let origin: GridOrigin
 
     func body(content: Content) -> some View {
         if #available(tvOS 18, *) {
@@ -201,11 +234,11 @@ private struct ReportsContentOrigin: ViewModifier {
                 CGPoint(x: -(geometry.contentOffset.x + geometry.contentInsets.leading),
                         y: -(geometry.contentOffset.y + geometry.contentInsets.top))
             } action: { _, new in
-                origin = new
+                origin.point = new
             }
         } else {
             content.onPreferenceChange(ContentOriginKey.self) { new in
-                MainActor.assumeIsolated { origin = new }
+                MainActor.assumeIsolated { origin.point = new }
             }
         }
     }
@@ -223,6 +256,7 @@ private struct ContentOriginKey: PreferenceKey {
 private struct ChannelColumn: View {
     let channels: [ChannelSchedule]
     let currentNumber: Int
+    let origin: GridOrigin
 
     var body: some View {
         VStack(alignment: .leading, spacing: GuideView.rowSpacing) {
@@ -238,19 +272,21 @@ private struct ChannelColumn: View {
                 .frame(width: GuideView.channelColumnWidth, height: GuideView.rowHeight, alignment: .leading)
             }
         }
+        .offset(y: origin.point.y)
     }
 }
 
 /// One channel's programmes, as blocks sized by time.
 private struct GuideRow: View {
     let schedule: ChannelSchedule
+    let cells: [GuideCell]
     let window: GuideWindow
     var focusedID: FocusState<String?>.Binding
     let onSelect: (Int) -> Void
 
     var body: some View {
         HStack(spacing: 0) {
-            ForEach(window.cells(for: schedule)) { cell in
+            ForEach(cells) { cell in
                 Button { onSelect(schedule.channel.number) } label: {
                     GuideCellLabel(cell: cell, width: width(of: cell))
                 }
@@ -311,6 +347,7 @@ private struct GuideCellStyle: ButtonStyle {
 private struct TimeRuler: View {
     static let height: CGFloat = 40
     let window: GuideWindow
+    let origin: GridOrigin
 
     var body: some View {
         ZStack(alignment: .leading) {
@@ -321,6 +358,7 @@ private struct TimeRuler: View {
             }
         }
         .frame(width: GuideView.trackWidth(window), height: Self.height, alignment: .leading)
+        .offset(x: origin.point.x)
     }
 }
 
