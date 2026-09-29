@@ -140,9 +140,22 @@ public final class AppModel {
                                    library: library, lineup: lineup, code: scheduleCode)
     }
 
-    /// The channels set times can go on: every channel in the line-up.
-    public var channelsForSetTimes: [Channel] {
-        lineup(custom: customChannels, setTimes: [])?.channels ?? []
+    /// A channel set times can go on, for Settings: every channel in the
+    /// line-up, with its set times if it has some.
+    public struct SetTimesChannel: Identifiable, Sendable {
+        public let number: Int
+        /// "2  Comedy".
+        public let title: String
+        public let setTimes: SetTimes?
+        public var id: Int { number }
+    }
+
+    /// Every channel set times can go on, in order.
+    public var setTimesChannels: [SetTimesChannel] {
+        (lineup(custom: customChannels, setTimes: [])?.channels ?? []).map { channel in
+            SetTimesChannel(number: channel.number, title: "\(channel.number)  \(channel.name)",
+                            setTimes: setTimes.first { $0.channelNumber == channel.number })
+        }
     }
 
     /// Saves `channel` (in place of `original`, when editing) and rebuilds the
