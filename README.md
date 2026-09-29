@@ -47,13 +47,15 @@ Every channel's running order comes from one 10-character **schedule code** (lik
 
 ## Your own channels
 
-**Settings › Your channels › Add a Channel** makes a channel on the Apple TV: a name, a number from 20 to 99, episodes or movies or both, and one rule (everything, a genre, a series, a range of years, or a tag), picked from your library. Half-hour slots and commercials are on by default, and it can have programmes at set times (below). A preview shows how many programmes match and the next few hours as they'd air. Custom channels join the guide like any other, and are hidden while nothing matches.
+**Settings › Your channels › Add a Channel** makes a channel on the Apple TV: a name, a number from 20 to 99, episodes or movies or both, and one rule (everything, a genre, a series, a range of years, or a tag), picked from your library. Half-hour slots and commercials are on by default. A preview shows how many programmes match and the next few hours as they'd air. Custom channels join the guide like any other, and are hidden while nothing matches.
 
 Each channel has a **channel code**, shown in its editor. Type it into another Apple TV's Settings to add the same channel there: with the same schedule code, both show the same programmes. Custom channels are the one thing from your library the app keeps: each is saved as its channel code (the name, number and the genre, series or tag you picked), and Settings says so.
 
 ## Programmes at set times
 
-A channel can air certain programmes at set local times, such as a series at 6:00 and 6:30 PM on weekdays, or a film every 2 February, with the shuffle filling the rest. In `channels.json`:
+A channel can air certain programmes at set local times, such as a series at 6:00 and 6:30 PM on weekdays, or a film every 2 February. Set times are laid **over** the channel's shared schedule: while one is on, its programme is; the rest of the time the channel is exactly what everyone with the same schedule code sees, joined partway through a programme if one was already on. So a household can add set times without drifting out of step with the people it shares a code with.
+
+**Settings › Set times** adds them to any channel, bundled or custom, in the Apple TV's time zone. Each channel's set times have a **set-times code**, shown in the editor: type it into another Apple TV to watch the same set times there. They're saved on the Apple TV as that code. A channel can also ship with set times in `channels.json`:
 
 ```json
 "timeZone": "America/New_York",
@@ -63,16 +65,18 @@ A channel can air certain programmes at set local times, such as a series at 6:0
 ]
 ```
 
-A series plays its next episode at each airing. `exclusive` keeps it out of the shuffle, so it only airs then. Custom channels can have set times too, in the Apple TV's own time zone. See PLAN.md §9c.
+A series plays its next episode at each airing. `exclusive` (*Only at these times* in Settings) means it only airs then: wherever the shared schedule would air it otherwise, another programme stands in for that slot, and nothing else moves. See PLAN.md §9c.
 
 ## Special rules
 
 A few things hold whatever a channel's strategy, and they're all in one registry, `ScheduleRules` (`Sources/GregularCore/Rules/`):
 - **The same movie (or the same episode) never airs twice in a row.** A show may follow itself with its next episode.
 - **The same commercial never plays twice in a row.**
-- **Programmes at set times air at exactly those times**, a series advancing one episode per airing, and exclusive ones stay out of the shuffle.
+- **Programmes at set times air at exactly those times**, over the shared schedule, a series advancing one episode per airing.
+- **An exclusive set programme only airs at its set times**: its other airings get a stand-in.
 - **Set times are checked** when the line-up loads: a time zone, and no two programmes at the same time on the same day.
 - **Custom channels use 20 to 99**, and no two channels share a number.
+- **Set times belong to a channel in the line-up**, one set per channel.
 
 See PLAN.md §9c for how the engine keeps them.
 
@@ -182,9 +186,10 @@ Gregular TV is built to know as little as possible about your Jellyfin server, a
 | Server address, access token, user ID | Keychain, this device only (excluded from backups and iCloud) | To reconnect without signing in again |
 | A random device ID | Keychain, this device only | Jellyfin requires one; it's kept across sign-outs so your device list doesn't fill up |
 | Last channel number, streaming quality, schedule code, diagnostics and commercials switches | App preferences | Client settings; no server data |
-| Your custom channels, as their channel codes | App preferences | What you typed or picked: a name, a number, and the genre, series or tag chosen, with any set times |
+| Your custom channels, as their channel codes | App preferences | What you typed or picked: a name, a number, and the genre, series or tag chosen |
+| Your set times, as their set-times codes | App preferences | What you typed or picked: a channel number, the series or film names, the times and days, and your time zone |
 
-**Never stored:** your password (it's used for one sign-in request only), your library (titles, episodes, artwork; a custom channel keeps only the names you picked for it), schedules, watch history, or logs. The library is fetched into memory at launch and is gone when the app quits. Schedules are recomputed from each channel's seed and the clock, so there's nothing to save.
+**Never stored:** your password (it's used for one sign-in request only), your library (titles, episodes, artwork; a custom channel or set time keeps only the names you picked for it), schedules, watch history, or logs. The library is fetched into memory at launch and is gone when the app quits. Schedules are recomputed from each channel's seed and the clock, so there's nothing to save.
 
 **Never sent to Jellyfin:** what you're watching. The app makes no playback-reporting calls, so nothing appears under "Now Playing" and your watched status and resume points are untouched. The app also refuses remote control from other Jellyfin clients.
 

@@ -54,16 +54,20 @@ public struct ChannelLineup: Sendable {
         let channels: [Channel]
     }
 
-    /// This line-up with the viewer's custom channels added. Throws
-    /// `invalidChannel` if a `LineupRule` finds a problem, such as a number
-    /// that's taken.
-    public func adding(_ custom: [CustomChannel]) throws -> ChannelLineup {
+    /// This line-up with what the viewer added: custom channels, and set
+    /// times laid over any channel. Throws `invalidChannel` if a `LineupRule`
+    /// or `ChannelRule` finds a problem, such as a number that's taken.
+    public func adding(_ custom: [CustomChannel], setTimes: [SetTimes] = []) throws -> ChannelLineup {
         let added = custom.map(\.channel)
+        let additions = LineupAdditions(bundled: channels, custom: added, setTimes: setTimes)
         let rules = ScheduleRules.rules(of: (any LineupRule).self)
-        if let problem = rules.flatMap({ $0.problems(withCustom: added, bundled: channels) }).first {
+        if let problem = rules.flatMap({ $0.problems(with: additions) }).first {
             throw LoadError.invalidChannel(problem)
         }
-        return try ChannelLineup(channels: channels + added, commercialsLibrary: commercialsLibrary)
+        let withSetTimes = (channels + added).map { channel in
+            channel.adding(setTimes.filter { $0.channelNumber == channel.number }.flatMap(\.programmes))
+        }
+        return try ChannelLineup(channels: withSetTimes, commercialsLibrary: commercialsLibrary)
     }
 
     /// The line-up that ships with the app (`Resources/channels.json`).

@@ -1,38 +1,28 @@
 import Foundation
 
-/// Programmes in a channel's `fixed` list air at exactly their local times,
-/// on their days. A series plays its next episode at each airing: its own
-/// count of airings since the channel's first day, worked out from the
-/// calendar, so any day can be found without replaying the ones before.
-///
-/// The engine then treats each one as a hard edge: the shuffle fills up to
-/// it, programmes that wouldn't finish in time wait until after it, and any
-/// time left over becomes a commercial break before it.
+/// A set time's programme airs at exactly its local times, on its days, laid
+/// over the shared schedule. A series plays its next episode at each airing:
+/// its own count of airings since the channel's clock started, worked out
+/// from the calendar, so any day can be found without replaying the ones before.
 struct PinnedProgrammes: PinRule {
     static let id = "pinned-programmes"
-    static let summary = "Fixed programmes air at exactly their set local times, each series advancing one episode per airing."
+    static let summary = "Set times air at exactly their local times, over the shared schedule, each series advancing one episode per airing."
 
-    func pins(on channel: Channel, day: ScheduleDay, programmes: [[MediaItem]]) -> [Pin] {
+    func pins(for entry: FixedProgramme, programmes: [MediaItem], on day: ScheduleDay) -> [Pin] {
         let calendar = day.calendar
-        let weekday = calendar.component(.weekday, from: day.start)
         let parts = calendar.dateComponents([.month, .day], from: day.start)
         let date = FixedProgramme.MonthDay(month: parts.month ?? 1, day: parts.day ?? 1)
-        let firstWeekday = calendar.component(.weekday, from: day.firstDay)
+        guard !programmes.isEmpty, entry.airs(onWeekday: calendar.component(.weekday, from: day.start), date: date) else { return [] }
         let years = [calendar.component(.year, from: day.firstDay), calendar.component(.year, from: day.start)]
-        var pins: [Pin] = []
-        for (entry, items) in zip(channel.fixed, programmes) where !items.isEmpty && entry.airs(onWeekday: weekday, date: date) {
-            let before = entry.airings(before: day.index, firstWeekday: firstWeekday,
-                                       dayOf: { dayIndex(of: $0, in: $1, calendar: calendar, firstDay: day.firstDay) },
-                                       years: years.min()!...years.max()!)
-            for (i, minutes) in entry.times.enumerated() {
-                // A time the clocks skip (spring forward) moves to the next one that exists.
-                guard let start = calendar.date(bySettingHour: minutes / 60, minute: minutes % 60, second: 0, of: day.start,
-                                                matchingPolicy: .nextTime, repeatedTimePolicy: .first, direction: .forward)
-                else { continue }
-                pins.append(Pin(item: items[ChannelContent.wrap(before + i, items.count)], start: start))
-            }
+        let before = entry.airings(before: day.index, firstWeekday: calendar.component(.weekday, from: day.firstDay),
+                                   dayOf: { dayIndex(of: $0, in: $1, calendar: calendar, firstDay: day.firstDay) },
+                                   years: years.min()!...years.max()!)
+        return entry.times.enumerated().compactMap { i, minutes in
+            // A time the clocks skip (spring forward) moves to the next one that exists.
+            calendar.date(bySettingHour: minutes / 60, minute: minutes % 60, second: 0, of: day.start,
+                          matchingPolicy: .nextTime, repeatedTimePolicy: .first, direction: .forward)
+                .map { Pin(item: programmes[ChannelContent.wrap(before + i, programmes.count)], start: $0) }
         }
-        return pins.sorted { $0.start < $1.start }
     }
 
     /// The day number of `date` in `year`, or nil if that year has no such
@@ -44,29 +34,29 @@ struct PinnedProgrammes: PinRule {
     }
 }
 
-/// A fixed programme marked `"exclusive": true` only airs at its set times:
-/// the channel's shuffle leaves it out.
-struct PinnedShowsStayOutOfTheShuffle: ContentRule {
-    static let id = "pinned-shows-stay-out-of-the-shuffle"
-    static let summary = "A fixed programme marked exclusive only airs at its set times, never in the shuffle."
+/// A set time marked `"exclusive": true` keeps its programme to its set
+/// times: wherever the shared schedule airs it otherwise, a stand-in takes
+/// that slot. Nothing else in the shared schedule moves.
+struct ExclusiveProgrammesOnlyAtSetTimes: CoverRule {
+    static let id = "exclusive-programmes-only-at-set-times"
+    static let summary = "An exclusive set programme only airs at its set times: its other airings get a stand-in."
 
-    func keepsInShuffle(_ item: MediaItem, on channel: Channel) -> Bool {
-        !channel.fixed.contains { $0.exclusive && $0.matches(item) }
+    func covers(_ item: MediaItem, on channel: Channel) -> Bool {
+        channel.fixed.contains { $0.exclusive && $0.matches(item) }
     }
 }
 
-/// A channel's `fixed` list must make sense before it loads: a time zone to
-/// read the times in, at least one time each, and no two programmes at the
-/// same time on a day they share. (Whether each one finishes before the next
-/// set time depends on the library; one that wouldn't is left out that day.)
+/// A channel's set times must make sense before it loads: a time zone to
+/// read them in, at least one time each, and no two programmes at the same
+/// time on a day they share. (One that overlaps an earlier one's slot, which
+/// depends on the library, is left out that day.)
 struct FixedTimesAreValid: ChannelRule {
     static let id = "fixed-times-are-valid"
-    static let summary = "Fixed programmes need a time zone, and no two may share a time on the same day."
+    static let summary = "Set times need a time zone, and no two may share a time on the same day."
 
     func problems(with channel: Channel) -> [String] {
-        guard !channel.fixed.isEmpty else { return [] }
         var problems: [String] = []
-        if channel.timeZone == nil {
+        if channel.fixed.contains(where: { $0.timeZone == nil }) {
             problems.append("Channel \(channel.number): \"fixed\" programmes need a \"timeZone\", such as \"America/New_York\".")
         }
         for (i, entry) in channel.fixed.enumerated() {

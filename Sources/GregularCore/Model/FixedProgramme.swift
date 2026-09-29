@@ -1,7 +1,9 @@
 import Foundation
 
 /// A programme a channel airs at set local times ("appointment viewing"),
-/// from the channel's `"fixed"` list in `channels.json`:
+/// laid over its shared schedule. From the channel's `"fixed"` list in
+/// `channels.json` (shared by everyone with that file), or a household's
+/// `SetTimes`:
 ///
 /// ```json
 /// "timeZone": "America/New_York",
@@ -16,11 +18,11 @@ import Foundation
 /// - `at` gives local times in the channel's `timeZone`.
 /// - `days` (optional) limits it to weekdays (`"Mon"` … `"Sun"`) and dates
 ///   (`"Feb 2"`). Without it, it airs every day.
-/// - `exclusive` (optional) keeps it out of the channel's shuffle, so it only
-///   airs at its set times.
+/// - `exclusive` (optional) keeps it to its set times: where the shared
+///   schedule airs it otherwise, a stand-in takes that slot.
 ///
-/// The rules that place these are `PinnedProgrammes`,
-/// `PinnedShowsStayOutOfTheShuffle` and `FixedTimesAreValid`.
+/// The rules for these are `PinnedProgrammes`,
+/// `ExclusiveProgrammesOnlyAtSetTimes` and `FixedTimesAreValid`.
 public struct FixedProgramme: Sendable, Hashable {
     public enum Match: Sendable, Hashable {
         case series(String)
@@ -45,15 +47,28 @@ public struct FixedProgramme: Sendable, Hashable {
     public let weekdays: Set<Int>
     /// Dates it airs on.
     public let dates: Set<MonthDay>
-    /// Kept out of the channel's shuffle.
+    /// Its other airings in the shared schedule get a stand-in.
     public let exclusive: Bool
+    /// Where `times` are read. Every Apple TV must agree on what "6:00 PM"
+    /// means, so it's part of the set time, not the device's zone. Nil only
+    /// until a channel gives it one (`FixedTimesAreValid` checks).
+    public var timeZone: TimeZone?
 
-    public init(match: Match, times: [Int], weekdays: Set<Int> = [], dates: Set<MonthDay> = [], exclusive: Bool = false) {
+    public init(match: Match, times: [Int], weekdays: Set<Int> = [], dates: Set<MonthDay> = [], exclusive: Bool = false,
+                timeZone: TimeZone? = nil) {
         self.match = match
         self.times = times.sorted()
         self.weekdays = weekdays
         self.dates = dates
         self.exclusive = exclusive
+        self.timeZone = timeZone
+    }
+
+    /// The same set time, read in `zone`.
+    public func `in`(_ zone: TimeZone) -> FixedProgramme {
+        var copy = self
+        copy.timeZone = zone
+        return copy
     }
 
     /// True when it has no `days`, so it airs every day.
@@ -70,11 +85,11 @@ public struct FixedProgramme: Sendable, Hashable {
         return airsEveryDay || other.airsEveryDay || !onlyWeekdays || !weekdays.isDisjoint(with: other.weekdays)
     }
 
-    /// Its times that clash: listed twice, or shared with one of `others`
-    /// on a day they both air.
+    /// Its times that clash: listed twice, or shared with one of `others` in
+    /// the same time zone on a day they both air.
     public func clashes(with others: [FixedProgramme]) -> [Int] {
         var clashes = Set(times.filter { t in times.count { $0 == t } > 1 })
-        for other in others where sharesADay(with: other) {
+        for other in others where other.timeZone == timeZone && sharesADay(with: other) {
             clashes.formUnion(Set(times).intersection(other.times))
         }
         return clashes.sorted()

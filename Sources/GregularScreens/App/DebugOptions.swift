@@ -45,9 +45,14 @@ public enum DebugOptions {
     }
 
     /// `-openSettings newChannel`: Settings opens the channel editor too.
-    public static var opensChannelEditor: Bool {
-        guard let flag = arguments.firstIndex(of: "-openSettings"), flag + 1 < arguments.count else { return false }
-        return arguments[flag + 1] == "newChannel"
+    public static var opensChannelEditor: Bool { settingsEditor == "newChannel" }
+
+    /// `-openSettings setTimes`: Settings opens the set-times editor for channel 1 too.
+    public static var opensSetTimesEditor: Bool { settingsEditor == "setTimes" }
+
+    private static var settingsEditor: String? {
+        guard let flag = arguments.firstIndex(of: "-openSettings"), flag + 1 < arguments.count else { return nil }
+        return arguments[flag + 1]
     }
 
     static func apply(to channels: [ChannelSchedule], items: [MediaItem], fillerPool: [MediaItem]) -> [ChannelSchedule] {

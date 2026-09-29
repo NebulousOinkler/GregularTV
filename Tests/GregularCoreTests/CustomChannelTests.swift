@@ -11,11 +11,6 @@ struct CustomChannelTests {
         CustomChannel(number: 70, name: "Golden Age", kinds: [.movie], rule: .years(from: 1930, to: 1959)),
         CustomChannel(number: 71, name: "Since 2000", rule: .years(from: 2000, to: nil)),
         CustomChannel(number: 99, name: "Holidays", rule: .tag("Christmas"), halfHourSlots: false, commercials: false),
-        CustomChannel(number: 50, name: "Sitcoms at Six", kinds: [.episode], rule: .genre("Comedy"),
-                      fixed: [FixedProgramme(match: .series("Alpha"), times: [18 * 60, 18 * 60 + 30]),
-                              FixedProgramme(match: .item("Laughs"), times: [20 * 60], weekdays: [2, 6],
-                                             dates: [.init(month: 2, day: 2), .init(month: 12, day: 25)], exclusive: true)],
-                      timeZone: TimeZone(identifier: "America/New_York")!),
     ]
 
     @Test(arguments: examples)
@@ -36,17 +31,6 @@ struct CustomChannelTests {
         }
         #expect(rejected == positions)
         #expect(CustomChannel(code: "") == nil && CustomChannel(code: "HELLO") == nil)
-    }
-
-    @Test func setTimesAreInTheTimeZoneItWasMadeIn() throws {
-        let made = try #require(CustomChannel(code: Self.examples[6].code))
-        #expect(made.timeZone.identifier == "America/New_York", "Every Apple TV reads the times the same way")
-        #expect(made.channel.timeZone == made.timeZone && made.channel.fixed.count == 2)
-        let schedule = try #require(ChannelSchedule(channel: made.channel, items: Fixtures.library))
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = made.timeZone
-        let six = calendar.date(from: DateComponents(year: 2026, month: 5, day: 20, hour: 18))!
-        #expect(schedule.programme(at: six).item.seriesName == "Alpha" && schedule.programme(at: six).start == six)
     }
 
     @Test func itTakesTheDefaults() {
@@ -96,5 +80,35 @@ struct CustomChannelTests {
         let first = try device()
         #expect(!first.isEmpty)
         #expect(first == (try device()))
+    }
+}
+
+/// A household's set times, and their codes.
+struct SetTimesCodeTests {
+    static let example = SetTimes(channelNumber: 2, programmes: [
+        FixedProgramme(match: .series("Alpha"), times: [18 * 60, 18 * 60 + 30]),
+        FixedProgramme(match: .item("Laughs"), times: [20 * 60], weekdays: [2, 6],
+                       dates: [.init(month: 2, day: 2), .init(month: 12, day: 25)], exclusive: true),
+    ], timeZone: TimeZone(identifier: "America/New_York")!)
+
+    @Test func aSetTimesCodeReadsBackTheSameSetTimes() throws {
+        let read = try #require(SetTimes(code: Self.example.code))
+        #expect(read == Self.example)
+        #expect(read.programmes.allSatisfy { $0.timeZone?.identifier == "America/New_York" },
+                "Every Apple TV reads the times in the zone they were made in")
+        #expect(SetTimes(code: Self.example.code.lowercased()) == Self.example)
+        #expect(SetTimes(code: CustomChannelTests.examples[0].code) == nil, "A channel code isn't a set-times code")
+    }
+
+    @Test func theyApplyToTheirChannelOnly() throws {
+        let lineup = try ChannelLineup.bundled().adding([], setTimes: [Self.example])
+        #expect(lineup.channels.first { $0.number == 2 }?.fixed.count == 2)
+        #expect(lineup.channels.filter { $0.number != 2 }.allSatisfy { $0.fixed.isEmpty })
+        #expect(throws: ChannelLineup.LoadError.self) {
+            try ChannelLineup.bundled().adding([], setTimes: [SetTimes(channelNumber: 77, programmes: Self.example.programmes)])
+        }
+        #expect(throws: ChannelLineup.LoadError.self, "One set per channel") {
+            try ChannelLineup.bundled().adding([], setTimes: [Self.example, Self.example])
+        }
     }
 }

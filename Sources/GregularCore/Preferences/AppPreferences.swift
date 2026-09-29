@@ -2,10 +2,10 @@ import Foundation
 
 /// The app's only use of `UserDefaults`. It holds client preferences (last
 /// channel, streaming quality, schedule code, diagnostics and commercials
-/// switches, and the viewer's custom channels) and **never** anything
-/// fetched from the server (PLAN.md §3). A custom channel is kept as its
-/// channel code: what the viewer typed or picked (a name, a number, and
-/// perhaps a genre, series or tag name), nothing more.
+/// switches, and the viewer's custom channels and set times) and **never**
+/// anything fetched from the server (PLAN.md §3). Custom channels and set
+/// times are kept as their codes: what the viewer typed or picked (names,
+/// numbers, times, and perhaps a genre, series or tag name), nothing more.
 public struct AppPreferences: @unchecked Sendable {
     private enum Key {
         static let lastChannelNumber = "lastChannelNumber"
@@ -14,6 +14,7 @@ public struct AppPreferences: @unchecked Sendable {
         static let showsDiagnostics = "showsDiagnostics"
         static let playsCommercials = "playsCommercials"
         static let customChannels = "customChannels"
+        static let setTimes = "setTimes"
     }
 
     private let defaults: UserDefaults
@@ -49,6 +50,12 @@ public struct AppPreferences: @unchecked Sendable {
     public var customChannels: [CustomChannel] {
         get { (defaults.stringArray(forKey: Key.customChannels) ?? []).compactMap(CustomChannel.init(code:)) }
         nonmutating set { defaults.set(newValue.map(\.code), forKey: Key.customChannels) }
+    }
+
+    /// Set times made in Settings, stored as their codes.
+    public var setTimes: [SetTimes] {
+        get { (defaults.stringArray(forKey: Key.setTimes) ?? []).compactMap(SetTimes.init(code:)) }
+        nonmutating set { defaults.set(newValue.map(\.code), forKey: Key.setTimes) }
     }
 
     /// The shared schedule code. Nil until first launch picks one.

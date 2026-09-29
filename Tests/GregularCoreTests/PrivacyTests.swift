@@ -31,8 +31,14 @@ struct PrivacyTests {
         #expect(AppPreferences(defaults: defaults).customChannels == [custom])
         // Kept as the channel code: only what the viewer typed or picked.
         #expect(defaults.stringArray(forKey: "customChannels") == [custom.code])
+        #expect(prefs.setTimes.isEmpty)
+        let setTimes = SetTimes(channelNumber: 2, programmes: [FixedProgramme(match: .series("Alpha"), times: [18 * 60])],
+                                timeZone: TimeZone(identifier: "America/New_York")!)
+        prefs.setTimes = [setTimes]
+        #expect(AppPreferences(defaults: defaults).setTimes == [setTimes])
+        #expect(defaults.stringArray(forKey: "setTimes") == [setTimes.code])
         #expect(defaults.persistentDomain(forName: suite)?.keys.sorted()
-                == ["customChannels", "lastChannelNumber", "playsCommercials", "scheduleCode", "showsDiagnostics", "streamingQuality"])
+                == ["customChannels", "lastChannelNumber", "playsCommercials", "scheduleCode", "setTimes", "showsDiagnostics", "streamingQuality"])
     }
 
     #if os(macOS)
