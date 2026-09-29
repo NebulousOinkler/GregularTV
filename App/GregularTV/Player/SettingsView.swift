@@ -142,12 +142,13 @@ struct SettingsView: View {
         .fullScreenCover(item: $editor) { editor in
             ChannelEditorView(model: editor.model,
                               onSave: { save($0, replacing: editor.model.original) },
-                              onDelete: editor.model.original.map { original in { app.delete(original) } })
+                              onDelete: editor.model.original.map { original in { app.delete(original); dismiss() } })
         }
         .fullScreenCover(item: $setTimesEditor) { editor in
             SetTimesEditorView(model: editor.model,
-                               onSave: { setTimesError = app.save($0, replacing: editor.model.original) },
-                               onDelete: editor.model.original.map { original in { app.delete(original) } })
+                               onSave: { setTimesError = app.save($0, replacing: editor.model.original)
+                                         if setTimesError == nil { dismiss() } },
+                               onDelete: editor.model.original.map { original in { app.delete(original); dismiss() } })
         }
     }
 
@@ -197,9 +198,10 @@ struct SettingsView: View {
         editor = app.makeChannelEditor(editing: channel).map { Editor(model: $0) }
     }
 
-    /// Saving rebuilds the channels, which closes Settings.
+    /// Saved, back to watching. (The channel playing carries on unless what's on it changed.)
     private func save(_ channel: CustomChannel, replacing original: CustomChannel?) {
         channelError = app.save(channel, replacing: original)
+        if channelError == nil { dismiss() }
     }
 
     private func openSetTimesEditor(forChannel number: Int) {

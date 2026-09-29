@@ -15,8 +15,8 @@ public final class ChannelSurfer {
     public static let digitTimeout: Duration = .milliseconds(1500)
 
     public let player: ChannelPlayer
-    public let channels: [ChannelSchedule]
-    public let navigator: ChannelNavigator
+    public private(set) var channels: [ChannelSchedule]
+    public private(set) var navigator: ChannelNavigator
 
     /// The channel being previewed while the user is still surfing.
     public private(set) var preview: ChannelSchedule?
@@ -36,6 +36,28 @@ public final class ChannelSurfer {
         self.preferences = preferences
         navigator = ChannelNavigator(numbers: channels.map(\.channel.number))
         player = ChannelPlayer(schedule: channel, streams: streams, quality: preferences.streamingQuality, decks: decks)
+    }
+
+    /// The channels, rebuilt after a setting changed. The channel playing
+    /// carries on without re-buffering unless what's on it now changed
+    /// (`ChannelPlayer.replaceSchedule`); if it's gone, the lowest-numbered
+    /// channel plays. Returns false, changing nothing, if `channels` is empty.
+    @discardableResult
+    public func replaceChannels(_ channels: [ChannelSchedule]) -> Bool {
+        let navigator = ChannelNavigator(numbers: channels.map(\.channel.number))
+        let playing = player.schedule.channel.number
+        guard let number = navigator.startingChannel(preferred: playing),
+              let schedule = channels.first(where: { $0.channel.number == number }) else { return false }
+        self.channels = channels
+        self.navigator = navigator
+        preview = preview.flatMap { previewed in channels.first { $0.channel.number == previewed.channel.number } }
+        if number == playing {
+            player.replaceSchedule(schedule)
+        } else {
+            player.switchTo(schedule)
+            preferences.lastChannelNumber = number
+        }
+        return true
     }
 
     /// The channel the banner should show: the preview while surfing,

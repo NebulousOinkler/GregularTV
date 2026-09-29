@@ -39,6 +39,44 @@ struct ChannelPlayerDeckTests {
         player.stop()
     }
 
+    /// Rebuilt channels (set times or a custom channel changed elsewhere)
+    /// leave the channel playing alone; only a change to what's on it re-tunes.
+    @Test func rebuiltChannelsOnlyRetuneWhatChanged() async throws {
+        // Whole seconds, as channels.json keeps it, so every rebuild below has the same epoch.
+        let epoch = Date(timeIntervalSince1970: (Date.now.timeIntervalSince1970 - 600).rounded(.down))
+        let items = (1...3).map { MediaItem(id: "m\($0)", kind: .movie, name: "Film \($0)", duration: 3600) }
+        let channels = try ChannelSchedule.testing([1, 2], epoch: epoch, items: items)
+        let surfer = ChannelSurfer(channels: channels, startingWith: channels[0], streams: FakeStreams(),
+                                   preferences: Fixture.preferences(), decks: FakeDeck.pair())
+        let player = surfer.player
+        player.start()
+        try await Fixture.settle(player)
+        let deck = try #require(player.decks[player.activeIndex] as? FakeDeck)
+        let item = try #require(deck.queue.first)
+        let tunes = player.tuneCount
+
+        // The same channels again: nothing on channel 1 changed.
+        #expect(surfer.replaceChannels(try ChannelSchedule.testing([1, 2], epoch: epoch, items: items)))
+        #expect(player.tuneCount == tunes && deck.queue.first === item && player.status == .playing,
+                "Carried on without re-buffering")
+
+        // Channel 2 only: a different schedule there.
+        let changedTwo = try ChannelSchedule.testing([1], epoch: epoch, items: items)
+            + ChannelSchedule.testing([2], epoch: epoch.addingTimeInterval(-1234), items: items)
+        #expect(surfer.replaceChannels(changedTwo))
+        #expect(player.tuneCount == tunes && deck.queue.first === item, "Another channel's change doesn't re-buffer this one")
+
+        // Channel 1 itself now shows something else: it re-tunes.
+        #expect(surfer.replaceChannels(try ChannelSchedule.testing([1, 2], epoch: epoch.addingTimeInterval(-1800), items: items)))
+        #expect(player.tuneCount == tunes + 1)
+
+        // Channel 1 gone: the lowest-numbered channel plays.
+        #expect(surfer.replaceChannels(try ChannelSchedule.testing([2, 3], epoch: epoch, items: items)))
+        #expect(player.schedule.channel.number == 2 && surfer.channels.map(\.channel.number) == [2, 3])
+        #expect(!surfer.replaceChannels([]), "Nothing to watch changes nothing")
+        player.stop()
+    }
+
     @Test func aFailedStreamIsRetriedNotTreatedAsFinished() async throws {
         let surfer = try Fixture.surfer()
         let player = surfer.player
