@@ -36,6 +36,8 @@ public final class AppModel {
     public private(set) var playsCommercials: Bool
     /// Channels made in Settings, added to the bundled line-up.
     public private(set) var customChannels: [CustomChannel]
+    /// Set times made in Settings, laid over their channels.
+    public private(set) var setTimes: [SetTimes]
     public let identity: ClientIdentity
     private let store: any CredentialStore
     private let preferences: AppPreferences
@@ -62,6 +64,7 @@ public final class AppModel {
         showsDiagnostics = preferences.showsDiagnostics
         playsCommercials = preferences.playsCommercials
         customChannels = preferences.customChannels
+        setTimes = preferences.setTimes
         if let saved = preferences.scheduleCode {
             scheduleCode = saved
         } else {
@@ -119,30 +122,43 @@ public final class AppModel {
         rebuildChannels()
     }
 
-    // MARK: - Custom channels
+    // MARK: - Your channels and set times
 
     /// An editor for a new custom channel, or for `channel`. Nil until the
     /// library has loaded (its genres, series and tags are the choices).
     public func makeChannelEditor(editing channel: CustomChannel? = nil) -> ChannelEditorModel? {
-        guard case .watching = phase else { return nil }
-        let others = customChannels.filter { $0 != channel }
-        guard let lineup = try? ChannelLineup.bundled().adding(others) else { return nil }
+        guard case .watching = phase, let lineup = lineup(custom: customChannels.filter { $0 != channel }, setTimes: [])
+        else { return nil }
         return ChannelEditorModel(editing: channel, library: library, lineup: lineup, code: scheduleCode)
+    }
+
+    /// An editor for the set times on channel `number` (new, or the ones it has).
+    public func makeSetTimesEditor(forChannel number: Int) -> SetTimesEditorModel? {
+        guard case .watching = phase, let lineup = lineup(custom: customChannels, setTimes: []),
+              let channel = lineup.channels.first(where: { $0.number == number }) else { return nil }
+        return SetTimesEditorModel(channel: channel, editing: setTimes.first { $0.channelNumber == number },
+                                   library: library, lineup: lineup, code: scheduleCode)
+    }
+
+    /// The channels set times can go on: every channel in the line-up.
+    public var channelsForSetTimes: [Channel] {
+        lineup(custom: customChannels, setTimes: [])?.channels ?? []
     }
 
     /// Saves `channel` (in place of `original`, when editing) and rebuilds the
     /// channels. Returns why it couldn't be saved, or nil.
     @discardableResult
     public func save(_ channel: CustomChannel, replacing original: CustomChannel? = nil) -> String? {
-        var channels = customChannels.filter { $0 != original }
-        channels.append(channel)
-        do {
-            _ = try ChannelLineup.bundled().adding(channels)
-        } catch {
-            return "\(error)"
-        }
-        setCustomChannels(channels.sorted { $0.number < $1.number })
-        return nil
+        let channels = (customChannels.filter { $0 != original } + [channel]).sorted { $0.number < $1.number }
+        return apply(custom: channels, setTimes: setTimes)
+    }
+
+    /// Saves set times (in place of `original`, when editing) and rebuilds the
+    /// channels. Returns why they couldn't be saved, or nil.
+    @discardableResult
+    public func save(_ setTimes: SetTimes, replacing original: SetTimes? = nil) -> String? {
+        let all = (self.setTimes.filter { $0 != original } + [setTimes]).sorted { $0.channelNumber < $1.channelNumber }
+        return apply(custom: customChannels, setTimes: all)
     }
 
     /// Adds the channel a channel code describes. Returns why it couldn't, or nil.
@@ -153,22 +169,47 @@ public final class AppModel {
         return save(channel)
     }
 
-    public func delete(_ channel: CustomChannel) {
-        setCustomChannels(customChannels.filter { $0 != channel })
-    }
-
-    private func setCustomChannels(_ channels: [CustomChannel]) {
-        customChannels = channels
-        preferences.customChannels = channels
-        rebuildChannels()
-    }
-
-    /// The bundled channels and the custom ones. A custom channel that no
-    /// longer fits (a newer app took its number) is left out, not an error.
-    private func lineup() throws -> ChannelLineup {
-        try customChannels.reduce(ChannelLineup.bundled()) { lineup, custom in
-            (try? lineup.adding([custom])) ?? lineup
+    /// Adds the set times a set-times code describes. Returns why it couldn't, or nil.
+    public func addSetTimes(code: String) -> String? {
+        guard let setTimes = SetTimes(code: code) else {
+            return "That isn't a set-times code. Check it against the other Apple TV's Settings."
         }
+        return save(setTimes, replacing: self.setTimes.first { $0.channelNumber == setTimes.channelNumber })
+    }
+
+    /// Deletes a custom channel, and any set times on it.
+    public func delete(_ channel: CustomChannel) {
+        _ = apply(custom: customChannels.filter { $0 != channel },
+                  setTimes: setTimes.filter { $0.channelNumber != channel.number })
+    }
+
+    public func delete(_ setTimes: SetTimes) {
+        _ = apply(custom: customChannels, setTimes: self.setTimes.filter { $0 != setTimes })
+    }
+
+    /// Checks, saves and uses the viewer's channels and set times. Returns
+    /// why they can't be used, or nil.
+    private func apply(custom: [CustomChannel], setTimes: [SetTimes]) -> String? {
+        do {
+            _ = try ChannelLineup.bundled().adding(custom, setTimes: setTimes)
+        } catch {
+            return "\(error)"
+        }
+        customChannels = custom
+        self.setTimes = setTimes
+        preferences.customChannels = custom
+        preferences.setTimes = setTimes
+        rebuildChannels()
+        return nil
+    }
+
+    /// The bundled channels with `custom` and `setTimes` added. One that no
+    /// longer fits (a newer app took its number) is left out, not an error.
+    private func lineup(custom: [CustomChannel], setTimes: [SetTimes]) -> ChannelLineup? {
+        guard var lineup = try? ChannelLineup.bundled() else { return nil }
+        for channel in custom { lineup = (try? lineup.adding([channel])) ?? lineup }
+        for times in setTimes { lineup = (try? lineup.adding([], setTimes: [times])) ?? lineup }
+        return lineup
     }
 
     /// Rebuilds every channel after a setting changed, and re-tunes the
@@ -236,7 +277,7 @@ public final class AppModel {
     /// if that one is gone or empty.
     private func watch(library: [MediaItem], commercials: [MediaItem], streams: any StreamSource,
                        preferring preferred: Int?) -> Phase {
-        guard var channels = try? lineup()
+        guard var channels = lineup(custom: customChannels, setTimes: setTimes)?
             .schedules(for: library, fillerPool: commercials, code: scheduleCode, playsCommercials: playsCommercials)
         else {
             return .failed("channels.json couldn't be read.")

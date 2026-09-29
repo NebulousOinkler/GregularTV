@@ -2,7 +2,7 @@ import Foundation
 import Testing
 @testable import GregularCore
 
-/// Programmes at set local times (TODO.md item 2, now built).
+/// Programmes at set local times, laid over the shared schedule.
 struct FixedTimeTests {
     static let zone = TimeZone(identifier: "America/New_York")!
     var calendar: Calendar {
@@ -34,10 +34,9 @@ struct FixedTimeTests {
 
     @Test func decodesSeriesItemsDaysAndExclusive() throws {
         let c = try channel(#"{ "series": "Alpha", "at": ["18:30", "18:00"] }, { "item": "Laughs", "at": ["20:00"], "days": ["Sat", "Feb 2"], "exclusive": true }"#)
-        #expect(c.timeZone == Self.zone)
-        #expect(c.fixed[0] == FixedProgramme(match: .series("Alpha"), times: [18 * 60, 18 * 60 + 30]))
+        #expect(c.fixed[0] == FixedProgramme(match: .series("Alpha"), times: [18 * 60, 18 * 60 + 30], timeZone: Self.zone))
         #expect(c.fixed[1] == FixedProgramme(match: .item("Laughs"), times: [20 * 60], weekdays: [7],
-                                             dates: [.init(month: 2, day: 2)], exclusive: true))
+                                             dates: [.init(month: 2, day: 2)], exclusive: true, timeZone: Self.zone))
     }
 
     @Test(arguments: [
@@ -101,7 +100,7 @@ struct FixedTimeTests {
         #expect(zip(positions, positions.dropFirst()).allSatisfy { ($0 + 1) % charlie.count == $1 })
     }
 
-    @Test func theShuffleFillsTheGapsWithNoOverlaps() throws {
+    @Test func slotsStillMeetBackToBack() throws {
         let s = try schedule(#"{ "series": "Alpha", "at": ["18:00", "18:30"] }, { "item": "Explosions", "at": ["20:00"] }"#)
         let airings = s.airings(from: local(day: 40, 0), to: local(day: 43, 0))
         for (a, b) in zip(airings, airings.dropFirst()) {
@@ -113,7 +112,50 @@ struct FixedTimeTests {
         }
     }
 
-    @Test func anExclusiveProgrammeOnlyAirsAtItsTimes() throws {
+    // MARK: Over the shared schedule
+
+    @Test func outsideTheSetTimesItsExactlyTheSharedSchedule() throws {
+        // Episodes only, with a film set at 20:00: the film never airs in the shared schedule,
+        // so nothing is covered and every other moment must match exactly.
+        let shared = Fixtures.channel(strategy: ShuffledShows.id, itemTypes: [.episode], padTo: 30)
+        let withSetTime = shared.adding([FixedProgramme(match: .item("Explosions"), times: [20 * 60, 7 * 60 + 15], timeZone: Self.zone)])
+        let a = try #require(ChannelSchedule(channel: withSetTime, items: Fixtures.library))
+        let c = try #require(ChannelSchedule(channel: shared, items: Fixtures.library))
+        let windows = a.setTimeAirings(from: local(day: 50, 0), to: local(day: 53, 0))
+        #expect(windows.count == 6)
+        var compared = 0
+        for minute in stride(from: 0, to: 3 * 24 * 60, by: 7) {
+            let t = local(day: 50, 0).addingTimeInterval(Double(minute) * 60)
+            let inWindow = windows.contains { $0.start <= t && t < $0.slotEnd }
+            let ta = a.tune(at: t), tc = c.tune(at: t)
+            if inWindow {
+                #expect(ta.airing.item.name == "Explosions" || ta.airing.isFiller)
+            } else {
+                compared += 1
+                // The same item, at the same point in it: joined partway through after a set time.
+                #expect(ta.airing.item.id == tc.airing.item.id, "\(t)")
+                #expect(abs((ta.airing.mediaOffset + ta.offset) - (tc.airing.mediaOffset + tc.offset)) < 0.01, "\(t)")
+            }
+        }
+        #expect(compared > 400)
+    }
+
+    @Test func aProgrammeCutByASetTimeIsJoinedPartwayThroughAfterIt() throws {
+        // A 22-minute set time at 18:15, inside a film's slot: its window runs to the half hour after, 19:00.
+        let shared = Fixtures.channel(strategy: ShuffledShows.id, itemTypes: [.movie], padTo: 30)
+        let a = try #require(ChannelSchedule(channel: shared.adding([FixedProgramme(match: .series("Alpha"), times: [18 * 60 + 15], timeZone: Self.zone)]),
+                                             items: Fixtures.library))
+        let c = try #require(ChannelSchedule(channel: shared, items: Fixtures.library))
+        let before = c.programme(at: local(day: 70, 18, 14))
+        let after = a.programme(at: local(day: 70, 19, 1))
+        #expect(a.programme(at: local(day: 70, 18, 20)).item.seriesName == "Alpha")
+        #expect(before.slotEnd > local(day: 70, 19))
+        #expect(after.item.id == before.item.id && after.start == local(day: 70, 19), "The film carries on, joined partway")
+        #expect(a.tune(at: local(day: 70, 19, 1)).airing.mediaOffset > 0)
+        #expect(a.programme(at: local(day: 70, 18, 10)).slotEnd == local(day: 70, 18, 15), "Cut at the set time")
+    }
+
+    @Test func anExclusiveProgrammesOtherAiringsGetAStandIn() throws {
         let s = try schedule(#"{ "item": "Laughs", "at": ["20:00"], "days": ["Sat"], "exclusive": true }"#)
         let week = s.programmes(from: local(day: 60, 0), to: local(day: 74, 0))
         let laughs = week.filter { $0.item.name == "Laughs" }
@@ -121,27 +163,26 @@ struct FixedTimeTests {
         #expect(laughs.allSatisfy { calendar.component(.weekday, from: $0.start) == 7 && calendar.component(.hour, from: $0.start) == 20 })
     }
 
-    @Test func aPinnedMovieIsNeverNextToItself() throws {
-        // Two movies, one pinned but still in the shuffle.
+    @Test func aSetMovieIsNeverNextToItself() throws {
+        // Two movies, one set at two times but also in the shared schedule.
         let movies = [Fixtures.movie("One", minutes: 95), Fixtures.movie("Two", minutes: 95)]
         let s = try schedule(#"{ "item": "One", "at": ["12:00", "20:00"] }"#, items: movies)
         let programmes = s.programmes(from: local(day: 10, 0), to: local(day: 20, 0))
         #expect(zip(programmes, programmes.dropFirst()).allSatisfy { $0.item.id != $1.item.id })
     }
 
-    @Test func aProgrammeRunningPastMidnightPushesTheNextDayBack() throws {
+    @Test func aSetProgrammeRunningPastMidnightThenRejoinsTheSharedSchedule() throws {
         let s = try schedule(#"{ "item": "Explosions", "at": ["23:30"] }"#)   // 128 minutes, padded to 2:30
         let late = s.programme(at: local(day: 30, 23, 45))
         #expect(late.item.name == "Explosions" && late.start == local(day: 30, 23, 30))
         #expect(late.slotEnd == local(day: 31, 2, 0))
-        let next = s.programme(at: local(day: 31, 2, 0))
-        #expect(next.start == late.slotEnd)
+        #expect(s.programme(at: local(day: 31, 2, 0)).start == local(day: 31, 2, 0))
     }
 
     @Test func tuningStillWalksAtMostTwoDays() throws {
         let items = (0..<5_000).map { MediaItem(id: "e\($0)", kind: .episode, name: "E\($0)", duration: 22 * 60, seriesID: "s\($0 % 50)", seriesName: "S\($0 % 50)") }
         let c = Channel(number: 1, name: "T", source: AllItemsSource(), strategyID: ScheduleEngineTests.CountingStrategy.id, seed: 3,
-                        padToMinutes: 30, timeZone: Self.zone, fixed: [FixedProgramme(match: .series("S1"), times: [18 * 60, 19 * 60])])
+                        padToMinutes: 30, fixed: [FixedProgramme(match: .series("S1"), times: [18 * 60, 19 * 60], timeZone: Self.zone)])
         let s = try #require(ChannelSchedule(channel: c, items: items, fillerPool: [], strategy: ScheduleEngineTests.CountingStrategy()))
         ScheduleEngineTests.CountingStrategy.pulls = 0
         _ = s.tune(at: local(day: 200, 21))

@@ -11,9 +11,9 @@ struct ScheduleRulesTests {
         #expect(ScheduleRules.all.allSatisfy { !$0.summary.isEmpty })
         #expect(ScheduleRules.rules(of: (any SequenceRule).self).count == 2)
         #expect(ScheduleRules.rules(of: (any PinRule).self).count == 1)
-        #expect(ScheduleRules.rules(of: (any ContentRule).self).count == 1)
+        #expect(ScheduleRules.rules(of: (any CoverRule).self).count == 1)
         #expect(ScheduleRules.rules(of: (any ChannelRule).self).count == 1)
-        #expect(ScheduleRules.rules(of: (any LineupRule).self).count == 1)
+        #expect(ScheduleRules.rules(of: (any LineupRule).self).count == 2)
     }
 
     /// Two weeks of whole programmes, across many runs.

@@ -18,12 +18,22 @@ struct SettingsView: View {
     @State private var codeError: String?
     @State private var channelCodeText = ""
     @State private var channelError: String?
+    @State private var setTimesCodeText = ""
+    @State private var setTimesError: String?
+    @State private var choosingChannel = false
     @State private var editor: Editor?
+    @State private var setTimesEditor: SetTimesEditor?
 
     /// The channel editor, while it's open.
     private struct Editor: Identifiable {
         let id = UUID()
         let model: ChannelEditorModel
+    }
+
+    /// The set-times editor, while it's open.
+    private struct SetTimesEditor: Identifiable {
+        let id = UUID()
+        let model: SetTimesEditorModel
     }
 
     var body: some View {
@@ -84,6 +94,8 @@ struct SettingsView: View {
                     .onSubmit(addTypedChannel)
             }
 
+            setTimesSection
+
             SettingsRows.section("Commercials", footer: [
                 "When off, breaks between programmes are blank, with the Up Next card showing what's on next and when. Programmes still start at the same times, so you stay in step with everyone using the same schedule code.",
             ]) {
@@ -113,12 +125,49 @@ struct SettingsView: View {
             if action == .close { dismiss() } else { onRemote(action) }
         }
         #if DEBUG
-        .onAppear { if DebugOptions.opensChannelEditor { openEditor(editing: nil) } }
+        .onAppear {
+            if DebugOptions.opensChannelEditor { openEditor(editing: nil) }
+            if DebugOptions.opensSetTimesEditor { openSetTimesEditor(forChannel: 1) }
+        }
         #endif
         .fullScreenCover(item: $editor) { editor in
             ChannelEditorView(model: editor.model,
                               onSave: { save($0, replacing: editor.model.original) },
                               onDelete: editor.model.original.map { original in { app.delete(original) } })
+        }
+        .fullScreenCover(item: $setTimesEditor) { editor in
+            SetTimesEditorView(model: editor.model,
+                               onSave: { setTimesError = app.save($0, replacing: editor.model.original) },
+                               onDelete: editor.model.original.map { original in { app.delete(original) } })
+        }
+    }
+
+    /// Programmes at set times on a channel, for this household only.
+    @ViewBuilder private var setTimesSection: some View {
+        SettingsRows.section("Set times", footer: [
+            setTimesError,
+            "Set a series or film to air at fixed times on a channel. At every other time the channel stays the same as for everyone with your schedule code. Set times are saved on this Apple TV as their set-times codes: the channel, the names you picked and the times. To share them, type the code (shown when you edit them) into another Apple TV.",
+        ]) {
+            ForEach(app.setTimes, id: \.self) { setTimes in
+                let name = app.channelsForSetTimes.first { $0.number == setTimes.channelNumber }?.name ?? ""
+                SettingsRows.row("\(setTimes.channelNumber)  \(name)", detail: setTimes.summary) {
+                    openSetTimesEditor(forChannel: setTimes.channelNumber)
+                }
+            }
+            SettingsRows.row("Set Times on a Channel", value: choosingChannel ? "Done" : "Choose") { choosingChannel.toggle() }
+            if choosingChannel {
+                ForEach(app.channelsForSetTimes.filter { channel in !app.setTimes.contains { $0.channelNumber == channel.number } },
+                        id: \.number) { channel in
+                    SettingsRows.row("\(channel.number)  \(channel.name)") {
+                        choosingChannel = false
+                        openSetTimesEditor(forChannel: channel.number)
+                    }
+                }
+            }
+            TextField("Or enter a set-times code from another Apple TV", text: $setTimesCodeText)
+                .textInputAutocapitalization(.characters)
+                .autocorrectionDisabled()
+                .onSubmit(addTypedSetTimes)
         }
     }
 
@@ -145,6 +194,15 @@ struct SettingsView: View {
     /// Saving rebuilds the channels, which closes Settings.
     private func save(_ channel: CustomChannel, replacing original: CustomChannel?) {
         channelError = app.save(channel, replacing: original)
+    }
+
+    private func openSetTimesEditor(forChannel number: Int) {
+        setTimesEditor = app.makeSetTimesEditor(forChannel: number).map { SetTimesEditor(model: $0) }
+    }
+
+    private func addTypedSetTimes() {
+        setTimesError = app.addSetTimes(code: setTimesCodeText)
+        if setTimesError == nil { dismiss() }
     }
 
     private func addTypedChannel() {
