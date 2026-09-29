@@ -36,15 +36,7 @@ private struct RemoteControlsModifier: ViewModifier {
             .onPlayPauseCommand(perform: onPlayPause)
             .onExitCommand(perform: onMenu)
             .modifier(clicks)
-            #if DEBUG || (REMOTE_KEYS && targetEnvironment(simulator))
-            .onKeyPress(phases: .down) { press in
-                // `RemoteControls.debugKeys`: a key does what its button does here.
-                guard let key = press.characters.lowercased().first, let button = RemoteControls.debugKeys[key],
-                      let action = map[button] else { return .ignored }
-                perform(action)
-                return .handled
-            }
-            #endif
+            .modifier(DebugKeys(map: map, perform: perform))
     }
 
     private var hasArrows: Bool {
@@ -72,13 +64,32 @@ private struct RemoteControlsModifier: ViewModifier {
     }
 }
 
-#if DEBUG || (REMOTE_KEYS && targetEnvironment(simulator))
+// MARK: - Debug keys
+
 extension View {
     /// With the debug keys (see `RemoteControls.debugKeys`): the Menu key closes a
     /// screen that has no table of its own, such as an editor over Settings,
-    /// as Menu on the remote does.
+    /// as Menu on the remote does. In other builds it does nothing.
     func debugMenuKeyCloses() -> some View {
         modifier(DebugMenuKey())
+    }
+}
+
+// The app's only check for the debug keys: the same condition as
+// `RemoteControls.debugKeys`. Without them, both modifiers leave the view as
+// it is, so no key handling is built in at all.
+#if DEBUG || (REMOTE_KEYS && targetEnvironment(simulator))
+/// A key does what its button does in `map`.
+private struct DebugKeys: ViewModifier {
+    let map: [RemoteButton: RemoteAction]
+    let perform: (RemoteAction) -> Void
+
+    func body(content: Content) -> some View {
+        content.onKeyPress(phases: .down) { press in
+            guard let action = debugButton(press).flatMap({ map[$0] }) else { return .ignored }
+            perform(action)
+            return .handled
+        }
     }
 }
 
@@ -87,11 +98,25 @@ private struct DebugMenuKey: ViewModifier {
 
     func body(content: Content) -> some View {
         content.onKeyPress(phases: .down) { press in
-            guard let key = press.characters.lowercased().first, RemoteControls.debugKeys[key] == .menu else { return .ignored }
+            guard debugButton(press) == .menu else { return .ignored }
             dismiss()
             return .handled
         }
     }
+}
+
+private func debugButton(_ press: KeyPress) -> RemoteButton? {
+    press.characters.lowercased().first.flatMap { RemoteControls.debugKeys[$0] }
+}
+#else
+private struct DebugKeys: ViewModifier {
+    let map: [RemoteButton: RemoteAction]
+    let perform: (RemoteAction) -> Void
+    func body(content: Content) -> some View { content }
+}
+
+private struct DebugMenuKey: ViewModifier {
+    func body(content: Content) -> some View { content }
 }
 #endif
 
