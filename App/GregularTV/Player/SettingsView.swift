@@ -148,17 +148,14 @@ struct SettingsView: View {
             setTimesError,
             "Set a series or film to air at fixed times on a channel. At every other time the channel stays the same as for everyone with your schedule code. Set times are saved on this Apple TV as their set-times codes: the channel, the names you picked and the times. To share them, type the code (shown when you edit them) into another Apple TV.",
         ]) {
-            ForEach(app.setTimes, id: \.self) { setTimes in
-                let name = app.channelsForSetTimes.first { $0.number == setTimes.channelNumber }?.name ?? ""
-                SettingsRows.row("\(setTimes.channelNumber)  \(name)", detail: setTimes.summary) {
-                    openSetTimesEditor(forChannel: setTimes.channelNumber)
-                }
+            let channels = app.setTimesChannels
+            ForEach(channels.filter { $0.setTimes != nil }) { channel in
+                SettingsRows.row(channel.title, detail: channel.setTimes?.summary) { openSetTimesEditor(forChannel: channel.number) }
             }
             SettingsRows.row("Set Times on a Channel", value: choosingChannel ? "Done" : "Choose") { choosingChannel.toggle() }
             if choosingChannel {
-                ForEach(app.channelsForSetTimes.filter { channel in !app.setTimes.contains { $0.channelNumber == channel.number } },
-                        id: \.number) { channel in
-                    SettingsRows.row("\(channel.number)  \(channel.name)") {
+                ForEach(channels.filter { $0.setTimes == nil }) { channel in
+                    SettingsRows.row(channel.title) {
                         choosingChannel = false
                         openSetTimesEditor(forChannel: channel.number)
                     }

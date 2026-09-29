@@ -32,6 +32,16 @@ struct RemoteControlsTests {
         }
     }
 
+    #if DEBUG
+    @Test func debugKeysReachWhatTheKeyboardCant() {
+        let keys = RemoteControls.debugKeys
+        #expect(Set(keys.values).count == keys.count, "One key per button")
+        #expect(keys.keys.allSatisfy { !$0.isNumber }, "Digits type channel numbers")
+        #expect(Set(keys.values).isSuperset(of: [.menu, .playPause, .clickAndHold, .touchTap,
+                                                 .swipeUp, .swipeDown, .swipeLeft, .swipeRight]))
+    }
+    #endif
+
     @Test func watchingCanReachEveryScreen() {
         let actions = Set(RemoteControls.watching.values)
         #expect(actions.isSuperset(of: [.openChannelList, .openSettings, .channelUp, .channelDown]))
