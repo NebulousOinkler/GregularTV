@@ -20,7 +20,7 @@ struct SetTimesEditorView: View {
 
             SettingsRows.section("Set times", footer: [
                 model.programmes.isEmpty ? "None yet: add one below." : nil,
-                "These air at exactly these times, in \(model.timeZone == .current ? "this Apple TV's time zone" : "the time zone they were set in") (\(model.timeZone.identifier)). The rest of the time, the channel is the same as for everyone with your schedule code.",
+                "These air at exactly these times, in \(model.isInLocalTimeZone ? "this Apple TV's time zone" : "the time zone they were set in") (\(model.timeZone.identifier)). The rest of the time, the channel is the same as for everyone with your schedule code.",
             ]) {
                 ForEach(model.programmes, id: \.self) { entry in
                     SettingsRows.row(entry.match.title,

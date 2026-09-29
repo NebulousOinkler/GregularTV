@@ -44,7 +44,7 @@ extension URLRequest {
 
 enum JellyfinFixtures {
     static let server = URL(string: "http://tv.local:8096")!
-    static let identity = ClientIdentity(deviceID: "device-123")
+    static let identity = ClientIdentity(deviceID: "device-123", deviceName: "Apple TV")
     static let credentials = Credentials(serverURL: server, userID: "user-1", accessToken: "token-abc")
 
     static func client(_ mock: MockJellyfin, server: URL = server) -> JellyfinClient {

@@ -29,12 +29,17 @@ struct ServerAddressTests {
 
 struct ClientIdentityTests {
     @Test func headerWithoutToken() {
-        #expect(ClientIdentity(deviceID: "abc").authorizationHeader(token: nil)
+        #expect(ClientIdentity(deviceID: "abc", deviceName: "Apple TV").authorizationHeader(token: nil)
                 == #"MediaBrowser Client="Gregular TV", Device="Apple TV", DeviceId="abc", Version="\#(ClientIdentity.clientVersion)""#)
     }
 
+    @Test func theAppUsingItNamesTheDevice() {
+        // Nothing here assumes an Apple TV: a web version names its own kind of device.
+        #expect(ClientIdentity(deviceID: "abc", deviceName: "Web Browser").authorizationHeader(token: nil).contains(#"Device="Web Browser""#))
+    }
+
     @Test func headerWithTokenStripsBreakingCharacters() {
-        let header = ClientIdentity(deviceID: "a\"b,c").authorizationHeader(token: "t0k")
+        let header = ClientIdentity(deviceID: "a\"b,c", deviceName: "Apple TV").authorizationHeader(token: "t0k")
         #expect(header.contains(#"DeviceId="abc""#))
         #expect(header.hasSuffix(#"Token="t0k""#))
     }
