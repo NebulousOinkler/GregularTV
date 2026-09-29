@@ -107,8 +107,3 @@ extension ChannelSchedule {
     let deadline = Date.now.addingTimeInterval(seconds)
     while !condition(), Date.now < deadline { try await Task.sleep(for: .milliseconds(10)) }
 }
-
-extension ChannelPlayer.Status {
-    var isFailed: Bool { if case .failed = self { true } else { false } }
-    var isBetweenProgrammes: Bool { if case .betweenProgrammes = self { true } else { false } }
-}
