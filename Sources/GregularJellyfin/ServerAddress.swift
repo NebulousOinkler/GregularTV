@@ -28,28 +28,42 @@ public enum ServerAddress {
 
     /// Whether `host` names something on the local network: `localhost`, an
     /// unqualified name (`jellyfin`), a `.local` or `.home.arpa` name, or a
-    /// loopback, private, link-local or carrier-grade NAT address (the last is
-    /// what Tailscale uses).
+    /// loopback, private or link-local address.
+    ///
+    /// Only the plain dotted form of an IPv4 address counts. Resolvers also
+    /// read a lone number (`134744072`), hex (`0x08080808`) or zero-padded
+    /// parts (`010`, octal on some platforms) as addresses, which could be
+    /// public, so those are never local. Carrier-grade NAT addresses
+    /// (100.64/10) aren't either: Tailscale uses them, but so do internet
+    /// providers, whose networks plain http would cross.
     public static func isOnLocalNetwork(_ host: String) -> Bool {
         let host = host.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
-        if let ipv4 = ipv4Octets(host) {
+        if host.contains(":") {   // IPv6: loopback, link-local (fe80::/10), unique local (fc00::/7)
+            return host == "::1" || ["fe8", "fe9", "fea", "feb", "fc", "fd"].contains { host.hasPrefix($0) }
+        }
+        let labels = host.split(separator: ".", omittingEmptySubsequences: false)
+        // Anything made only of numbers is an address: local only in the plain dotted form.
+        if labels.allSatisfy({ label in !label.isEmpty && (label.allSatisfy(\.isNumber) || label.hasPrefix("0x")) }) {
+            guard let ipv4 = dottedIPv4(labels) else { return false }
             switch (ipv4[0], ipv4[1]) {
             case (10, _), (127, _), (169, 254), (192, 168): return true
             case (172, let b): return (16...31).contains(b)
-            case (100, let b): return (64...127).contains(b)
             default: return false
             }
-        }
-        if host.contains(":") {   // IPv6: loopback, link-local (fe80::/10), unique local (fc00::/7)
-            return host == "::1" || ["fe8", "fe9", "fea", "feb", "fc", "fd"].contains { host.hasPrefix($0) }
         }
         return host == "localhost" || !host.contains(".") || host.hasSuffix(".local") || host.hasSuffix(".home.arpa")
     }
 
-    private static func ipv4Octets(_ host: String) -> [Int]? {
-        let parts = host.split(separator: ".", omittingEmptySubsequences: false)
-        let octets = parts.compactMap { part in Int(part).flatMap { (0...255).contains($0) && part.allSatisfy(\.isNumber) ? $0 : nil } }
-        return parts.count == 4 && octets.count == 4 ? octets : nil
+    /// The four parts of a plain dotted IPv4 address, each 0 to 255 in
+    /// decimal with no leading zero, or nil for any other form.
+    private static func dottedIPv4(_ labels: [Substring]) -> [Int]? {
+        guard labels.count == 4 else { return nil }
+        let octets = labels.compactMap { label -> Int? in
+            guard label.allSatisfy(\.isASCIIDigit), label == "0" || !label.hasPrefix("0"), let value = Int(label),
+                  (0...255).contains(value) else { return nil }
+            return value
+        }
+        return octets.count == 4 ? octets : nil
     }
 
     /// Turns what the user typed into a server base URL.
@@ -76,4 +90,8 @@ public enum ServerAddress {
         while components.path.hasSuffix("/") { components.path.removeLast() }
         return components.url
     }
+}
+
+private extension Character {
+    var isASCIIDigit: Bool { ("0"..."9").contains(self) }
 }
