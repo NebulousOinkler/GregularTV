@@ -138,6 +138,19 @@ struct ChannelEditorTests {
         #expect(model.programmes.count == 1)
     }
 
+    @Test func setTimesSayWhatIsntInTheLibrary() throws {
+        let model = try setTimesEditor()
+        model.draftProgramme = .series("Not Here")
+        model.draftTimes = "18:00"
+        #expect(model.addDraft() == nil)
+        model.draftProgramme = .series("Taskmaster")
+        model.draftTimes = "19:00"
+        #expect(model.addDraft() == nil)
+        #expect(model.programmes.map(model.isMissing) == [true, false])
+        #expect(SetTimes(channelNumber: 2, programmes: model.programmes + [FixedProgramme(match: .series("Taskmaster"), times: [1200])]).summary
+                == "Not Here, Taskmaster", "Each name once")
+    }
+
     @Test func savedSetTimesAreKeptCheckedAndShared() throws {
         let app = app()
         let setTimes = SetTimes(channelNumber: 2, programmes: [FixedProgramme(match: .series("Taskmaster"), times: [1080])],
@@ -161,6 +174,7 @@ struct ChannelEditorTests {
         #expect(channels.first { $0.number == 30 }.map { $0.title == "30  Mine" && $0.setTimes == onCustom } == true)
         #expect(channels.first { $0.number == 2 }?.setTimes == shared)
         #expect(channels.filter { $0.setTimes != nil }.count == 2)
+        #expect(channels.allSatisfy { $0.missing.isEmpty }, "Before the library loads, nothing is flagged")
         app.delete(custom)
         #expect(app.setTimes == [shared])
         app.delete(shared)

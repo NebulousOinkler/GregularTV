@@ -70,6 +70,25 @@ struct RandomChannelTests {
         #expect(checked > 50)
     }
 
+    @Test func whatsPlayingIsWhatTheGuideShows() {
+        // Films have mid-roll breaks, so a set time can end between two parts of one.
+        var rng = SeededRandom(seed: 4242)
+        var checked = 0
+        for trial in 0..<80 {
+            guard let c = Self.randomCase(trial, &rng), !c.channel.fixed.isEmpty else { continue }
+            let cells = c.schedule.programmes(from: c.start, to: c.start.addingTimeInterval(2 * 86400))
+            for minute in stride(from: 0, to: 2 * 24 * 60, by: 13) {
+                let t = c.start.addingTimeInterval(Double(minute) * 60)
+                let tuned = c.schedule.tune(at: t).airing
+                guard !tuned.isFiller, let cell = cells.first(where: { $0.start <= t && t < $0.slotEnd }) else { continue }
+                #expect(cell.item.id == tuned.item.id, "trial \(trial) at \(t): the guide shows \(cell.item.name), \(tuned.item.name) is on")
+                #expect(c.schedule.programme(at: t).item.id == tuned.item.id, "trial \(trial) at \(t)")
+                checked += 1
+            }
+        }
+        #expect(checked > 3000)
+    }
+
     @Test func setTimesAreKeptUnlessTheyClash() {
         var rng = SeededRandom(seed: 991)
         var pins = 0

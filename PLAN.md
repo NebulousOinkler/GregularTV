@@ -348,7 +348,8 @@ A channel whose shuffle has only one programme can't avoid repeating it: there, 
 The first version wove set times into the schedule: runs became local days and each set time a hard edge. That moved everything around it, so two households sharing a schedule code, one with a set time, agreed on only about 11% of moments (0% with `exclusive`). Now there are two layers:
 - The **shared schedule** comes from the code and the channel alone, in uniform runs, exactly as without set times.
 - Each set time is a **window**, from its time to the end of its programme's slot. Inside it, its programme is on, with its own breaks. Outside every window, the shared schedule is on: a programme cut by a window's start stops there, and one still on at its end is joined partway through (`mediaOffset`), as when changing channel.
-- The only other change is **covering**: an `exclusive` programme's other airings, and a shared programme the rules don't allow next to an adjacent set time, get a stand-in that fits their slot.
+- The only other change is **covering**: an `exclusive` programme's other airings, and a shared programme the rules don't allow next to an adjacent set time, get a stand-in that fits their slot. Stand-ins are searched from a point picked from the channel's key and the slot, so they vary from slot to slot while every walk picks the same one.
+- A set time names a series or film. Shared by code with a household whose library lacks it, it never airs there; Settings says "Not in your library".
 
 So outside the windows and covered slots, every household with the same code sees the same programme at the same point (tested with random channels in `RandomChannelTests`). A series' episode at each set time comes from counting its airings since the channel's first day from the calendar, so any day is found without replaying the ones before. Tuning still walks at most two days.
 

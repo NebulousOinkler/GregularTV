@@ -150,7 +150,10 @@ struct SettingsView: View {
         ]) {
             let channels = app.setTimesChannels
             ForEach(channels.filter { $0.setTimes != nil }) { channel in
-                SettingsRows.row(channel.title, detail: channel.setTimes?.summary) { openSetTimesEditor(forChannel: channel.number) }
+                let missing = channel.missing.isEmpty ? nil : "Not in your library: \(channel.missing.joined(separator: ", "))"
+                SettingsRows.row(channel.title, detail: [channel.setTimes?.summary, missing].compactMap { $0 }.joined(separator: " · ")) {
+                    openSetTimesEditor(forChannel: channel.number)
+                }
             }
             SettingsRows.row("Set Times on a Channel", value: choosingChannel ? "Done" : "Choose") { choosingChannel.toggle() }
             if choosingChannel {
