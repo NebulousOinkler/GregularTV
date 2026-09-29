@@ -1,31 +1,9 @@
 import Foundation
-import GregularCore
+import GregularJellyfin
 import Security
 
-/// What we keep so we can reconnect after a relaunch. This, the device ID and
-/// the last channel number are **all** the app persists (PLAN.md §3).
-public struct Credentials: Codable, Sendable, Equatable {
-    public let serverURL: URL
-    /// Needed for Jellyfin's per-user item and playback queries.
-    public let userID: String
-    public let accessToken: String
-
-    public init(serverURL: URL, userID: String, accessToken: String) {
-        self.serverURL = serverURL
-        self.userID = userID
-        self.accessToken = accessToken
-    }
-}
-
-public protocol CredentialStore: Sendable {
-    func loadCredentials() -> Credentials?
-    func saveCredentials(_ credentials: Credentials) throws
-    func deleteCredentials() throws
-    /// A random ID for this install, created on first use. Jellyfin requires
-    /// one. It isn't cleared on sign-out, so signing back in doesn't add
-    /// another entry to the server's device list.
-    func deviceID() -> String
-}
+// The sign-in on Apple platforms (see `CredentialStore`): the Keychain's
+// own secure storage, kept apart from the shared code so that code runs anywhere.
 
 public struct KeychainError: Error, Equatable {
     public let status: OSStatus
@@ -94,20 +72,4 @@ public struct KeychainStore: CredentialStore {
         let status = SecItemDelete(baseQuery(account) as CFDictionary)
         guard status == errSecSuccess || status == errSecItemNotFound else { throw KeychainError(status: status) }
     }
-}
-
-/// For tests and SwiftUI previews. Nothing is written anywhere.
-public final class InMemoryCredentialStore: CredentialStore, @unchecked Sendable {
-    private let lock = NSLock()
-    private var credentials: Credentials?
-    private let id = UUID().uuidString
-
-    public init(credentials: Credentials? = nil) {
-        self.credentials = credentials
-    }
-
-    public func loadCredentials() -> Credentials? { lock.withLock { credentials } }
-    public func saveCredentials(_ credentials: Credentials) throws { lock.withLock { self.credentials = credentials } }
-    public func deleteCredentials() throws { lock.withLock { credentials = nil } }
-    public func deviceID() -> String { id }
 }

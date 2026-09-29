@@ -6,7 +6,9 @@ public enum JellyfinError: Error, Equatable, Sendable {
     case unauthorized
     case httpStatus(Int)
     case invalidResponse
-    /// The server sent far more than any reply should be (see `URLSessionTransport.largestResponse`).
+    /// Plain http to an address outside the local network (see `ServerAddress.isAllowed(_:)`).
+    case insecureAddress
+    /// The server sent far more than any reply should be (see `TransportRules.largestResponse`).
     case responseTooLarge
     case quickConnectDisabled
     /// Jellyfin returned no media source this device can play.
@@ -21,6 +23,7 @@ extension JellyfinError: MediaServiceFailure {
         case .unauthorized: "Your Jellyfin sign-in has expired or was revoked. Please sign in again."
         case .httpStatus(let code): "The Jellyfin server returned an error (HTTP \(code))."
         case .invalidResponse: "The server didn't respond like a Jellyfin server."
+        case .insecureAddress: "Plain http only works on your home network. For an address on the internet, use https."
         case .responseTooLarge: "The server sent far more than expected, so the app stopped it."
         case .quickConnectDisabled: "Quick Connect is turned off on this server. Sign in with a password instead."
         case .noPlayableSource: "Jellyfin couldn't provide a playable stream for this programme."
@@ -63,6 +66,8 @@ struct JellyfinAPI: Sendable {
     // MARK: - Internals
 
     private func send(_ method: String, _ path: String, query: [URLQueryItem], body: Data? = nil) async throws -> Data {
+        // Nothing, a password or token least of all, goes over plain http beyond the local network.
+        guard ServerAddress.isAllowed(server) else { throw JellyfinError.insecureAddress }
         var request = URLRequest(url: url(path, query: query))
         request.httpMethod = method
         request.setValue(identity.authorizationHeader(token: token), forHTTPHeaderField: "Authorization")
@@ -73,6 +78,12 @@ struct JellyfinAPI: Sendable {
         }
 
         let (data, response) = try await transport.send(request)
+        // Checked here too, whatever the transport: a reply from somewhere a
+        // redirect shouldn't have gone, or too large, is never used.
+        guard let answered = response.url, let asked = request.url,
+              asked == answered || TransportRules.allowsRedirect(from: asked, to: answered)
+        else { throw JellyfinError.invalidResponse }
+        guard data.count <= TransportRules.largestResponse else { throw JellyfinError.responseTooLarge }
         switch response.statusCode {
         case 200..<300: return data
         case 401, 403: throw JellyfinError.unauthorized
