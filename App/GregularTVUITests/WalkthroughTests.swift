@@ -201,6 +201,26 @@ final class WalkthroughTests: XCTestCase {
         pause(2)
     }
 
+    // MARK: The guide scrolling
+
+    /// The times along the top and the channel names down the side follow
+    /// the grid as it scrolls: compare the screenshots.
+    func test6GuideScrolls() throws {
+        waitForWatching()
+        openGuide()
+        capture("guide-at-start")
+        press(.down, times: 6)
+        press(.right, times: 10)
+        pause()
+        capture("guide-scrolled")
+        XCTAssertTrue(button("Settings").exists, "The guide closed while scrolling")
+        press(.left, times: 10)
+        press(.up, times: 6)
+        pause()
+        capture("guide-back")
+        backToLiveTV()
+    }
+
     // MARK: A custom channel
 
     func test2CustomChannel() throws {
