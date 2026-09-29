@@ -29,6 +29,8 @@ public struct CustomChannel: Sendable, Hashable {
 
     public var number: Int
     public var name: String
+    /// The longest a channel name may be, in characters, so it fits the guide.
+    public static let longestName = 60
     /// Episodes, movies, or both.
     public var kinds: Set<MediaItem.Kind>
     public var rule: Rule

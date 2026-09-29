@@ -56,6 +56,19 @@ struct ScheduleRulesTests {
         #expect(aired == ["A", "B", "A", "C"], "Nothing dropped, and moved as little as possible")
     }
 
+    @Test func aLongStreakOfOneMovieIsStillSpreadOut() {
+        // A random strategy picked one film ten times running (seen with three films).
+        let names = ["B", "A"] + Array(repeating: "A", count: 12) + (0..<20).map { $0 % 2 == 0 ? "B" : "C" }
+        var stream = RuledStream(AnyIterator(names.map { Fixtures.movie($0) }.makeIterator()), for: .programmes)
+        var aired: [String] = []
+        for _ in 0..<20 {
+            guard let item = stream.next() else { break }
+            stream.aired(item)
+            aired.append(item.name)
+        }
+        #expect(zip(aired, aired.dropFirst()).allSatisfy { $0 != $1 }, "\(aired)")
+    }
+
     @Test func itemsPutBackComeFirstInOrder() {
         let items = ["A", "B", "C", "D"].map { Fixtures.movie($0) }
         var stream = RuledStream(AnyIterator(items.makeIterator()), for: .programmes)

@@ -61,8 +61,9 @@ struct RandomChannelTests {
                 #expect(a.item.id != b.item.id || bothSet, "trial \(trial): \(a.item.name) twice at \(b.start)")
                 #expect(a.slotEnd == b.start, "trial \(trial): back to back")
             }
-            // Looked up on its own, each programme is the same as in the long walk.
-            for programme in week.dropFirst().prefix(20) {
+            // Looked up on its own, each programme is the same as in the long walk
+            // (every one on channels with set times, where covering makes this hardest).
+            for programme in week.dropFirst().prefix(c.channel.fixed.isEmpty ? 20 : week.count) {
                 let alone = c.schedule.programme(at: programme.start.addingTimeInterval(1))
                 #expect(alone.item.id == programme.item.id && alone.start == programme.start, "trial \(trial)")
             }

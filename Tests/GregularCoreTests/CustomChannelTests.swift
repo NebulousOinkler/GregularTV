@@ -85,6 +85,23 @@ struct CustomChannelTests {
 
 /// A household's set times, and their codes.
 struct SetTimesCodeTests {
+    @Test func longNamesAreKeptInFull() throws {
+        // A film title past 60 characters must still match the library after a relaunch.
+        let title = "Borat: Cultural Learnings of America for Make Benefit Glorious Nation of Kazakhstan"
+        let setTimes = SetTimes(channelNumber: 12, programmes: [FixedProgramme(match: .item(title), times: [1200])],
+                                timeZone: TimeZone(identifier: "Europe/London")!)
+        #expect(SetTimes(code: setTimes.code) == setTimes)
+        let series = CustomChannel(number: 40, name: "Long", rule: .series(String(repeating: "Series ", count: 12)))
+        #expect(CustomChannel(code: series.code) == series)
+    }
+
+    @Test func aNameTooLongForACodeIsCutBetweenCharacters() throws {
+        // 300 bytes of three-byte characters: cut to a whole number of them, so the code still reads.
+        let name = String(repeating: "日", count: 100)
+        let read = try #require(SetTimes(code: SetTimes(channelNumber: 1, programmes: [FixedProgramme(match: .series(name), times: [60])]).code))
+        #expect(read.programmes[0].match == .series(String(repeating: "日", count: 85)))
+    }
+
     static let example = SetTimes(channelNumber: 2, programmes: [
         FixedProgramme(match: .series("Alpha"), times: [18 * 60, 18 * 60 + 30]),
         FixedProgramme(match: .item("Laughs"), times: [20 * 60], weekdays: [2, 6],

@@ -5,8 +5,8 @@ import Foundation
 /// fields, then a check byte (CRC-8) so a mistyped code is rejected rather
 /// than read wrongly, all in Crockford base32 (see `Crockford`).
 struct CodeWriter {
-    /// The longest text a code holds, such as a name.
-    static let longestText = 60
+    /// The most UTF-8 bytes one text in a code holds (its length is a byte).
+    static let longestText = 255
     private var bytes: [UInt8]
 
     init(version: UInt8) {
@@ -22,10 +22,14 @@ struct CodeWriter {
         bytes += [UInt8(truncatingIfNeeded: value >> 8), UInt8(truncatingIfNeeded: value)]
     }
 
+    /// A name, in full: a series or film name must match the library
+    /// exactly. Only one longer than `longestText` bytes is cut short, at
+    /// the end of a character, so the code still reads.
     mutating func text(_ value: String) {
-        let utf8 = Array(String(value.prefix(Self.longestText)).utf8.prefix(255))
-        bytes.append(UInt8(utf8.count))
-        bytes += utf8
+        var text = Substring(value)
+        while text.utf8.count > Self.longestText { text = text.dropLast() }
+        bytes.append(UInt8(text.utf8.count))
+        bytes += Array(text.utf8)
     }
 
     /// Set times, without their time zone (the code carries one for all).
