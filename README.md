@@ -9,7 +9,7 @@ This is mostly AI coded. Why does this exist? I wanted a better shuffle algorith
 
 ## Status
 
-Version 1.2. All seven milestones in [PLAN.md](PLAN.md) are done, and so is everything that was in `TODO.md`. The core package handles scheduling, the Jellyfin client and privacy, and the tvOS app has sign-in, live channels, surfing, a six-hour guide, quality settings, commercial breaks (including mid-roll breaks in films) from a Jellyfin library named `Commercials` (see PLAN.md §9a), your own channels made in Settings, and programmes at set times.
+Version 1.2. All seven milestones in [PLAN.md](PLAN.md) are done. Next up, in [TODO.md](TODO.md): a servers page as the main page, and remote buttons that move around the app correctly. The core package handles scheduling, the Jellyfin client and privacy, and the tvOS app has sign-in, live channels, surfing, a six-hour guide, quality settings, commercial breaks (including mid-roll breaks in films) from a Jellyfin library named `Commercials` (see PLAN.md §9a), your own channels made in Settings, and programmes at set times.
 
 Open `App/GregularTV.xcodeproj` in Xcode and run the **GregularTV** scheme on an Apple TV simulator or device. Requires tvOS 17 or later and Jellyfin 10.9 or later.
 

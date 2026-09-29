@@ -167,7 +167,14 @@ public final class AppModel {
     @discardableResult
     public func save(_ channel: CustomChannel, replacing original: CustomChannel? = nil) -> String? {
         let channels = (customChannels.filter { $0 != original } + [channel]).sorted { $0.number < $1.number }
-        return apply(custom: channels, setTimes: setTimes)
+        // Set times on the channel go with it to its new number.
+        let moved = setTimes.map { times in
+            guard let original, times.channelNumber == original.number else { return times }
+            var moved = times
+            moved.channelNumber = channel.number
+            return moved
+        }
+        return apply(custom: channels, setTimes: moved)
     }
 
     /// Saves set times (in place of `original`, when editing) and rebuilds the
