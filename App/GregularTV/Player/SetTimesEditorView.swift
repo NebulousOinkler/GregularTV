@@ -41,7 +41,8 @@ struct SetTimesEditorView: View {
                 }
                 .disabled(model.problem != nil)
                 if let onDelete {
-                    SettingsRows.row("Delete Set Times", role: .destructive) {
+                    SettingsRows.confirmedRow("Delete Set Times", asking: "Delete the set times on channel \(model.channelNumber)?",
+                                              detail: "The channel goes back to the shared schedule. To get them back, you'd need their set-times code.") {
                         dismiss()
                         onDelete()
                     }

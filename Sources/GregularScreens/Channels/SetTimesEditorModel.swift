@@ -67,6 +67,12 @@ public final class SetTimesEditorModel {
         guard !times.isEmpty, times.count == parts.count else {
             return "Enter times like 18:00, or several like 18:00, 18:30."
         }
+        guard programmes.count < FixedProgramme.mostPerChannel else {
+            return "A channel can have at most \(FixedProgramme.mostPerChannel) set times."
+        }
+        guard programmes.reduce(times.count, { $0 + $1.times.count }) <= FixedProgramme.mostTimesPerChannel else {
+            return "A channel's set times can list at most \(FixedProgramme.mostTimesPerChannel) times in all."
+        }
         let entry = FixedProgramme(match: match, times: times, weekdays: draftWeekdays, exclusive: draftExclusive,
                                    timeZone: timeZone)
         if let clash = entry.clashes(with: programmes).first {
