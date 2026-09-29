@@ -169,6 +169,16 @@ struct ChannelEditorTests {
         #expect(app.setTimes.first?.programmes == setTimes.programmes)
     }
 
+    @Test func theEditorStopsAtTheMostTimes() throws {
+        let model = try setTimesEditor()
+        model.draftProgramme = .series("Taskmaster")
+        model.draftTimes = (0..<FixedProgramme.mostTimesPerChannel).map { FixedProgramme.text(forMinutes: $0 * 15) }.joined(separator: ", ")
+        #expect(model.addDraft() == nil)
+        model.draftProgramme = .item("Old Film")
+        model.draftTimes = "23:45"
+        #expect(model.addDraft() == "A channel's set times can list at most \(FixedProgramme.mostTimesPerChannel) times in all.")
+    }
+
     @Test func setTimesSayWhatIsntInTheLibrary() throws {
         let model = try setTimesEditor()
         model.draftProgramme = .series("Not Here")

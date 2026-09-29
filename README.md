@@ -198,7 +198,16 @@ Gregular TV is built to know as little as possible about your Jellyfin server, a
 **Enforced, not just promised:**
 - **Network:** all requests go through one ephemeral `URLSession`, with no disk cache and no cookies.
 - **Privacy check:** [`scripts/privacy-check.sh`](scripts/privacy-check.sh) fails the app build, and `swift test`, if code outside the three allowed files uses anything that persists or leaks data. That covers `UserDefaults`, files, Core Data and SwiftData, caches, cookies, the Keychain, iCloud storage, and system logging (`Logger`, `os_log`, `NSLog`, `print`).
-- **Tests:** they check that no playback-reporting endpoint is ever called, that sign-out clears credentials even when the server is unreachable, and that preferences hold only the client settings and custom channel codes.
+- **Tests:** they check that no playback-reporting endpoint is ever called, that sign-out clears credentials even when the server is unreachable, and that preferences hold only the client settings and the custom channel and set-times codes.
 - **No third-party code:** no analytics or crash reporting, only Apple frameworks. The app sends Apple nothing itself; only tvOS's own *Share Analytics* setting (the device owner's choice) sends crash reports.
 - **Privacy manifest:** `PrivacyInfo.xcprivacy` declares the same to Apple: no tracking, no data collected.
 - **Artwork:** the app icon and Top Shelf image are drawn by [`scripts/make-artwork.swift`](scripts/make-artwork.swift), never taken from your server.
+
+## Security
+
+The app treats what reaches it as untrusted: the server's replies, and codes typed in from anywhere.
+- **Your sign-in stays with your server.** A redirect is followed only on the same server (or from `http` up to `https` on the same host), so a password or token is never passed on elsewhere. Plain `http` works only for local-network addresses.
+- **A misbehaving server can't take the app down.** The item count a server claims is capped, paging stops at the first empty page, and each page counts for at most one page of items. Stream URLs from the server keep only their path and query, so they always point back at your server. Item names are shown as plain text, never as formatting or links.
+- **Codes can't do more than change your own schedule.** A channel or set-times code carries only names, numbers and times. The check byte catches typing mistakes, but anyone can make a code, so every code is checked like the app's own settings: times within a day, real dates, and at most 24 set times on a channel, listing 48 times in all.
+- **Sign Out and Delete ask first**, so one stray click, or a button pressed by anything paired with the Apple TV, can't undo your setup.
+- **Quick Connect:** approve a code only when your own TV is showing it. Another device can ask Jellyfin for a code while calling itself "Apple TV", and approving its code would sign that device in as you.

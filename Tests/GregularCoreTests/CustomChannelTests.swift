@@ -85,6 +85,35 @@ struct CustomChannelTests {
 
 /// A household's set times, and their codes.
 struct SetTimesCodeTests {
+    /// A code anyone could craft: it decodes, but the line-up won't take it.
+    private func rejected(_ programmes: [FixedProgramme]) throws -> String? {
+        let crafted = try #require(SetTimes(code: SetTimes(channelNumber: 1, programmes: programmes,
+                                                           timeZone: TimeZone(identifier: "Europe/London")!).code))
+        do {
+            _ = try ChannelLineup.bundled().adding([], setTimes: [crafted])
+            return nil
+        } catch {
+            return "\(error)"
+        }
+    }
+
+    @Test func craftedCodesWithImpossibleTimesOrDatesAreRejected() throws {
+        #expect(try rejected([FixedProgramme(match: .item("Film"), times: [5000])]) == "Channel 1: set times must be between 00:00 and 23:59.")
+        #expect(try rejected([FixedProgramme(match: .item("Film"), times: [60], dates: [.init(month: 200, day: 99)])])
+                == "Channel 1: set times can only be on real days and dates.")
+        #expect(try rejected([FixedProgramme(match: .item("Film"), times: [60], dates: [.init(month: 2, day: 29)])]) == nil)
+    }
+
+    @Test func craftedCodesWithTooManySetTimesAreRejected() throws {
+        // Each would make placing the channel's set times slow on every look at the channel.
+        let many = (0...FixedProgramme.mostPerChannel).map { FixedProgramme(match: .item("Film \($0)"), times: [$0]) }
+        #expect(try rejected(many) == "Channel 1 can have at most \(FixedProgramme.mostPerChannel) set times.")
+        let manyTimes = [FixedProgramme(match: .item("Film"), times: Array(0...FixedProgramme.mostTimesPerChannel))]
+        #expect(try rejected(manyTimes) == "Channel 1's set times can list at most \(FixedProgramme.mostTimesPerChannel) times in all.")
+        let most = [FixedProgramme(match: .item("Film"), times: Array(0..<FixedProgramme.mostTimesPerChannel))]
+        #expect(try rejected(most) == nil)
+    }
+
     @Test func longNamesAreKeptInFull() throws {
         // A film title past 60 characters must still match the library after a relaunch.
         let title = "Borat: Cultural Learnings of America for Make Benefit Glorious Nation of Kazakhstan"
