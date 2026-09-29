@@ -49,6 +49,10 @@ public final class SetTimesEditorModel {
         choices = LibraryChoices(library)
     }
 
+    /// Whether the times are read in this device's own time zone. Set times
+    /// shared from another zone keep theirs.
+    public var isInLocalTimeZone: Bool { timeZone == .current }
+
     /// The set times as they stand.
     public var setTimes: SetTimes {
         SetTimes(channelNumber: channelNumber, programmes: programmes, timeZone: timeZone)
