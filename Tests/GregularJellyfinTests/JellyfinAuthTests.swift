@@ -15,10 +15,31 @@ struct ServerAddressTests {
     }
 
     @Test func candidatesTryHTTPSFirstWhenNoSchemeTyped() {
-        #expect(ServerAddress.candidates(for: "tv.example.net").map(\.absoluteString)
-                == ["https://tv.example.net", "http://tv.example.net"])
+        #expect(ServerAddress.candidates(for: "tv.local").map(\.absoluteString) == ["https://tv.local", "http://tv.local"])
+        #expect(ServerAddress.candidates(for: "tv.example.net").map(\.absoluteString) == ["https://tv.example.net"],
+                "Plain http only on the local network")
+        #expect(ServerAddress.candidates(for: "http://tv.example.net").isEmpty)
         #expect(ServerAddress.candidates(for: "http://10.0.0.2:8096").map(\.absoluteString) == ["http://10.0.0.2:8096"])
         #expect(ServerAddress.candidates(for: "ftp://x").isEmpty)
+    }
+
+    @Test(arguments: [
+        ("localhost", true), ("jellyfin", true), ("tv.local", true), ("nas.home.arpa", true),
+        ("127.0.0.1", true), ("10.1.2.3", true), ("172.16.0.1", true), ("172.31.255.255", true), ("192.168.1.5", true),
+        ("169.254.10.10", true), ("100.101.102.103", true), ("[::1]", true), ("fe80::1", true), ("fd12:3456::1", true),
+        ("tv.example.net", false), ("8.8.8.8", false), ("172.32.0.1", false), ("100.128.0.1", false),
+        ("192.168.1.5.example.net", false), ("2001:db8::1", false), ("local", true), ("evil.local.example.com", false),
+    ])
+    func localNetwork(host: String, local: Bool) {
+        #expect(ServerAddress.isOnLocalNetwork(host) == local)
+    }
+
+    @Test func plainHTTPToTheInternetIsNeverSent() async {
+        let mock = MockJellyfin()
+        mock.on("GET", "/System/Info/Public", json: "{}")
+        let server = JellyfinServer(url: URL(string: "http://media.example.com")!, identity: JellyfinFixtures.identity, transport: mock)
+        await #expect(throws: JellyfinError.insecureAddress) { try await server.publicInfo() }
+        #expect(mock.requests.isEmpty, "Refused before anything is sent")
     }
 
     @Test(arguments: ["", "   ", "ftp://server", "http://"])

@@ -78,6 +78,15 @@ struct ChannelEditorTests {
 
     @Test func theAppNamesItsDevice() {
         #expect(app().identity.deviceName == "Test Device")
+        #expect(app().signOutConfirmation.detail.hasSuffix("stay on this Test Device."))
+    }
+
+    @Test func everythingThatCantBeUndoneAsksFirst() throws {
+        #expect(app().signOutConfirmation.action == "Sign Out")
+        let editor = try self.editor(editing: CustomChannel(number: 30, name: "Mine"))
+        editor.stepNumber(by: 1)
+        #expect(editor.deleteConfirmation.question == "Delete channel 30?", "The channel being deleted, not its new number")
+        #expect(try setTimesEditor().deleteConfirmation.question == "Delete the set times on channel 2?")
     }
 
     @Test func savedChannelsAreKeptAndNumbersChecked() {

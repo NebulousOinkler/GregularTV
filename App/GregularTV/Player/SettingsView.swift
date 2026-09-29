@@ -115,8 +115,7 @@ struct SettingsView: View {
 
             SettingsRows.section(nil, footer: ["\(RemoteControls.hint(for: RemoteControls.settings)) · Done to close"]) {
                 SettingsRows.row("Done") { dismiss() }
-                SettingsRows.confirmedRow("Sign Out", asking: "Sign out of Jellyfin?",
-                                          detail: "You'll need to sign in again to watch. Your channels and set times stay on this Apple TV.") {
+                SettingsRows.confirmedRow(app.signOutConfirmation) {
                     dismiss()
                     Task { await app.signOut() }
                 }

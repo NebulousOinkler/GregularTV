@@ -1,19 +1,50 @@
 import Foundation
 import GregularCore
 
-/// Sends one HTTP request. Tests replace this with a fake server.
+/// Sends one HTTP request. Each platform brings one (`URLSessionTransport`
+/// on Apple's); tests replace it with a fake server.
+///
+/// **A transport must follow `TransportRules`:** follow a redirect only when
+/// `allowsRedirect(from:to:)` says so, stop a reply as it arrives once it's
+/// larger than `largestResponse`, and store nothing (no disk cache, cookies
+/// or saved logins). `TransportConformanceTests` checks all three; add a new
+/// transport there. `JellyfinAPI` checks the first two again on every reply,
+/// so a transport that gets them wrong still can't pass a reply on.
 public protocol HTTPTransport: Sendable {
     func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse)
+}
+
+/// What every transport must do, whatever the platform (see `HTTPTransport`).
+public enum TransportRules {
+    /// The most one reply may be (bytes). Far more than any real one (a
+    /// page of 500 programmes is about 300 KB, the speed test 3 MB), so only
+    /// a server sending far too much hits it.
+    public static let largestResponse = 16 * 1024 * 1024
+
+    /// Whether a redirect from `from` to `to` may be followed: only to the
+    /// same server, with the same scheme, host and port, or from `http` to
+    /// `https` on the same host. Anything else stops at the redirect, which
+    /// the caller sees as an error. (URLSession drops `Authorization` on a
+    /// redirect to another host by itself, but it sends the body again, so a
+    /// sign-in's password would go with it; other HTTP stacks may not even
+    /// drop the header.)
+    public static func allowsRedirect(from: URL, to: URL) -> Bool {
+        guard let host = from.host()?.lowercased(), host == to.host()?.lowercased(),
+              let fromScheme = from.scheme?.lowercased(), let toScheme = to.scheme?.lowercased() else { return false }
+        if fromScheme == "http" && toScheme == "https" { return true }
+        return fromScheme == toScheme && port(of: from) == port(of: to)
+    }
+
+    private static func port(of url: URL) -> Int? {
+        url.port ?? (url.scheme?.lowercased() == "https" ? 443 : 80)
+    }
 }
 
 /// The app's only real network path.
 ///
 /// It uses an ephemeral session with no URL cache and no cookies, so no
 /// responses from the server (library listings, artwork, anything else) are
-/// ever written to disk. It follows a redirect only on the same server (see
-/// `RedirectGuard`), so nothing sent to the server, a password included, can
-/// be passed on somewhere else, and it stops any reply larger than
-/// `largestResponse` as it arrives (see `BoundedLoad`).
+/// ever written to disk. It follows `TransportRules` through `BoundedLoad`.
 public struct URLSessionTransport: HTTPTransport {
     public static let shared = URLSessionTransport()
 
@@ -39,14 +70,9 @@ public struct URLSessionTransport: HTTPTransport {
         return config
     }
 
-    /// The most one reply may be (bytes). Far more than any real one (a
-    /// page of 500 programmes is about 300 KB, the speed test 3 MB), so only
-    /// a server sending far too much hits it, and the transfer stops there.
-    static let largestResponse = 16 * 1024 * 1024
-
     public func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         let task = session.dataTask(with: request)
-        let load = BoundedLoad(limit: Self.largestResponse)
+        let load = BoundedLoad(limit: TransportRules.largestResponse)
         task.delegate = load
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
@@ -60,8 +86,7 @@ public struct URLSessionTransport: HTTPTransport {
 
 /// One request's reply, gathered as it arrives and stopped as soon as it's
 /// larger than `limit`, so a server can't fill the app's memory before the
-/// size is known. It also follows redirects only on the same server (see
-/// `RedirectGuard`).
+/// size is known. It follows redirects only as `TransportRules` allows.
 final class BoundedLoad: NSObject, URLSessionDataDelegate, @unchecked Sendable {
     private let limit: Int
     private let lock = NSLock()
@@ -79,7 +104,7 @@ final class BoundedLoad: NSObject, URLSessionDataDelegate, @unchecked Sendable {
 
     func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse,
                     newRequest request: URLRequest) async -> URLRequest? {
-        guard let from = task.originalRequest?.url, let to = request.url, RedirectGuard.allows(from: from, to: to) else { return nil }
+        guard let from = task.originalRequest?.url, let to = request.url, TransportRules.allowsRedirect(from: from, to: to) else { return nil }
         return request
     }
 
@@ -122,23 +147,5 @@ final class BoundedLoad: NSObject, URLSessionDataDelegate, @unchecked Sendable {
             return self.continuation
         }
         continuation?.resume(with: result)
-    }
-}
-
-/// Follows a redirect only to the same server: the same scheme, host and
-/// port, or from `http` to `https` on the same host. Anything else stops at
-/// the redirect, which the caller sees as an error. The system already
-/// drops the `Authorization` header on a redirect to another host, but it
-/// sends the body again, so a sign-in's password would go with it.
-enum RedirectGuard {
-    static func allows(from: URL, to: URL) -> Bool {
-        guard let host = from.host()?.lowercased(), host == to.host()?.lowercased(),
-              let fromScheme = from.scheme?.lowercased(), let toScheme = to.scheme?.lowercased() else { return false }
-        if fromScheme == "http" && toScheme == "https" { return true }
-        return fromScheme == toScheme && port(of: from) == port(of: to)
-    }
-
-    private static func port(of url: URL) -> Int? {
-        url.port ?? (url.scheme?.lowercased() == "https" ? 443 : 80)
     }
 }
