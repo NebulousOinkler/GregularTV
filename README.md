@@ -172,8 +172,10 @@ python3 scripts/demo-server.py
 ```
 
 ```bash
-TEST_RUNNER_SHOTS_DIR=/path/to/shots xcodebuild test -project App/GregularTV.xcodeproj -scheme GregularTVWalkthrough -destination 'platform=tvOS Simulator,name=GregularTV Tests'
+TEST_RUNNER_SHOTS_DIR=/path/to/shots scripts/test-app.sh walkthrough
 ```
+
+`scripts/test-app.sh unit` runs the app's own tests the same way. The script stops a run that goes over its time limit, and turns off xcodebuild's diagnostics collection: after any failing test, xcodebuild otherwise waits up to 10 minutes on a `simctl diagnose` of the simulator once the tests are done. Extra options go to xcodebuild, such as `-only-testing:GregularTVUITests/WalkthroughTests/test7MainPage`; `DESTINATION=…` picks another simulator.
 
 **Playback diagnostics** are a setting, not a build type: turn on **Show playback diagnostics** in Settings (click and hold while watching) to add a technical line to the banner. It shows quality, whether the server is transcoding and why, buffering, and how far behind live playback is. It's off by default. It never shows the server address, token, user or stream URLs.
 
