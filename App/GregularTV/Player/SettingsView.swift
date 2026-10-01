@@ -84,12 +84,24 @@ struct SettingsView: View {
                 }
             }
 
-            SettingsRows.section(nil, footer: [RemoteControls.hint(for: RemoteControls.settings, onScreen: [.close: "Done"])]) {
-                SettingsRows.row("Done") { dismiss() }
+            SettingsRows.section("Server", footer: [
+                "All Servers goes to the main page, to watch another server or add one. Menu from live TV goes there too; the channel plays on behind it.",
+            ]) {
+                if let server = app.currentServer {
+                    SettingsRows.row("Watching", detail: server.name == nil ? nil : server.address, value: server.title) {}
+                }
+                SettingsRows.row("All Servers") {
+                    dismiss()
+                    app.showMainPage()
+                }
                 SettingsRows.confirmedRow(app.signOutConfirmation) {
                     dismiss()
                     Task { await app.signOut() }
                 }
+            }
+
+            SettingsRows.section(nil, footer: [RemoteControls.hint(for: RemoteControls.settings, onScreen: [.close: "Done"])]) {
+                SettingsRows.row("Done") { dismiss() }
             }
         }
         .defaultFocus($focusedQuality, player.quality)

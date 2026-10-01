@@ -6,11 +6,16 @@ struct LoginView: View {
 
     /// Shown above the form, for example "Your sign-in has expired".
     private let notice: String?
+    /// Back to the main page, when there's a server to go back to (adding
+    /// another). Menu does it too. Nil for the first server: then Menu
+    /// leaves the app, as on the main page.
+    private let onCancel: (() -> Void)?
 
     /// - Parameter model: from `AppModel.makeLoginModel()`, which signs in
     ///   with it and knows which server kind it's talking to.
-    init(model: LoginModel, notice: String? = nil) {
+    init(model: LoginModel, notice: String? = nil, onCancel: (() -> Void)? = nil) {
         self.notice = notice
+        self.onCancel = onCancel
         _model = State(initialValue: model)
     }
 
@@ -32,8 +37,12 @@ struct LoginView: View {
             if let error = model.errorMessage {
                 Text(error).foregroundStyle(.red).multilineTextAlignment(.center)
             }
+            if let onCancel {
+                Button("Cancel", action: onCancel)
+            }
         }
         .padding(80)
+        .onExitCommand(perform: onCancel)
     }
 
     private var addressForm: some View {

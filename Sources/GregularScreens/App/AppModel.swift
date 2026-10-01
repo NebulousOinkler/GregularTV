@@ -3,7 +3,8 @@ import GregularCore
 import GregularJellyfin
 import Observation
 
-/// The app's top-level state: signed out, loading the library, or watching.
+/// The app's top-level state: the main page (the servers), signing in to
+/// one, loading its library, or watching it.
 ///
 /// This is where the three parts meet. It signs in to Jellyfin
 /// (`GregularJellyfin`), then hands the client on only as Core's interfaces:
@@ -17,11 +18,37 @@ import Observation
 public final class AppModel {
     public enum Phase {
         case launching
+        /// The sign-in screen: the first server, or another from the main page.
         case signedOut
+        /// The main page: the servers signed in to, and adding one. The app
+        /// opens here. Gone back to from live TV, the channel carries on
+        /// playing behind it, ready to go back to without re-tuning.
+        case mainPage(over: ChannelSurfer?)
         case loading
         case watching(ChannelSurfer)
         case failed(String)
     }
+
+    /// A server on the main page. Only what the Keychain already holds, and
+    /// its name, asked of the server while the page shows and never stored.
+    public struct Server: Identifiable, Sendable, Equatable {
+        /// The sign-in (server and user).
+        public let id: String
+        /// "192.168.1.5:8096", "tv.example.com": where it is, without the scheme.
+        public let address: String
+        /// The name the server gives itself, once it answers; nil until then, or if it doesn't.
+        public var name: String?
+        /// The one watched last: highlighted, and what Play/Pause watches.
+        public let isLastWatched: Bool
+        /// Its live TV is still playing behind the main page.
+        public var isPlaying = false
+
+        /// The name, or the address until the name is known.
+        public var title: String { name ?? address }
+    }
+
+    /// The servers signed in to, the one watched last first.
+    public private(set) var servers: [Server] = []
 
     public private(set) var phase: Phase = .launching
     /// Why the user is back at sign-in, if it wasn't their choice.
@@ -80,13 +107,134 @@ public final class AppModel {
         }
     }
 
-    /// Reconnect with saved credentials, or ask the user to sign in.
+    /// The main page, or the sign-in screen if there are no servers yet.
     public func launch() async {
-        guard let credentials = store.loadCredentials() else {
+        showMainPage()
+    }
+
+    /// Shows the servers, the one watched last highlighted; the sign-in
+    /// screen if there are none. From live TV, the channel carries on behind
+    /// the page, so going back to it is instant; elsewhere the library stays
+    /// in memory, so going back to the same server is still quick.
+    public func showMainPage() {
+        let saved = store.allCredentials()
+        guard !saved.isEmpty else {
+            liveTV?.player.stop()
             phase = .signedOut
             return
         }
-        await connect(credentials)
+        let behind = client == nil ? nil : liveTV
+        let playingID = behind == nil ? nil : client?.credentials.signInID
+        let known = Dictionary(servers.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
+        servers = saved.enumerated().map { index, credentials in
+            Server(id: credentials.signInID, address: Self.address(of: credentials.serverURL),
+                   name: known[credentials.signInID] ?? nil, isLastWatched: index == 0,
+                   isPlaying: credentials.signInID == playingID)
+        }
+        phase = .mainPage(over: behind)
+    }
+
+    /// The channels being watched: on screen, or playing on behind the main page.
+    public var liveTV: ChannelSurfer? {
+        switch phase {
+        case .watching(let surfer): surfer
+        case .mainPage(let surfer): surfer
+        default: nil
+        }
+    }
+
+    /// The main page is showing over live TV.
+    public var isOverLiveTV: Bool {
+        if case .mainPage(over: _?) = phase { true } else { false }
+    }
+
+    /// Asks each server on the main page for its name, to show instead of
+    /// its address. In memory only; a server that doesn't answer keeps its address.
+    public func loadServerNames() async {
+        let identity = identity
+        for server in servers where server.name == nil {
+            guard let credentials = credentials(for: server) else { continue }
+            let name = try? await JellyfinServer(url: credentials.serverURL, identity: identity).publicInfo().serverName
+            guard let name, !name.trimmingCharacters(in: .whitespaces).isEmpty,
+                  let index = servers.firstIndex(where: { $0.id == server.id }) else { continue }
+            servers[index].name = String(name.prefix(Self.longestServerName))
+        }
+    }
+
+    /// Names longer than this are cut short, so a server can't push the page around.
+    static let longestServerName = 60
+
+    /// Watch `server`. The one playing behind the main page comes back as it
+    /// is; the one watched just before goes straight back to live TV from the
+    /// library in memory; another loads its library.
+    public func watch(_ server: Server) async {
+        guard let credentials = credentials(for: server) else { return showMainPage() }
+        try? store.saveCredentials(credentials)   // now the one watched last
+        let sameServer = client?.credentials.signInID == credentials.signInID
+        if sameServer, case .mainPage(over: let surfer?) = phase {
+            phase = .watching(surfer)
+            return
+        }
+        liveTV?.player.stop()   // another server's channel, behind the page
+        if let client, sameServer, !library.isEmpty {
+            phase = watch(library: library, commercials: commercials, streams: client,
+                          preferring: preferences.lastChannelNumber)
+        } else {
+            await connect(credentials)
+        }
+    }
+
+    /// The server watched last (Play/Pause on the main page).
+    public func watchLastServer() async {
+        guard let server = servers.first else { return }
+        await watch(server)
+    }
+
+    /// The sign-in screen, to add another server.
+    public func addServer() {
+        liveTV?.player.stop()
+        signedOutReason = nil
+        phase = .signedOut
+    }
+
+    /// Whether the sign-in screen can go back to the main page (there's a server to go back to).
+    public var canCancelSignIn: Bool { !store.allCredentials().isEmpty }
+
+    /// Ask this before `signOut(of:)`.
+    public func signOutConfirmation(for server: Server) -> Confirmation {
+        Confirmation(action: "Sign Out", question: "Sign out of \(server.title)?",
+                     detail: "You'll need to sign in again to watch it. Your channels and set times stay on this \(identity.deviceName).")
+    }
+
+    /// Signs out of `server`: revokes its token and forgets it. Then the main
+    /// page, or the sign-in screen if it was the last.
+    public func signOut(of server: Server) async {
+        guard let credentials = credentials(for: server) else { return showMainPage() }
+        if client?.credentials.signInID == credentials.signInID { forgetLibrary() }
+        await JellyfinClient(credentials: credentials, identity: identity).signOut(clearing: store)
+        servers.removeAll { $0.id == server.id }
+        showMainPage()
+    }
+
+    private func credentials(for server: Server) -> Credentials? {
+        store.allCredentials().first { $0.signInID == server.id }
+    }
+
+    /// "192.168.1.5:8096" from "http://192.168.1.5:8096/jellyfin": host, port and any path.
+    static func address(of url: URL) -> String {
+        guard let host = url.host() else { return url.absoluteString }
+        let port = url.port.map { ":\($0)" } ?? ""
+        let path = url.path() == "/" ? "" : url.path()
+        return host + port + path
+    }
+
+    /// Drops the library and client for the server being left.
+    private func forgetLibrary() {
+        liveTV?.player.stop()
+        library = []
+        commercials = []
+        commercialsStatus = nil
+        client = nil
     }
 
     /// The sign-in steps for the sign-in screen. Signing in there carries on here.
@@ -244,20 +392,32 @@ public final class AppModel {
                       preferring: surfer.player.schedule.channel.number)
     }
 
-    /// Ask this before `signOut()`.
-    public var signOutConfirmation: Confirmation {
-        Confirmation(action: "Sign Out", question: "Sign out of Jellyfin?",
-                     detail: "You'll need to sign in again to watch. Your channels and set times stay on this \(identity.deviceName).")
+    /// The server being watched, as the main page lists it.
+    public var currentServer: Server? {
+        guard let credentials = client?.credentials else { return nil }
+        return Server(id: credentials.signInID, address: Self.address(of: credentials.serverURL),
+                      name: servers.first { $0.id == credentials.signInID }?.name, isLastWatched: true)
     }
 
+    /// Ask this before `signOut()` (Settings: the server being watched).
+    public var signOutConfirmation: Confirmation {
+        Confirmation(action: "Sign Out", question: "Sign out of \(currentServer?.title ?? "this server")?",
+                     detail: "You'll need to sign in again to watch it. Your channels and set times stay on this \(identity.deviceName).")
+    }
+
+    /// Signs out of the server being watched, then the main page.
     public func signOut() async {
-        if case .watching(let surfer) = phase { surfer.player.stop() }
-        library = []
-        commercials = []
-        commercialsStatus = nil
-        await client?.signOut(clearing: store)
-        client = nil
-        phase = .signedOut
+        guard let server = currentServer else { return showMainPage() }
+        await signOut(of: server)
+    }
+
+    /// Tries the server watched last again, after a failure.
+    public func retry() async {
+        if let credentials = client?.credentials ?? store.loadCredentials() {
+            await connect(credentials)
+        } else {
+            showMainPage()
+        }
     }
 
     // MARK: - Private
@@ -338,14 +498,17 @@ public final class AppModel {
     /// The server no longer accepts our token. Forget it locally (there's
     /// nothing to revoke) and ask the user to sign in again.
     private func sessionExpired() {
-        if case .watching(let surfer) = phase { surfer.player.stop() }
-        try? store.deleteCredentials()
+        liveTV?.player.stop()
+        if let credentials = client?.credentials { try? store.deleteCredentials(credentials) }
+        library = []
+        commercials = []
         client = nil
         signedOutReason = JellyfinError.unauthorized.localizedDescription
         phase = .signedOut
     }
 
     private func connect(_ credentials: Credentials) async {
+        liveTV?.player.stop()
         phase = .loading
         let client = JellyfinClient(credentials: credentials, identity: identity)
         self.client = client
