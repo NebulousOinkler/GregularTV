@@ -3,12 +3,15 @@ import Foundation
 /// One channel's definition, as written in `channels.json`.
 ///
 /// ```json
-/// { "number": 2, "name": "Comedy", "itemTypes": ["Episode"],
+/// { "number": 2, "name": "Comedy",
 ///   "source": { "type": "genre", "anyOf": ["Comedy", "Sitcom"] },
-///   "strategy": "series-round-robin", "seed": 2 }
+///   "strategy": "shuffled-mix", "films": 0.35, "needsVariety": true, "seed": 2 }
 /// ```
 ///
 /// Optional keys: `itemTypes` (default: both), `padTo` (minutes; off by default),
+/// `films` (a mixed channel's share of airtime for films, 0 to 1, for the
+/// `shuffled-mix` strategy), `needsVariety` (hidden unless the library has
+/// enough different programmes; see `ChannelVariety`),
 /// `filler` (what fills padding gaps, a `GapFiller` ID; default `"none"`),
 /// `epoch` (ISO 8601; default `Channel.defaultEpoch`), and `fixed` with
 /// `timeZone` (programmes at set local times, laid over the channel's shared
@@ -32,6 +35,12 @@ public struct Channel: Sendable {
     public let epoch: Date
     /// Programmes at set local times, laid over the shared schedule.
     public let fixed: [FixedProgramme]
+    /// A mixed channel's share of airtime for films, 0 to 1 (`ShuffledMix`).
+    /// The library can move it (`ChannelVariety.filmShare(wanted:)`).
+    public let filmShare: Double?
+    /// Hidden unless the library has enough different programmes to fill a
+    /// day without repeats coming round too soon (`ChannelVariety.fillsADay`).
+    public let needsVariety: Bool
 
     public init(
         number: Int,
@@ -43,7 +52,9 @@ public struct Channel: Sendable {
         padToMinutes: Int? = nil,
         fillerID: String = "none",
         epoch: Date = Channel.defaultEpoch,
-        fixed: [FixedProgramme] = []
+        fixed: [FixedProgramme] = [],
+        filmShare: Double? = nil,
+        needsVariety: Bool = false
     ) {
         self.number = number
         self.name = name
@@ -55,18 +66,22 @@ public struct Channel: Sendable {
         self.fillerID = fillerID
         self.epoch = epoch
         self.fixed = fixed
+        self.filmShare = filmShare
+        self.needsVariety = needsVariety
     }
 
     /// The same channel with its clock started at `epoch` instead.
     public func withEpoch(_ epoch: Date) -> Channel {
         Channel(number: number, name: name, itemTypes: itemTypes, source: source, strategyID: strategyID, seed: seed,
-                padToMinutes: padToMinutes, fillerID: fillerID, epoch: epoch, fixed: fixed)
+                padToMinutes: padToMinutes, fillerID: fillerID, epoch: epoch, fixed: fixed,
+                filmShare: filmShare, needsVariety: needsVariety)
     }
 
     /// The same channel with more set times (a household's `SetTimes`).
     public func adding(_ setTimes: [FixedProgramme]) -> Channel {
         Channel(number: number, name: name, itemTypes: itemTypes, source: source, strategyID: strategyID, seed: seed,
-                padToMinutes: padToMinutes, fillerID: fillerID, epoch: epoch, fixed: fixed + setTimes)
+                padToMinutes: padToMinutes, fillerID: fillerID, epoch: epoch, fixed: fixed + setTimes,
+                filmShare: filmShare, needsVariety: needsVariety)
     }
 
     /// True when the item should be on this channel.
@@ -79,7 +94,7 @@ public struct Channel: Sendable {
 
 extension Channel: Decodable {
     private enum CodingKeys: String, CodingKey {
-        case number, name, itemTypes, source, strategy, seed, padTo, filler, epoch, timeZone, fixed
+        case number, name, itemTypes, source, strategy, seed, padTo, filler, epoch, timeZone, fixed, films, needsVariety
     }
 
     private enum SourceTypeKey: String, CodingKey {
@@ -95,6 +110,12 @@ extension Channel: Decodable {
         seed = UInt64(bitPattern: try c.decode(Int64.self, forKey: .seed))
         padToMinutes = try c.decodeIfPresent(Int.self, forKey: .padTo)
         epoch = try c.decodeIfPresent(Date.self, forKey: .epoch) ?? Channel.defaultEpoch
+        filmShare = try c.decodeIfPresent(Double.self, forKey: .films)
+        if let filmShare, !(0...1).contains(filmShare) {
+            throw DecodingError.dataCorruptedError(forKey: .films, in: c,
+                                                   debugDescription: "Channel \(number): \"films\" is a share of airtime, from 0 to 1.")
+        }
+        needsVariety = try c.decodeIfPresent(Bool.self, forKey: .needsVariety) ?? false
         // The channel's "timeZone" is where its set times are read.
         let entries = try c.decodeIfPresent([FixedProgramme].self, forKey: .fixed) ?? []
         if let identifier = try c.decodeIfPresent(String.self, forKey: .timeZone) {

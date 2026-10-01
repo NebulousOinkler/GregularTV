@@ -39,10 +39,17 @@ public protocol ScheduleStrategy: Sendable {
     ///     before this point. It can be negative, for times before the epoch.
     ///   - rng: a random source seeded for this run.
     func programmes(from content: ChannelContent, startingAt position: Int, rng: SeededRandom) -> AnyIterator<MediaItem>
+
+    /// The average slot (milliseconds) per position of the stream, when the
+    /// strategy knows it better than the average over every item, for where
+    /// each run's stream starts. Nil (the default) uses that average.
+    func averageSlotLength(of content: ChannelContent, slotLength: (MediaItem) -> Int64) -> Double?
 }
 
 extension ScheduleStrategy {
     public static var mayReorderToFit: Bool { true }
+
+    public func averageSlotLength(of content: ChannelContent, slotLength: (MediaItem) -> Int64) -> Double? { nil }
 
     /// The stream for a strategy that can say what airs at any position on
     /// its own: `programme(at:)` for `position`, `position + 1`, and so on.

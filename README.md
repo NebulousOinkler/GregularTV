@@ -45,6 +45,16 @@ Run app tests on a dedicated simulator ("GregularTV Tests"), not the one you're 
 
 Every channel's running order comes from one 10-character **schedule code** (like `7KQM2-X9PDA`), shown and editable in Settings (click and hold while watching). The first launch picks a random one. Two Apple TVs with the same code, the same Jellyfin library and the same `channels.json` show the same programmes at the same time on every channel. Changing the code reshuffles everything. See PLAN.md §9b for how the code becomes each channel's shuffle.
 
+## The channels
+
+Sixteen channels ship in `channels.json`. Channels 1–9 are themes that mix TV and films: Gregular (everything), Comedy, Drama, Animation, Sci-Fi & Fantasy, Kids & Family, Real Life (documentaries, reality, cooking, travel and the like), Crime & Mystery, and Action & Adventure. Channels 10–16 are films only: Movies, Action, Comedy, Horror & Thriller, Classics (before 1980), Sci-Fi & Fantasy, and Drama & Romance.
+
+The line-up adapts to the library you connect to, with nothing to set:
+- **A themed channel only appears if it has variety:** enough different programmes to fill a day with no series coming round more than about once a day, and no film more than about once every three days. A small library shows fewer channels; Gregular and Movies are always on.
+- **Each mixed channel asks for a share of airtime for films** (`"films": 0.35` is 35%), and the library can move it: a channel with few series fills the rest with films, and one with few films fills it with TV. The series and the films each keep their own shuffle. See PLAN.md §9.
+
+Each channel's day starts at midnight UTC (5 PM Pacific, 8 PM Eastern): that's where one day's shuffle meets the next, so the odd programme from the afternoon can come round again soon after, and a film channel's last break of the day can run long.
+
 ## Your own channels
 
 **Settings › Your channels › Add a Channel** makes a channel on the Apple TV: a name, a number from 20 to 99, episodes or movies or both, and one rule (everything, a genre, a series, a range of years, or a tag), picked from your library. Half-hour slots and commercials are on by default. A preview shows how many programmes match and the next few hours as they'd air. Custom channels join the guide like any other, and are hidden while nothing matches.
@@ -157,6 +167,8 @@ TEST_RUNNER_SHOTS_DIR=/path/to/shots xcodebuild test -project App/GregularTV.xco
 | Play video some other way (for a web version) | Implement `PlayerDeck` (`Sources/GregularScreens/Player/PlayerDeck.swift`), as `AVPlayerDeck` does for Apple TV |
 | Connect a different media server | Implement `MediaLibrary` and `StreamSource` (`Sources/GregularCore/Services/MediaServices.swift`), and use it in `AppModel` |
 | Change the channel line-up | `Sources/GregularCore/Resources/channels.json`, then run `swift test` to validate it |
+| Change how much variety a themed channel needs, or how a mix gives way | `ChannelVariety.seriesDays` and `filmDays` in `Sources/GregularCore/Scheduling/ChannelVariety.swift`; a mixed channel's `"films"` share in `channels.json` |
+| Check the line-up's variety and the shuffle's evenness | `SCHEDULE_AUDIT=1 swift test --filter ScheduleAudit` (about 25 seconds; prints `AUDIT` lines) |
 | Add a shuffle/scheduling algorithm | New file in `Sources/GregularCore/Scheduling/Strategies/`, then add it to `StrategyRegistry.all` |
 | Add a special rule (something that must hold on every channel) | A type in `Sources/GregularCore/Rules/` conforming to one of the rule kinds in `ScheduleRule.swift`, then add it to `ScheduleRules.all` |
 | Add a way to choose channel content | New type in `Sources/GregularCore/Channels/Sources/`, then add it to `ChannelSourceRegistry.all` |

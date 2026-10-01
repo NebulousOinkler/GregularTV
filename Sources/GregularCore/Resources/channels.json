@@ -2,56 +2,69 @@
   "commercials": { "library": "Commercials" },
 
   "channels": [
-    { "number": 1, "name": "All TV", "itemTypes": ["Episode"],
+    { "number": 1, "name": "Gregular",
       "source": { "type": "all" },
-      "strategy": "shuffled-shows", "filler": "shuffle", "seed": 1, "padTo": 30 },
+      "strategy": "shuffled-mix", "films": 0.35, "filler": "shuffle", "seed": 1, "padTo": 30 },
 
-    { "number": 2, "name": "Comedy", "itemTypes": ["Episode"],
-      "source": { "type": "genre", "anyOf": ["Comedy", "Sitcom"] },
-      "strategy": "shuffled-shows", "filler": "shuffle", "seed": 2, "padTo": 30 },
+    { "number": 2, "name": "Comedy",
+      "source": { "type": "genre", "anyOf": ["Comedy", "Sitcom", "Stand-Up", "Stand-up Comedy"] },
+      "strategy": "shuffled-mix", "films": 0.35, "needsVariety": true, "filler": "shuffle", "seed": 2, "padTo": 30 },
 
-    { "number": 3, "name": "Drama", "itemTypes": ["Episode"],
-      "source": { "type": "genre", "anyOf": ["Drama"] },
-      "strategy": "shuffled-shows", "filler": "shuffle", "seed": 3, "padTo": 30 },
+    { "number": 3, "name": "Drama",
+      "source": { "type": "genre", "anyOf": ["Drama", "Romance", "Soap"] },
+      "strategy": "shuffled-mix", "films": 0.4, "needsVariety": true, "filler": "shuffle", "seed": 3, "padTo": 30 },
 
     { "number": 4, "name": "Animation",
       "source": { "type": "genre", "anyOf": ["Animation", "Anime"] },
-      "strategy": "shuffled-shows", "filler": "shuffle", "seed": 4, "padTo": 30 },
+      "strategy": "shuffled-mix", "films": 0.3, "needsVariety": true, "filler": "shuffle", "seed": 4, "padTo": 30 },
 
-    { "number": 5, "name": "Sci-Fi", "itemTypes": ["Episode"],
-      "source": { "type": "genre", "anyOf": ["Science Fiction", "Sci-Fi", "Sci-Fi & Fantasy"] },
-      "strategy": "shuffled-shows", "filler": "shuffle", "seed": 5, "padTo": 30 },
+    { "number": 5, "name": "Sci-Fi & Fantasy",
+      "source": { "type": "genre", "anyOf": ["Science Fiction", "Sci-Fi", "Sci-Fi & Fantasy", "Fantasy"] },
+      "strategy": "shuffled-mix", "films": 0.4, "needsVariety": true, "filler": "shuffle", "seed": 5, "padTo": 30 },
 
     { "number": 6, "name": "Kids & Family",
       "source": { "type": "genre", "anyOf": ["Family", "Kids", "Children"] },
-      "strategy": "shuffled-shows", "filler": "shuffle", "seed": 6, "padTo": 30 },
+      "strategy": "shuffled-mix", "films": 0.35, "needsVariety": true, "filler": "shuffle", "seed": 6, "padTo": 30 },
 
-    { "number": 7, "name": "Documentary",
-      "source": { "type": "genre", "anyOf": ["Documentary"] },
-      "strategy": "shuffled-shows", "filler": "shuffle", "seed": 7, "padTo": 30 },
+    { "number": 7, "name": "Real Life",
+      "source": { "type": "genre", "anyOf": ["Documentary", "Reality", "Reality-TV", "Food", "Travel", "Home and Garden",
+                                             "Game Show", "Talk", "Talk Show", "History", "Nature", "Sport", "Music"] },
+      "strategy": "shuffled-mix", "films": 0.25, "needsVariety": true, "filler": "shuffle", "seed": 7, "padTo": 30 },
 
-    { "number": 8, "name": "Reality", "itemTypes": ["Episode"],
-      "source": { "type": "genre", "anyOf": ["Reality", "Reality-TV"] },
-      "strategy": "shuffled-shows", "filler": "shuffle", "seed": 8, "padTo": 30 },
+    { "number": 8, "name": "Crime & Mystery",
+      "source": { "type": "genre", "anyOf": ["Crime", "Mystery", "Thriller", "Suspense"] },
+      "strategy": "shuffled-mix", "films": 0.4, "needsVariety": true, "filler": "shuffle", "seed": 8, "padTo": 30 },
+
+    { "number": 9, "name": "Action & Adventure",
+      "source": { "type": "genre", "anyOf": ["Action", "Adventure", "Action & Adventure", "War", "War & Politics", "Western"] },
+      "strategy": "shuffled-mix", "films": 0.45, "needsVariety": true, "filler": "shuffle", "seed": 9, "padTo": 30 },
 
     { "number": 10, "name": "Movies", "itemTypes": ["Movie"],
       "source": { "type": "all" },
       "strategy": "shuffled-shows", "filler": "shuffle", "seed": 10, "padTo": 30 },
 
     { "number": 11, "name": "Action Movies", "itemTypes": ["Movie"],
-      "source": { "type": "genre", "anyOf": ["Action", "Adventure", "Action & Adventure"] },
-      "strategy": "shuffled-shows", "filler": "shuffle", "seed": 11, "padTo": 30 },
+      "source": { "type": "genre", "anyOf": ["Action", "Adventure", "War", "Western"] },
+      "strategy": "shuffled-shows", "needsVariety": true, "filler": "shuffle", "seed": 11, "padTo": 30 },
 
     { "number": 12, "name": "Comedy Movies", "itemTypes": ["Movie"],
       "source": { "type": "genre", "anyOf": ["Comedy"] },
-      "strategy": "shuffled-shows", "filler": "shuffle", "seed": 12, "padTo": 30 },
+      "strategy": "shuffled-shows", "needsVariety": true, "filler": "shuffle", "seed": 12, "padTo": 30 },
 
     { "number": 13, "name": "Horror & Thriller", "itemTypes": ["Movie"],
       "source": { "type": "genre", "anyOf": ["Horror", "Thriller"] },
-      "strategy": "shuffled-shows", "filler": "shuffle", "seed": 13, "padTo": 30 },
+      "strategy": "shuffled-shows", "needsVariety": true, "filler": "shuffle", "seed": 13, "padTo": 30 },
 
     { "number": 14, "name": "Classics", "itemTypes": ["Movie"],
       "source": { "type": "years", "to": 1979 },
-      "strategy": "shuffled-shows", "filler": "shuffle", "seed": 14, "padTo": 30 }
+      "strategy": "shuffled-shows", "needsVariety": true, "filler": "shuffle", "seed": 14, "padTo": 30 },
+
+    { "number": 15, "name": "Sci-Fi & Fantasy Movies", "itemTypes": ["Movie"],
+      "source": { "type": "genre", "anyOf": ["Science Fiction", "Fantasy"] },
+      "strategy": "shuffled-shows", "needsVariety": true, "filler": "shuffle", "seed": 15, "padTo": 30 },
+
+    { "number": 16, "name": "Drama & Romance Movies", "itemTypes": ["Movie"],
+      "source": { "type": "genre", "anyOf": ["Drama", "Romance"] },
+      "strategy": "shuffled-shows", "needsVariety": true, "filler": "shuffle", "seed": 16, "padTo": 30 }
   ]
 }

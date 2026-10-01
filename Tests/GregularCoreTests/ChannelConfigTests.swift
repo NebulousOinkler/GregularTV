@@ -15,14 +15,14 @@ struct ChannelConfigTests {
         }
     }
 
-    @Test func bundledLineupHidesChannelsWithNoContent() throws {
-        let schedules = try ChannelLineup.bundled().schedules(for: Fixtures.library)
-        let names = Set(schedules.map(\.channel.name))
-        #expect(names.contains("All TV"))
-        #expect(names.contains("Sci-Fi"))
-        #expect(names.contains("Classics"))
-        #expect(!names.contains("Reality"))
-        #expect(!names.contains("Documentary"))
+    /// The fixture library is tiny: only the two catch-all channels, which
+    /// never need variety, are on. Every themed channel needs it.
+    @Test func bundledLineupHidesChannelsWithoutEnoughVariety() throws {
+        let lineup = try ChannelLineup.bundled()
+        let schedules = lineup.schedules(for: Fixtures.library)
+        #expect(schedules.map(\.channel.name) == ["Gregular", "Movies"])
+        #expect(lineup.channels.filter { !$0.needsVariety }.map(\.number) == [1, 10])
+        #expect(lineup.channels.contains { $0.filmShare == nil && $0.itemTypes == [.movie] }, "Some channels are films only")
     }
 
     @Test func decodesAllFields() throws {

@@ -11,6 +11,7 @@ public enum StrategyRegistry {
     public static var all: [any ScheduleStrategy.Type] {
         [
             ShuffledShows.self,
+            ShuffledMix.self,
             RandomShuffle.self,
             SequentialBySeries.self,
             SeriesRoundRobin.self,
