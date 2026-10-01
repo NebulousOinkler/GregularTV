@@ -53,7 +53,7 @@ The line-up adapts to the library you connect to, with nothing to set:
 - **A themed channel only appears if it has variety:** enough different programmes to fill a day with no series coming round more than about once a day, and no film more than about once every three days. A small library shows fewer channels; Gregular and Movies are always on.
 - **Each mixed channel asks for a share of airtime for films** (`"films": 0.35` is 35%), and the library can move it: a channel with few series fills the rest with films, and one with few films fills it with TV. The series and the films each keep their own shuffle. See PLAN.md §9.
 
-Each channel's day starts at midnight UTC (5 PM Pacific, 8 PM Eastern): that's where one day's shuffle meets the next, so the odd programme from the afternoon can come round again soon after, and a film channel's last break of the day can run long.
+Each channel's day starts at midnight Pacific (3 AM Eastern), daylight saving and all: that's where one day's shuffle meets the next, so the odd programme from the evening can come round again soon after, and a film channel's last break of the day can run long. It's set in `ChannelSchedule.dayTimeZone`.
 
 ## Your own channels
 
