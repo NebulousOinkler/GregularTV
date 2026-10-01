@@ -67,8 +67,10 @@ public struct ChannelSchedule: Sendable {
     let filler: any GapFiller
     let fillerPool: [MediaItem]
     private let strategy: any ScheduleStrategy
-    /// What may air straight after what (`SequenceRule`s for programmes).
-    let programmeRules = ScheduleRules.sequenceRules(for: .programmes)
+    /// What may air straight after what (`SequenceRule`s for programmes, and
+    /// for commercials). None when there's only one: they'd always give way.
+    let programmeRules: [any SequenceRule]
+    let commercialRules: [any SequenceRule]
     /// Which of the shared schedule's airings set times cover (`CoverRule`s).
     let coverRules = ScheduleRules.rules(of: (any CoverRule).self)
     /// Place set times (`PinRule`s).
@@ -129,9 +131,11 @@ public struct ChannelSchedule: Sendable {
         self.strategy = strategy
         self.filler = filler
         // Numbered alphabetically, like the shows.
-        let pool = fillerPool.filter { $0.duration > 0 }
+        let pool = fillerPool.filter { $0.duration >= Self.shortestCommercial }
             .sorted { ($0.name.lowercased(), $0.id) < ($1.name.lowercased(), $1.id) }
         self.fillerPool = pool
+        programmeRules = content.items.count > 1 ? ScheduleRules.sequenceRules(for: .programmes) : []
+        commercialRules = pool.count > 1 ? ScheduleRules.sequenceRules(for: .commercials) : []
 
         let slots = eligible.map { Self.slotLength(of: $0, padToMinutes: channel.padToMinutes) }
         self.longestSlot = slots.max() ?? 0
@@ -431,8 +435,8 @@ public struct ChannelSchedule: Sendable {
             self.run = run
             self.join = join
             joinsRuns = join != nil
-            programmes = RuledStream(AnyIterator { nil }, for: .programmes)
-            commercials = CommercialQueue(AnyIterator { nil })
+            programmes = RuledStream(AnyIterator { nil }, rules: schedule.programmeRules)
+            commercials = CommercialQueue(AnyIterator { nil }, rules: schedule.commercialRules)
             begin(run)
         }
 
@@ -489,8 +493,8 @@ public struct ChannelSchedule: Sendable {
             cursor = schedule.runStart(run)
             runEnd = schedule.runStart(run + 1)
             leftOut = join?.leftOut ?? 0
-            programmes = RuledStream(schedule.stream(forRun: run), for: .programmes)
-            commercials = CommercialQueue(schedule.commercials(forRun: run))
+            programmes = RuledStream(schedule.stream(forRun: run), rules: schedule.programmeRules)
+            commercials = CommercialQueue(schedule.commercials(forRun: run), rules: schedule.commercialRules)
             windows = schedule.setTimeWindows(from: cursor - schedule.longestSetTime, to: runEnd + schedule.longestSetTime)
         }
 
@@ -538,8 +542,8 @@ public struct ChannelSchedule: Sendable {
         private var stream: RuledStream
         private var waiting: MediaItem?
 
-        init(_ clips: AnyIterator<MediaItem>) {
-            stream = RuledStream(clips, for: .commercials)
+        init(_ clips: AnyIterator<MediaItem>, rules: [any SequenceRule]) {
+            stream = RuledStream(clips, rules: rules)
         }
 
         mutating func peek() -> MediaItem? {
@@ -556,6 +560,14 @@ public struct ChannelSchedule: Sendable {
     /// A gap this long or shorter (milliseconds) gets no commercials: the
     /// screen stays blank, with the "Up next" card, until the next programme.
     static let shortestBreak: Int64 = 60_000
+
+    /// The shortest slot (milliseconds): a shorter programme is followed by a
+    /// break. It keeps a channel of very short clips to at most 288
+    /// programmes a day, so working out a day stays quick.
+    public static let shortestSlot: Int64 = 5 * 60_000
+    /// Commercials shorter than this (seconds) aren't used: a pool of
+    /// one-second clips would otherwise be thousands of airings a day.
+    public static let shortestCommercial: TimeInterval = 5
 
     /// The longest a mid-roll break inside a film can be (milliseconds). A
     /// film's leftover up to this long all goes after it; more is shared with
@@ -690,7 +702,7 @@ public struct ChannelSchedule: Sendable {
     /// the epoch): at the next `padTo` boundary, or with no `padTo`, as soon
     /// as it ends.
     static func slotEnd(of item: MediaItem, startingAt start: Int64, padToMinutes: Int?) -> Int64 {
-        let end = start + milliseconds(of: item.duration)
+        let end = start + max(milliseconds(of: item.duration), shortestSlot)
         guard let pad = padToMinutes, pad > 0 else { return end }
         let unit = Int64(pad) * 60_000
         return -floorDivide(-end, unit) * unit   // rounded up, before the epoch too
@@ -698,7 +710,7 @@ public struct ChannelSchedule: Sendable {
 
     /// The longest a slot can be: the programme rounded up to a whole `padTo`.
     static func slotLength(of item: MediaItem, padToMinutes: Int?) -> Int64 {
-        let length = milliseconds(of: item.duration)
+        let length = max(milliseconds(of: item.duration), shortestSlot)
         guard let pad = padToMinutes, pad > 0 else { return length }
         let unit = Int64(pad) * 60_000
         return (length + unit - 1) / unit * unit

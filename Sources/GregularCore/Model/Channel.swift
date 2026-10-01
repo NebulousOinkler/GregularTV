@@ -99,10 +99,6 @@ extension Channel: Decodable {
         case number, name, itemTypes, source, strategy, seed, padTo, filler, epoch, timeZone, fixed, films, needsVariety
     }
 
-    private enum SourceTypeKey: String, CodingKey {
-        case type
-    }
-
     public init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
 
@@ -146,14 +142,11 @@ extension Channel: Decodable {
                 debugDescription: "Channel \(number): unknown filler '\(fillerID)'. Known: \(known)")
         }
 
-        let sourceDecoder = try c.superDecoder(forKey: .source)
-        let typeName = try sourceDecoder.container(keyedBy: SourceTypeKey.self).decode(String.self, forKey: .type)
-        guard let sourceType = ChannelSourceRegistry.sourceType(named: typeName) else {
-            let known = ChannelSourceRegistry.all.map { $0.type }.joined(separator: ", ")
-            throw DecodingError.dataCorruptedError(
-                forKey: .source, in: c,
-                debugDescription: "Channel \(number): unknown source type '\(typeName)'. Known: \(known)")
+        do {
+            source = try ChannelSourceRegistry.decode(from: c.superDecoder(forKey: .source))
+        } catch DecodingError.dataCorrupted(let context) {
+            throw DecodingError.dataCorruptedError(forKey: .source, in: c,
+                                                   debugDescription: "Channel \(number): \(context.debugDescription)")
         }
-        source = try sourceType.init(from: sourceDecoder)
     }
 }

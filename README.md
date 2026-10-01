@@ -55,17 +55,28 @@ The line-up adapts to the library you connect to, with nothing to set:
 
 Each channel's day starts at midnight Pacific (3 AM Eastern), daylight saving and all: that's where one day's shuffle meets the next, so the odd programme from the evening can come round again soon after, and a film channel's last break of the day can run long. It's set in `ChannelSchedule.dayTimeZone`.
 
-## Your own channels
+## Your own channels and set times
 
-**Settings › Your channels › Add a Channel** makes a channel on the Apple TV: a name, a number from 20 to 99, episodes or movies or both, and one rule (everything, a genre, a series, a range of years, or a tag), picked from your library. Half-hour slots and commercials are on by default. A preview shows how many programmes match and the next few hours as they'd air. Custom channels join the guide like any other, and are hidden while nothing matches.
+Your own channels and set times are made on the **editing page**, in a web browser on a phone or computer on your home network, where there's a keyboard and search. Settings on the Apple TV lists them, but doesn't change them. The page is **off by default**, so out of the box there are only the bundled channels.
 
-Each channel has a **channel code**, shown in its editor. Type it into another Apple TV's Settings to add the same channel there: with the same schedule code, both show the same programmes. Custom channels are the one thing from your library the app keeps: each is saved as its channel code (the name, number and the genre, series or tag you picked), and Settings says so.
+**To edit:** turn on **Settings › Edit from a phone or computer › Editing page**, then choose **Open the Editing Page**. The TV shows an address (like `http://192.168.1.20:8080`) and a six-digit code. Open the address, type the code, make your changes, and choose **Save to Apple TV**: the channels are rebuilt straight away.
+
+**A channel** has a name, a number from 20 to 99, episodes or movies or both, and a rule of up to 20 conditions on genres, series, tags and years (your library's names are suggested as you type). Each condition joins the rest one of three ways:
+- **Any of:** a programme needs to match at least one of these (none of them means everything).
+- **All of:** it must match every one.
+- **None of:** it's left out.
+
+So "any of Comedy and Taskmaster, none of Christmas" is comedy or Taskmaster, but nothing tagged Christmas. Half-hour slots and commercials are on by default. **Preview** shows how many programmes match and the next few hours as they'd air. Your channels join the guide like any other, and are hidden while nothing matches. Changing a channel's number takes its set times with it; deleting it deletes them.
+
+**Sharing:** the page's **JSON** tab shows all your channels and set times as one document. Copy it, and paste it into another Apple TV's page (then **Use This JSON** and save) to have the same there: with the same schedule code, both show the same programmes.
+
+**The page only exists while its screen is open on the TV**, and closing the screen stops it. It answers only devices on your home network, at the address shown, with the code; five wrong codes lock it until you close and reopen the screen. It loads nothing from the internet, and it never sees your Jellyfin address, password or token: only your genre, series, tag and film names. Everything it saves is checked before it's used.
 
 ## Programmes at set times
 
 A channel can air certain programmes at set local times, such as a series at 6:00 and 6:30 PM on weekdays, or a film every 2 February. Set times are laid **over** the channel's shared schedule: while one is on, its programme is; the rest of the time the channel is exactly what everyone with the same schedule code sees, joined partway through a programme if one was already on. So a household can add set times without drifting out of step with the people it shares a code with.
 
-**Settings › Set times** adds them to any channel, bundled or custom, in the Apple TV's time zone. Each channel's set times have a **set-times code**, shown in the editor: type it into another Apple TV to watch the same set times there. They're saved on the Apple TV as that code. A channel can also ship with set times in `channels.json`:
+Set times are made on the editing page (above), on any channel, bundled or custom, in a time zone you choose (the Apple TV's, to start with). A channel can also ship with set times in `channels.json`:
 
 ```json
 "timeZone": "America/New_York",
@@ -75,7 +86,7 @@ A channel can air certain programmes at set local times, such as a series at 6:0
 ]
 ```
 
-A series plays its next episode at each airing. `exclusive` (*Only at these times* in Settings) means it only airs then: wherever the shared schedule would air it otherwise, another programme stands in for that slot, and nothing else moves. See PLAN.md §9c.
+A series plays its next episode at each airing. `exclusive` (*Only at these times* on the editing page) means it only airs then: wherever the shared schedule would air it otherwise, another programme stands in for that slot, and nothing else moves. See PLAN.md §9c.
 
 ## Special rules
 
@@ -133,6 +144,7 @@ Debug builds accept launch arguments. Release builds leave them out entirely.
 | `-openChannelList` | Opens the channel list on launch, to check its focus handling without arrow keys. |
 | `-openGuide` | Opens the guide on launch, to check it without a Menu button. |
 | `-pretendCommercials` | Uses a dozen library videos, cut to 30–120 s, as commercials, to test breaks without a `Commercials` library. |
+| `-openSettings editingPage` | Opens Settings, then the editing page's screen (whether or not its switch is on). |
 
 ```bash
 xcrun simctl launch booted dev.gregulartv.GregularTV -handoffTest
@@ -213,13 +225,15 @@ Gregular TV is built to know as little as possible about your Jellyfin server, a
 |---|---|---|
 | Server address, access token, user ID | Keychain, this device only (excluded from backups and iCloud) | To reconnect without signing in again |
 | A random device ID | Keychain, this device only | Jellyfin requires one; it's kept across sign-outs so your device list doesn't fill up |
-| Last channel number, streaming quality, schedule code, diagnostics and commercials switches | App preferences | Client settings; no server data |
-| Your custom channels, as their channel codes | App preferences | What you typed or picked: a name, a number, and the genre, series or tag chosen |
-| Your set times, as their set-times codes | App preferences | What you typed or picked: a channel number, the series or film names, the times and days, and your time zone |
+| Last channel number, streaming quality, schedule code, the diagnostics, commercials and editing-page switches | App preferences | Client settings; no server data |
+| Your custom channels, packed as short codes | App preferences | What you typed or picked: a name, a number, and the genres, series, tags and years in its rule |
+| Your set times, packed as short codes | App preferences | What you typed or picked: a channel number, the series or film names, the times and days, and your time zone |
 
 **Never stored:** your password (it's used for one sign-in request only), your library (titles, episodes, artwork; a custom channel or set time keeps only the names you picked for it), schedules, watch history, or logs. The library is fetched into memory at launch and is gone when the app quits. Schedules are recomputed from each channel's seed and the clock, so there's nothing to save.
 
 **Never sent to Jellyfin:** what you're watching. The app makes no playback-reporting calls, so nothing appears under "Now Playing" and your watched status and resume points are untouched. The app also refuses remote control from other Jellyfin clients.
+
+**The editing page** (off unless you turn it on): while its screen is open, a browser on your home network can see your channels and set times and the genre, series, tag and film names the editors offer, as the Apple TV's own Settings shows them. Nothing about the server itself, and nothing is kept or sent anywhere else.
 
 **What Jellyfin can still see:** a sign-in in its activity log, this Apple TV (named just "Apple TV") in its device list, and the stream requests themselves, as for any client.
 
@@ -233,9 +247,10 @@ Gregular TV is built to know as little as possible about your Jellyfin server, a
 
 ## Security
 
-The app treats what reaches it as untrusted: the server's replies, and codes typed in from anywhere.
+The app treats what reaches it as untrusted: the server's replies, codes typed in from anywhere, and whatever the editing page is sent.
 - **Your sign-in stays with your server.** A redirect is followed only on the same server (or from `http` up to `https` on the same host), so a password or token is never passed on elsewhere. Plain `http` is refused beyond your home network (local names like `nas` or `tv.local`, and private addresses like `192.168.1.5`), so a password never crosses the internet unencrypted. For anything else, including Tailscale, use `https`. These rules are in the shared code, so any future version of the app keeps them.
 - **A misbehaving server can't take the app down.** The item count a server claims is capped, paging stops at the first empty page, each page counts for at most one page of items, and any reply over 16 MB is stopped as it arrives. Stream URLs from the server keep only their path and query, so they always point back at your server. Item names are shown as plain text, never as formatting or links.
-- **Codes can't do more than change your own schedule.** A channel or set-times code carries only names, numbers and times. The check byte catches typing mistakes, but anyone can make a code, so every code is checked like the app's own settings: times within a day, real dates, and at most 24 set times on a channel, listing 48 times in all.
+- **What the editing page saves can't do more than change your own schedule.** It carries only names, numbers and times, and it's checked like the app's own settings before it's used: numbers from 20 to 99 and not taken, at most 20 conditions on a channel, times within a day, real dates, and at most 24 set times on a channel, listing 48 times in all.
+- **The editing page is closed by default and short-lived.** It runs only while its screen is open, after you've turned it on. It refuses connections from outside your home network (anything but private, link-local and loopback addresses), requests for any address but the one shown (so another website can't reach it through your browser), and requests without the six-digit code, which is new each time and locks the page after five wrong tries. Each connection gets one request, capped at 512 KB and 10 seconds. The page runs only its own script, shows library names as plain text, and fetches nothing from anywhere else.
 - **Sign Out and Delete ask first**, so one stray click, or a button pressed by anything paired with the Apple TV, can't undo your setup.
 - **Quick Connect:** approve a code only when your own TV is showing it. Another device can ask Jellyfin for a code while calling itself "Apple TV", and approving its code would sign that device in as you.

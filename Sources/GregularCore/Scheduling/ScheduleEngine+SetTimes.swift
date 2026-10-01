@@ -195,7 +195,8 @@ extension ChannelSchedule {
     /// A window's airings: its programme, then its breaks, like any slot, with
     /// commercials from about where the shared schedule's are by then.
     private func airings(in window: SetTimeWindow) -> [Airing] {
-        var commercials = CommercialQueue(commercials(startingAt: Int(Double(window.start) / Double(runLength) * clipsPerRun)))
+        var commercials = CommercialQueue(commercials(startingAt: Int(Double(window.start) / Double(runLength) * clipsPerRun)),
+                                          rules: commercialRules)
         return airingsInSlot(window.item, slotStart: window.start, slotEnd: window.end, commercials: &commercials)
     }
 }

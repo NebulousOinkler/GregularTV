@@ -220,96 +220,38 @@ final class WalkthroughTests: XCTestCase {
         backToLiveTV()
     }
 
-    // MARK: A custom channel
+    // MARK: The editing page
 
-    func test2CustomChannel() throws {
+    /// Off by default; turned on, Settings opens a screen with the address
+    /// and code. (Making channels and set times happens in the browser:
+    /// `EditingPageTests` covers what the page accepts.)
+    func test2EditingPage() throws {
         waitForWatching()
         openSettings()
-        choose("Add a Channel")
-        XCTAssertTrue(text("New Channel").waitForExistence(timeout: 5), "The channel editor didn't open")
-        type("Test Channel", into: "Channel name")
-        choose("Movies")
-        choose("A Genre")
-        choose("Comedy")
-        choose("Save")
-        pause(4)
-        openSettings()
-        XCTAssertTrue(button("Test Channel").waitForExistence(timeout: 5), "The new channel isn't listed")
-        capture("channel-listed")
-
-        choose("Test Channel")
-        XCTAssertTrue(text("Edit Channel").waitForExistence(timeout: 5), "The channel didn't open for editing")
-        choose("Delete Channel")
-        XCTAssertTrue(text("Delete channel").waitForExistence(timeout: 3), "Deleting didn't ask first")
-        capture("delete-channel-asks")
-        answerDialog("Cancel")
-        XCTAssertTrue(text("Edit Channel").exists, "Cancel left the editor")
-        choose("Delete Channel")
-        answerDialog("Delete Channel")
-        pause(4)
-        openSettings()
-        XCTAssertFalse(button("Test Channel").exists, "The channel is still listed after deleting")
-        capture("channel-deleted")
+        XCTAssertFalse(button("Open the Editing Page").exists, "The editing page should be off by default")
+        XCTAssertFalse(button("Add a Channel").exists, "Channels are made on the editing page, not here")
+        choose("Editing page")
+        XCTAssertTrue(button("Open the Editing Page").waitForExistence(timeout: 3), "Turning it on didn't offer the page")
+        choose("Open the Editing Page")
+        XCTAssertTrue(text("Then enter this code").waitForExistence(timeout: 10), "The page's address and code didn't show")
+        capture("editing-page")
+        choose("Done")
+        pause()
+        // Back on "Open the Editing Page"; the switch is just above. (After a
+        // full-screen screen closes, `choose`'s long search misses rows, so step.)
+        press(.up)
+        XCTAssertTrue(focusedLabel().hasPrefix("Editing page"), "Up didn't reach the switch: \(focusedLabel())")
+        press(.select)   // back off, as it started
+        pause()
+        XCTAssertFalse(button("Open the Editing Page").exists, "Turning it off didn't hide the page")
         closeSettings()
     }
 
-    // MARK: Set times
+    // MARK: Signing out and signing in
 
-    func test3SetTimes() throws {
+    func test4SigningOutAndIn() throws {
         waitForWatching()
         openSettings()
-        choose("Set Times on a Channel")
-        choose("1  Gregular")
-        XCTAssertTrue(text("Set Times on 1").waitForExistence(timeout: 5), "The set-times editor didn't open")
-        choose("Choose a series or film")
-        press(.down)
-        press(.select)
-        pause()
-        let calendar = Calendar.current
-        let next = calendar.date(byAdding: .minute, value: 30 - calendar.component(.minute, from: .now) % 30, to: .now)!
-        type(String(format: "%02d:%02d", calendar.component(.hour, from: next), calendar.component(.minute, from: next)), into: "Times")
-        choose("Add Set Time")
-        capture("set-time-added")
-        choose("Save")
-        pause(4)
-
-        openSettings()
-        XCTAssertTrue(button("1  Gregular").waitForExistence(timeout: 5), "The set times aren't listed")
-        capture("set-times-listed")
-        closeSettings()
-        press(.left)   // channel 1 is where the set time is: it's the first channel
-        pause(2)
-        openGuide()
-        capture("guide-with-set-time")
-        press(.menu)
-        pause()
-
-        openSettings()
-        choose("1  Gregular")
-        choose("Delete Set Times")
-        XCTAssertTrue(text("Delete the set times").waitForExistence(timeout: 3), "Deleting set times didn't ask first")
-        capture("delete-set-times-asks")
-        answerDialog("Delete Set Times")
-        pause(4)
-        capture("after-deleting-set-times")
-        backToLiveTV()   // Settings was opened from the guide, so it went back there
-        openSettings()
-        XCTAssertFalse(button("1  Gregular").exists, "The set times are still listed after deleting")
-        closeSettings()
-    }
-
-    // MARK: Codes, signing out and signing in
-
-    func test4CodesAndSigningOut() throws {
-        waitForWatching()
-        openSettings()
-        type("NOT-A-CODE", into: "channel code")
-        XCTAssertTrue(text("isn't a channel code").exists, "No message for a bad channel code")
-        capture("channel-code-rejected")
-        type("NOT-A-CODE", into: "set-times code")
-        XCTAssertTrue(text("isn't a set-times code").exists, "No message for a bad set-times code")
-        capture("set-times-code-rejected")
-
         choose("Sign Out")
         XCTAssertTrue(text("Sign out of Jellyfin?").waitForExistence(timeout: 3), "Signing out didn't ask first")
         capture("sign-out-asks")

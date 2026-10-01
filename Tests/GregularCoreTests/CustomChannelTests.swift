@@ -11,6 +11,10 @@ struct CustomChannelTests {
         CustomChannel(number: 70, name: "Golden Age", kinds: [.movie], rule: .years(from: 1930, to: 1959)),
         CustomChannel(number: 71, name: "Since 2000", rule: .years(from: 2000, to: nil)),
         CustomChannel(number: 99, name: "Holidays", rule: .tag("Christmas"), halfHourSlots: false, commercials: false),
+        CustomChannel(number: 50, name: "Mixed", rule: CustomChannel.Rule([
+            .init(.anyOf, .genre("Comedy")), .init(.anyOf, .series("Bravo")),
+            .init(.allOf, .years(from: 1990, to: nil)), .init(.noneOf, .tag("Christmas")),
+        ])),
     ]
 
     @Test(arguments: examples)
@@ -45,6 +49,46 @@ struct CustomChannelTests {
         #expect(Fixtures.library.filter(comedy.accepts).allSatisfy { $0.kind == .episode && $0.genres.contains("Comedy") })
         let classics = CustomChannel(number: 30, name: "Old", rule: .years(from: nil, to: 1970)).channel
         #expect(Fixtures.library.filter(classics.accepts).map(\.name) == ["Old Classic"])
+    }
+
+    /// Any of Comedy or Bravo, all of 1990 on, none of Christmas.
+    @Test func conditionsJoinAnyAllAndNone() {
+        let mixed = Self.examples.last!.channel
+        let names = Set(Fixtures.library.filter(mixed.accepts).map(\.name))
+        // Alpha is a comedy and Bravo is named, but neither episode has a year,
+        // so "all of 1990 on" leaves them out; "Laughs" is a 2005 comedy but tagged Christmas.
+        #expect(names.isEmpty)
+        let noYears = CustomChannel(number: 51, name: "M", rule: CustomChannel.Rule([
+            .init(.anyOf, .genre("Comedy")), .init(.anyOf, .series("Bravo")), .init(.noneOf, .tag("Christmas")),
+        ])).channel
+        let matched = Fixtures.library.filter(noYears.accepts)
+        #expect(Set(matched.compactMap(\.seriesName)) == ["Alpha", "Bravo"])
+        #expect(!matched.contains { $0.name == "Laughs" }, "None of Christmas")
+        let onlyNone = CustomChannel(number: 52, name: "N", rule: CustomChannel.Rule([.init(.noneOf, .tag("Christmas"))])).channel
+        #expect(Fixtures.library.filter(onlyNone.accepts).count == Fixtures.library.count - 1, "Everything but Christmas")
+    }
+
+    @Test func aFirstVersionCodeStillReads() {
+        // A code saved before rules had several conditions: version 1, the rule's kind in the flags.
+        var writer = CodeWriter(version: 1)
+        writer.byte(25)
+        writer.byte(1 | 4 | 1 << 4)   // episodes, half-hour slots, a genre rule
+        writer.text("Comedy Classics")
+        writer.text("Comedy")
+        #expect(CustomChannel(code: writer.code)
+                    == CustomChannel(number: 25, name: "Comedy Classics", kinds: [.episode], rule: .genre("Comedy"), commercials: false))
+    }
+
+    @Test func aCodeWithTooManyConditionsIsRejected() {
+        let many = CustomChannel.Rule((0...CustomChannel.Rule.mostConditions).map { .init(.anyOf, .genre("G\($0)")) })
+        var writer = CodeWriter(version: 2)
+        writer.byte(30); writer.byte(3); writer.text("Many")
+        writer.byte(UInt8(many.conditions.count))
+        for condition in many.conditions {
+            writer.byte(0)
+            if case .genre(let name) = condition.match { writer.text(name) }
+        }
+        #expect(CustomChannel(code: writer.code) == nil)
     }
 
     // MARK: In the line-up
