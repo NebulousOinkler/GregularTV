@@ -37,8 +37,8 @@ This design is what makes the privacy requirement cheap to meet. No schedule or 
 
 | Data | Where it lives | Why it's allowed |
 |---|---|---|
-| Server URL | Keychain | Needed to reach the server |
-| Access token + user ID | Keychain | Needed to authenticate, and for Jellyfin's per-user item and playback queries |
+| Server URL, for each server signed in to | Keychain (one item: the list of sign-ins, the one watched last first) | Needed to reach the server, and to list it on the main page. Its name is asked of the server when the page shows, and never stored (decided 2026-10-01) |
+| Access token + user ID, for each server | Keychain, in the same list | Needed to authenticate, and for Jellyfin's per-user item and playback queries. Signing out of one server revokes and forgets only its sign-in |
 | Device ID (random UUID, made by the app) | Keychain | Jellyfin requires a stable device ID in the auth header |
 | Channel definitions (rules, seed, name) | App config (bundled JSON / Swift) | Client-side config, no library content |
 | Client settings: last channel **number**, streaming quality, schedule code, diagnostics and commercials switches | `UserDefaults`, through `AppPreferences` only | Client-side preferences; they hold no server data |
@@ -66,7 +66,7 @@ Security (untrusted input, checked 2026-09-29):
 - **Codes** (channel and set-times) are unauthenticated: the CRC-8 only catches typos. `FixedTimesAreValid` checks set times from a code like any others: times within a day, real dates, and at most `FixedProgramme.mostPerChannel` (24) set times listing `mostTimesPerChannel` (48) times in all per channel, which keeps placing them to a few milliseconds.
 - **The editing page** (`EditingPage`, served by the app's `EditingServer`, decided 2026-10-01): off by default; when on, it runs only while its screen is open. Connections are refused unless they come from a private, link-local or loopback address (`EditingPage.isLocal`; Network's `acceptLocalOnly` refused every connection in the tvOS simulator, even from the same Mac, so the app checks the peer itself). Requests must name one of the Apple TV's own addresses in `Host` (against DNS rebinding) and any `Origin` must match it (against cross-site requests), and every data request needs the six-digit code, compared in constant time; five wrong codes lock it. One request per connection, at most 8 KB of headers and 512 KB of body, within 10 seconds. What it's sent is an `EditingDocument`, resolved and checked exactly as codes are (`ChannelLineup.adding`, `Rule.mostConditions`, `FixedTimesAreValid`). The page is one inline file with a strict Content-Security-Policy (no outside requests, no framing) and puts library names on the page only through `textContent`; a test checks it never uses `innerHTML`.
 - **Device type** is trusted nowhere: the app reads no other device's name, and Jellyfin authorises by token, not by name. The device name sent is the kind of device, from the app (`AppModel.deviceName`).
-- **Sign Out and deletes** ask first. Screens decides which actions need it and what's asked (`Confirmation`: `AppModel.signOutConfirmation`, each editor's `deleteConfirmation`); the tvOS app presents it (`SettingsRows.confirmedRow`).
+- **Signing out** of a server asks first. Screens decides what's asked (`Confirmation`: `AppModel.signOutConfirmation`, and `signOutConfirmation(for:)` on the main page); the tvOS app presents it.
 
 ## 4. Architecture
 

@@ -9,7 +9,7 @@ This is mostly AI coded. Why does this exist? I wanted a better shuffle algorith
 
 ## Status
 
-Version 1.2. All seven milestones in [PLAN.md](PLAN.md) are done. Next up, in [TODO.md](TODO.md): a servers page as the main page, and remote buttons that move around the app correctly. The core package handles scheduling, the Jellyfin client and privacy, and the tvOS app has sign-in, live channels, surfing, a six-hour guide, quality settings, commercial breaks (including mid-roll breaks in films) from a Jellyfin library named `Commercials` (see PLAN.md §9a), your own channels made in Settings, and programmes at set times.
+Version 1.2. All seven milestones in [PLAN.md](PLAN.md) are done. The core package handles scheduling, the Jellyfin client and privacy, and the tvOS app has a main page of your servers (several at once), sign-in, live channels, surfing, a six-hour guide, quality settings, commercial breaks (including mid-roll breaks in films) from a Jellyfin library named `Commercials` (see PLAN.md §9a), your own channels, and programmes at set times, made on the editing page.
 
 Open `App/GregularTV.xcodeproj` in Xcode and run the **GregularTV** scheme on an Apple TV simulator or device. Requires tvOS 17 or later and Jellyfin 10.9 or later.
 
@@ -115,11 +115,19 @@ Every programme starts on the half hour. The time from its end to the next half 
 - It's always clear when the programme is over: while commercials play, a small **Commercial break · Back at 9:30 PM** badge sits in the top corner (the banner comes and goes as usual). The channel list shows **Up next: …** with **Commercial break · starts 9:30 PM**, and the guide draws each programme's break as a darker tail on its block.
 - **Settings › Commercials › Play commercials** turns them off: every break, mid-rolls included, is blank. Programme times don't change, so you stay in step with everyone on the same schedule code.
 
+## The main page and your servers
+
+The app opens on its **main page**: the Jellyfin servers you're signed in to, the one you watched last first and highlighted, and **Add a Server**. A click on a server (or Play/Pause, for the one watched last) starts its live TV, on the channel you watched last. Hold a click on a server to sign out of it. Menu on the main page goes to the Apple TV Home screen.
+
+Each server is a sign-in kept in the Keychain. The page shows a server's address, and its name once the server answers (asked each time the page shows, never stored). Your schedule code, channels and set times are the same on every server: a name a library doesn't have just doesn't match there.
+
+**Menu always goes back one level:** guide → live TV → main page → Home screen. From live TV, Menu goes up to the main page (after hiding the banner, if it's up), and the channel carries on playing, dimmed, behind it. Your server is marked **Now playing**, so a click (or Play/Pause) goes straight back to the channel, without loading or re-tuning. The guide opens from live TV with its own buttons (below), and Menu closes it back to the channel, so looking at the guide never goes past the main page. Settings also has **All Servers**.
+
 ## Remote controls
 
-**To change what a button does,** edit the tables at the top of `Sources/GregularScreens/Remote/RemoteControls.swift`: one per screen (watching, channel list, guide, Settings), each a list of `button: action`. The hints on screen are written from the same tables. As shipped:
+**To change what a button does,** edit the tables at the top of `Sources/GregularScreens/Remote/RemoteControls.swift`: one per screen (the main page, watching, channel list, guide, Settings), each a list of `button: action`. The hints on screen are written from the same tables. As shipped, while watching:
 
-The app starts on the channel you last watched. "Click" means pressing the pad down; "slide" means moving a finger across it; a "light touch" is touching it without clicking. In the Simulator, the arrow keys are clicks on the edge of the pad, Return is a click, the space bar is Play/Pause and Escape is Menu; the Simulator can't slide or touch.
+The app starts on the main page (above). "Click" means pressing the pad down; "slide" means moving a finger across it; a "light touch" is touching it without clicking. In the Simulator, the arrow keys are clicks on the edge of the pad, Return is a click, the space bar is Play/Pause and Escape is Menu; the Simulator can't slide or touch.
 
 A light tap anywhere on the pad, edges included, only brings up the banner; only a real click on the left or right edge changes channel. (Most Siri Remotes report every click on the pad as a centre click, so the app reads where your finger is when it clicks: past halfway to an edge is that edge's click. With the remote's "Click and Touch" setting, tvOS also turns a light tap on the edge into an arrow press just after the finger lifts; the app ignores those. If an edge tap ever changes the channel, set the Apple TV's **Settings › Remotes and Devices › Clickpad** to **Click Only**.)
 
@@ -128,8 +136,9 @@ A light tap anywhere on the pad, edges included, only brings up the banner; only
 | Click left / right (edge of the pad) | Channel down / up (the banner previews each channel, and tunes when you stop; the picture fades out while you surf and back in once the new channel plays) |
 | Slide left | Channel list; Select tunes. Slide right, Menu, or 15 s idle closes it and stays on the current channel. Play/Pause opens Settings |
 | Light touch (a click touches the pad too) | Show the info banner (clock, progress, time in). Again while showing: switch between end time and time left |
-| Menu (or Back ‹) | If the banner is up, hide it. Otherwise the programme guide, six hours ahead, scrolling sideways; Select on a programme tunes to its channel, and 60 s idle closes it. In the guide, Menu first moves up to its Settings button (highlighted, not opened), then goes back to the programme. Menu never leaves the app: use the TV (Home) button |
-| Click and hold | Settings: streaming quality, trouble with this programme (step down quality, 720p, standard), schedule code, commercials, diagnostics, sign out. In the guide, Play/Pause also opens Settings. Close with Menu, Play/Pause or Done |
+| Click down (bottom edge of the pad), or slide up | The programme guide, six hours ahead, scrolling sideways. Select on a programme tunes to its channel; Menu, or 60 s idle, closes it and stays on the current channel. Play/Pause opens Settings |
+| Menu (or Back ‹) | If the banner is up, hide it. Otherwise back up to the main page, with the channel playing on behind it (a click goes straight back). On the main page, Menu goes to the Home screen |
+| Click and hold | Settings: streaming quality, trouble with this programme (step down quality, 720p, standard), schedule code, your channels and set times, the editing page, commercials, diagnostics, and the server (All Servers, Sign Out). In the guide, Play/Pause also opens Settings. Close with Menu, Play/Pause or Done |
 | Play/Pause | Pause; press again to jump back to live |
 | Digits (keyboard only) | Type a channel number |
 
@@ -142,7 +151,7 @@ Debug builds accept launch arguments. Release builds leave them out entirely.
 | `-handoffTest` | Shifts every channel so the current programme ends about 50 s after launch, to test the hand-off to the next programme quickly. |
 | `-breakEndTest` | Shifts every channel so launch lands 8 s before the end of the last commercial in a break between two programmes, to watch the fade into the Up next card and the programme without waiting. Add `late` (`-breakEndTest late`) to start that commercial from its beginning, so it runs late, as after a slow load. |
 | `-openChannelList` | Opens the channel list on launch, to check its focus handling without arrow keys. |
-| `-openGuide` | Opens the guide on launch, to check it without a Menu button. |
+| `-openGuide` | Opens the guide on launch, to check it without a remote. |
 | `-pretendCommercials` | Uses a dozen library videos, cut to 30–120 s, as commercials, to test breaks without a `Commercials` library. |
 | `-openSettings editingPage` | Opens Settings, then the editing page's screen (whether or not its switch is on). |
 
@@ -223,7 +232,7 @@ Gregular TV is built to know as little as possible about your Jellyfin server, a
 
 | What | Where | Why |
 |---|---|---|
-| Server address, access token, user ID | Keychain, this device only (excluded from backups and iCloud) | To reconnect without signing in again |
+| For each server you're signed in to: its address, access token and user ID, the one watched last first | Keychain, this device only (excluded from backups and iCloud) | To reconnect without signing in again, and to list your servers on the main page |
 | A random device ID | Keychain, this device only | Jellyfin requires one; it's kept across sign-outs so your device list doesn't fill up |
 | Last channel number, streaming quality, schedule code, the diagnostics, commercials and editing-page switches | App preferences | Client settings; no server data |
 | Your custom channels, packed as short codes | App preferences | What you typed or picked: a name, a number, and the genres, series, tags and years in its rule |
