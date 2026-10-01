@@ -18,9 +18,9 @@ public struct DemoCredentials: CredentialStore {
         return DemoCredentials(credentials: Credentials(serverURL: url, userID: "demo", accessToken: "demo"))
     }
 
-    public func loadCredentials() -> Credentials? { credentials }
+    public func allCredentials() -> [Credentials] { [credentials] }
     public func saveCredentials(_ credentials: Credentials) throws {}
-    public func deleteCredentials() throws {}
+    public func deleteCredentials(_ credentials: Credentials) throws {}
     public func deviceID() -> String { "demo" }
 }
 #endif

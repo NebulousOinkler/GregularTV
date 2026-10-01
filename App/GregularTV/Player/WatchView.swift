@@ -14,26 +14,34 @@ import SwiftUI
 /// - **Click left / right** (the edge of the pad): channel down / up (the
 ///   banner previews each channel as you go).
 /// - **Slide left:** channel list (slide right closes it).
+/// - **Click down, or slide up:** the programme guide. Menu closes it, back
+///   to the channel.
 /// - **Light touch** (a click touches the pad too): show the info banner.
 ///   Again while it's showing: switch between the end time and the time left.
-/// - **Menu (or Back ‹):** hide the banner if it's up; otherwise the
-///   programme guide. In the guide, Menu first moves up to its Settings
-///   button, then goes back to the programme.
+/// - **Menu (or Back ‹):** hide the banner if it's up; otherwise back up to
+///   the main page (the servers), with the channel playing on behind it.
 /// - **Click and hold:** Settings (quality, schedule code, your channels, diagnostics, sign out).
 /// - **Play/Pause:** pause, then press again to jump back to live.
 /// - **Digits** (keyboard only; the Siri Remote has none): type a channel number.
 struct WatchView: View {
     /// The app's settings and actions, for Settings.
     let app: AppModel
+    /// The main page is over it: the channel plays on, dimmed, and the
+    /// remote is the main page's.
+    let isCovered: Bool
 
     @State private var model: WatchModel
     @Environment(\.scenePhase) private var scenePhase
     /// Focus is on the live-TV input layer (not in the list or guide).
     @FocusState private var watchingHasFocus: Bool
 
-    init(surfer: ChannelSurfer, app: AppModel) {
-        _model = State(initialValue: WatchModel(surfer: surfer))
+    init(surfer: ChannelSurfer, app: AppModel, isCovered: Bool = false) {
+        let model = WatchModel(surfer: surfer)
+        // Menu: the app shows the main page over this channel.
+        model.onOpenMainPage = { [weak app] in app?.showMainPage() }
+        _model = State(initialValue: model)
         self.app = app
+        self.isCovered = isCovered
     }
 
     private var player: ChannelPlayer { model.player }
@@ -58,13 +66,17 @@ struct WatchView: View {
             .animation(.easeInOut(duration: WatchModel.channelChangeFade), value: model.changingChannel)
             liveTVInput
             // Edge clicks, swipes and light touches, told apart (SwiftUI can't).
-            RemoteGestures(map: RemoteControls.watching, isEnabled: model.takesRemoteInput, perform: model.perform)
+            RemoteGestures(map: RemoteControls.watching, isEnabled: model.takesRemoteInput && !isCovered,
+                           perform: model.perform)
                 .frame(width: 0, height: 0)
 
             if let card = model.statusCard {
                 StatusCard(content: card)
             }
-            if model.bannerIsShowing {
+            if isCovered {
+                // Under the main page: just the picture, dimmed.
+                Color.black.opacity(0.7).ignoresSafeArea()
+            } else if model.bannerIsShowing {
                 ChannelBanner(model: model)
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             } else if model.showsBreakBadge {
@@ -113,8 +125,9 @@ struct WatchView: View {
         }
         .onAppear {
             model.appeared(showsDiagnostics: app.showsDiagnostics)
-            UIApplication.shared.isIdleTimerDisabled = true
-            watchingHasFocus = true
+            // On the main page, the screen saver may come on as usual.
+            UIApplication.shared.isIdleTimerDisabled = !isCovered
+            if !isCovered { watchingHasFocus = true }
         }
         .onDisappear {
             model.disappeared()
@@ -123,6 +136,13 @@ struct WatchView: View {
         // Focus goes back to live TV once the input layer can take it again.
         // Setting it in the same update that closes an overlay could fail and
         // leave nothing focused.
+        .onChange(of: isCovered) { _, covered in
+            UIApplication.shared.isIdleTimerDisabled = !covered
+            // Let go of focus under the main page, or Menu there would still
+            // come here (and the page would never get the remote).
+            watchingHasFocus = !covered
+            if !covered { model.returnedFromMainPage() }
+        }
         .onChange(of: model.overlayOpen) { _, open in
             if !open { watchingHasFocus = true }
         }
@@ -145,12 +165,12 @@ struct WatchView: View {
     /// It sits *behind* the channel list and guide rather than wrapping them,
     /// so their buttons get arrows, clicks and Menu without them also
     /// changing channel or reopening an overlay. It stops being focusable while
-    /// an overlay is open, so focus can't wander back to it.
+    /// an overlay (or the main page) is open, so focus can't wander back to it.
     private var liveTVInput: some View {
         Color.clear
             .contentShape(Rectangle())
             .ignoresSafeArea()
-            .focusable(!model.overlayOpen)
+            .focusable(!model.overlayOpen && !isCovered)
             .focused($watchingHasFocus)
             .focusEffectDisabled()
             // Before the remote table's handlers, as it was before they moved into it.
@@ -204,8 +224,11 @@ private struct ChannelBanner: View {
                         }
                     }
                     .font(.caption).foregroundStyle(.secondary)
+                    // Two lines, always kept, so a longer hint (paused) never reshapes the banner.
                     Text(banner.hint)
                         .font(.caption2).foregroundStyle(.tertiary)
+                        .lineLimit(2, reservesSpace: true)
+                        .multilineTextAlignment(.trailing)
                         .frame(maxWidth: .infinity, alignment: .trailing)
                     if !banner.diagnostics.isEmpty {
                         VStack(alignment: .leading, spacing: 2) {

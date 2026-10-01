@@ -104,8 +104,8 @@ public final class WatchModel {
         case .channelDown: surfer.channelDown()
         case .showInfo: showInfo()
         case .hideInfo: hideInfo()
-        case .hideInfoOrOpenGuide:
-            if bannerCanBeHidden { hideInfo() } else { show(.guide) }
+        case .hideInfoOrOpenMainPage:
+            if bannerCanBeHidden { hideInfo() } else { perform(.openMainPage) }
         case .pauseOrJumpToLive:
             let wasPaused = player.status.isPaused
             player.togglePause()
@@ -113,10 +113,26 @@ public final class WatchModel {
         case .openChannelList: show(.channelList)
         case .openGuide: show(.guide)
         case .openSettings: show(.settings)
-        case .close, .stepBack:
+        case .close:
             showingSettings = false
             closeOverlays()
+        case .openMainPage:
+            showingSettings = false
+            closeOverlays()
+            onOpenMainPage?()
+        case .watchLastServer:
+            break   // only on the main page
         }
+    }
+
+    /// Going up to the main page (`.openMainPage`): the app's to do, as it
+    /// shows the servers over this channel, which carries on playing.
+    @ObservationIgnored public var onOpenMainPage: (() -> Void)?
+
+    /// Back from the main page to the channel left playing: the banner
+    /// shows, as when tuning in, to say where you are.
+    public func returnedFromMainPage() {
+        bannerRequests += 1
     }
 
     /// A channel chosen in the list or the guide.

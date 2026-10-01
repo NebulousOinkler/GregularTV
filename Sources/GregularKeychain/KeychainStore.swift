@@ -9,10 +9,14 @@ public struct KeychainError: Error, Equatable {
     public let status: OSStatus
 }
 
-/// Keeps credentials in the Keychain, on this device only. Items are marked
+/// Keeps the sign-ins in the Keychain, on this device only. Items are marked
 /// `ThisDeviceOnly`, so they're excluded from backups and iCloud Keychain.
+/// The sign-ins are one item, a list with the most recently used first, so
+/// adding, using or removing one is a single write.
 public struct KeychainStore: CredentialStore {
     private enum Account {
+        static let signIns = "sign-ins"
+        /// Before several servers: one sign-in. Read once, then moved to `signIns`.
         static let credentials = "credentials"
         static let deviceID = "device-id"
     }
@@ -25,16 +29,29 @@ public struct KeychainStore: CredentialStore {
         self.service = service
     }
 
-    public func loadCredentials() -> Credentials? {
-        read(Account.credentials).flatMap { try? JSONDecoder().decode(Credentials.self, from: $0) }
+    public func allCredentials() -> [Credentials] {
+        if let data = read(Account.signIns) {
+            return (try? JSONDecoder().decode([Credentials].self, from: data)) ?? []
+        }
+        // The one sign-in an earlier version kept, if any.
+        return read(Account.credentials).flatMap { try? JSONDecoder().decode(Credentials.self, from: $0) }.map { [$0] } ?? []
     }
 
     public func saveCredentials(_ credentials: Credentials) throws {
-        try write(JSONEncoder().encode(credentials), account: Account.credentials)
+        try save(allCredentials().using(credentials))
     }
 
-    public func deleteCredentials() throws {
-        try delete(account: Account.credentials)
+    public func deleteCredentials(_ credentials: Credentials) throws {
+        try save(allCredentials().removing(credentials))
+    }
+
+    private func save(_ list: [Credentials]) throws {
+        if list.isEmpty {
+            try delete(account: Account.signIns)
+        } else {
+            try write(JSONEncoder().encode(list), account: Account.signIns)
+        }
+        try delete(account: Account.credentials)   // moved into the list
     }
 
     public func deviceID() -> String {

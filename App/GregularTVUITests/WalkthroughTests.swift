@@ -46,16 +46,21 @@ final class WalkthroughTests: XCTestCase {
         app.staticTexts.containing(NSPredicate(format: "label CONTAINS %@", text)).firstMatch
     }
 
-    /// Moves the highlight (down, by default) until `element` has it.
-    @discardableResult
-    private func focus(_ element: XCUIElement, moving direction: XCUIRemote.Button = .down, tries: Int = 40,
-                       _ what: String) -> Bool {
+    /// Moves the highlight (down, by default) until `element` has it. Not
+    /// reaching it isn't a failure here: callers often try the other way next.
+    private func focus(_ element: XCUIElement, moving direction: XCUIRemote.Button = .down, tries: Int = 40) -> Bool {
         for _ in 0..<tries {
             if element.exists && element.hasFocus { return true }
             remote.press(direction)
             pause(0.35)
         }
-        let ok = element.exists && element.hasFocus
+        return element.exists && element.hasFocus
+    }
+
+    /// Moves the highlight down, then up, until `element` has it; a failure
+    /// only if it's in neither direction.
+    private func reach(_ element: XCUIElement, _ what: String) -> Bool {
+        let ok = focus(element, tries: 30) || focus(element, moving: .up, tries: 60)
         XCTAssertTrue(ok, "Couldn't reach \(what)")
         return ok
     }
@@ -63,8 +68,7 @@ final class WalkthroughTests: XCTestCase {
     /// Chooses the button labelled `label`, moving down (then up) to reach it.
     @discardableResult
     private func choose(_ label: String) -> Bool {
-        let target = button(label)
-        guard focus(target, tries: 30, label) || focus(target, moving: .up, tries: 60, label) else { return false }
+        guard reach(button(label), label) else { return false }
         press(.select)
         pause()
         return true
@@ -73,14 +77,14 @@ final class WalkthroughTests: XCTestCase {
     /// Types into the text field labelled `label` (the full-screen keyboard), then returns.
     private func type(_ value: String, into label: String) {
         let field = app.textFields.containing(NSPredicate(format: "placeholderValue CONTAINS %@ OR label CONTAINS %@", label, label)).firstMatch
-        guard focus(field, tries: 30, label) || focus(field, moving: .up, tries: 60, label) else { return }
+        guard reach(field, label) else { return }
         press(.select)
         pause()
         app.typeText(value)
         pause(0.5)
         // The full-screen keyboard submits with its "done" button, below the keys.
         let done = app.buttons.matching(NSPredicate(format: "label ==[c] %@", "done")).firstMatch
-        if !focus(done, tries: 8, "the keyboard's done button") { press(.menu) } else { press(.select) }
+        if !focus(done, tries: 8) { press(.menu) } else { press(.select) }
         pause()
     }
 
@@ -111,26 +115,28 @@ final class WalkthroughTests: XCTestCase {
         pause(1.5)
     }
 
-    /// From watching, the guide: Menu hides the banner first if it's up.
+    /// From watching, the guide: a click on the bottom edge (the down arrow here).
     private func openGuide() {
-        press(.menu)
-        if !button("Settings").waitForExistence(timeout: 2) { press(.menu) }
-        XCTAssertTrue(button("Settings").waitForExistence(timeout: 5), "The guide didn't open")
+        press(.down)
+        XCTAssertTrue(button("Settings").waitForExistence(timeout: 5), "Click ▼ didn't open the guide")
         pause()
     }
 
-    /// Presses Menu until the guide (its Settings button) is gone: in the
-    /// guide, Menu first steps back to now, then closes.
+    /// From the guide, one Menu goes back to live TV.
     private func backToLiveTV() {
-        for _ in 0..<4 where button("Settings").exists {
-            press(.menu)
-            pause()
-        }
-        XCTAssertFalse(button("Settings").exists, "Couldn't get back to live TV")
+        press(.menu)
+        pause()
+        XCTAssertFalse(button("Settings").exists, "Menu didn't close the guide")
+        XCTAssertFalse(text("Your server").exists, "Menu in the guide went past live TV to the main page")
     }
 
-    /// Waits for live TV: the banner, with its remote hint, shows when it starts.
+    /// Waits for live TV: the banner, with its remote hint, shows when it
+    /// starts. The app opens on the main page, so first choose the server
+    /// (the one watched last is highlighted).
     private func waitForWatching() {
+        if text("Your server").waitForExistence(timeout: 15) {
+            press(.select)
+        }
         let started = (0..<40).contains { _ in
             if text("channel list").exists { return true }
             pause(1)
@@ -247,21 +253,72 @@ final class WalkthroughTests: XCTestCase {
         closeSettings()
     }
 
+    // MARK: The main page
+
+    /// Menu goes back one level at a time: guide → live TV → main page →
+    /// Home screen. The app opens on the servers; a click goes in. Click ▼
+    /// opens the guide and Menu closes it, back to the channel. Menu from
+    /// live TV goes up to the main page, with the channel playing on behind
+    /// it, and a click goes straight back to it, without loading again.
+    func test7MainPage() throws {
+        XCTAssertTrue(text("Your server").waitForExistence(timeout: 15), "The app didn't open on the main page")
+        XCTAssertTrue(text("Watched last").exists, "The server watched last isn't marked")
+        capture("main-page")
+        waitForWatching()
+        openGuide()
+        capture("guide")
+        backToLiveTV()
+
+        press(.menu)
+        // The banner goes first, if it's up.
+        if !text("Your server").waitForExistence(timeout: 2) { press(.menu) }
+        XCTAssertTrue(text("Your server").waitForExistence(timeout: 5), "Menu from live TV didn't go up to the main page")
+        XCTAssertTrue(text("Now playing").exists, "The server playing behind the page isn't marked")
+        capture("main-page-over-live-tv")
+        press(.select)
+        XCTAssertTrue(text("channel list").waitForExistence(timeout: 3), "Choosing the server didn't go straight back to live TV")
+        XCTAssertFalse(text("Loading your library…").exists, "Going back loaded the library again")
+        pause(0.5)
+        capture("back-to-live-tv")
+
+        press(.menu)
+        if !text("Your server").waitForExistence(timeout: 2) { press(.menu) }
+        XCTAssertTrue(text("Your server").waitForExistence(timeout: 5), "Menu didn't go up to the main page again")
+        press(.playPause)
+        XCTAssertTrue(text("channel list").waitForExistence(timeout: 3), "Play/Pause didn't go back to live TV")
+
+        press(.menu)
+        if !text("Your server").waitForExistence(timeout: 2) { press(.menu) }
+        XCTAssertTrue(text("Your server").waitForExistence(timeout: 5), "Menu didn't go up to the main page")
+        press(.menu)
+        let left = expectation(for: NSPredicate(format: "state != %d", XCUIApplication.State.runningForeground.rawValue),
+                               evaluatedWith: app)
+        wait(for: [left], timeout: 5)   // fails the test if the app's still showing
+
+    }
+
     // MARK: Signing out and signing in
 
     func test4SigningOutAndIn() throws {
         waitForWatching()
         openSettings()
         choose("Sign Out")
-        XCTAssertTrue(text("Sign out of Jellyfin?").waitForExistence(timeout: 3), "Signing out didn't ask first")
+        XCTAssertTrue(text("Sign out of localhost:8765?").waitForExistence(timeout: 3), "Signing out didn't ask first")
         capture("sign-out-asks")
         answerDialog("Cancel")
         XCTAssertTrue(text("Streaming quality").exists || button("Sign Out").exists, "Cancel didn't stay in Settings")
         choose("Sign Out")
         answerDialog("Sign Out")
         pause(3)
+        // Back to the main page. (Demo mode can't forget its one server, so
+        // it's still listed; a real sign-out with no servers left shows sign-in.)
+        XCTAssertTrue(text("Your server").waitForExistence(timeout: 5), "Signing out didn't go to the main page")
         capture("signed-out")
 
+        press(.right)   // the cards sit side by side: from the server to Add a Server
+        XCTAssertTrue(focusedLabel().contains("Add a Server"), "Right didn't reach Add a Server: \(focusedLabel())")
+        press(.select)
+        XCTAssertTrue(button("Cancel").waitForExistence(timeout: 5), "Adding a server should offer Cancel back to the main page")
         type("http://media.example.com", into: "192.168.1.10")
         choose("Connect")
         pause(2)

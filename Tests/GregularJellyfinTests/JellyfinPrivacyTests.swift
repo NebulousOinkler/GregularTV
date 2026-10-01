@@ -47,11 +47,13 @@ struct JellyfinPrivacyTests {
         #expect((body["SupportedCommands"] as? [String])?.isEmpty == true)
     }
 
-    @Test func signOutClearsLocalCredentialsEvenIfServerUnreachable() async {
+    @Test func signOutClearsLocalCredentialsEvenIfServerUnreachable() async throws {
         let mock = MockJellyfin()   // every route returns 404
-        let store = InMemoryCredentialStore(credentials: JellyfinFixtures.credentials)
+        let other = Credentials(serverURL: URL(string: "https://other.example")!, userID: "u", accessToken: "t")
+        let store = InMemoryCredentialStore(credentials: other)
+        try store.saveCredentials(JellyfinFixtures.credentials)
         await JellyfinFixtures.client(mock).signOut(clearing: store)
-        #expect(store.loadCredentials() == nil)
+        #expect(store.allCredentials() == [other], "Only this server's sign-in goes")
         #expect(mock.requests.map(\.url!.path) == ["/Sessions/Logout"])
     }
 }

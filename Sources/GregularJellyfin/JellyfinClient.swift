@@ -88,11 +88,12 @@ public struct JellyfinClient: Sendable {
         ])
     }
 
-    /// Revokes the token on the server, then deletes the local credentials.
-    /// The local copy is deleted even if the server can't be reached.
+    /// Revokes the token on the server, then deletes this sign-in from
+    /// `store` (any other servers' stay). The local copy is deleted even if
+    /// the server can't be reached.
     public func signOut(clearing store: any CredentialStore) async {
         try? await api.call("POST", "/Sessions/Logout")
-        try? store.deleteCredentials()
+        try? store.deleteCredentials(credentials)
     }
 
     // MARK: - URLs

@@ -8,11 +8,11 @@ import SwiftUI
 /// the channel names pinned on the left and the times pinned along the top.
 /// Each block's break (commercials or blank airtime after the programme) is a
 /// darker tail at its right edge.
-/// Opened from watching with `RemoteControls.watching` (Menu, as shipped).
-/// Select tunes to the channel. The buttons in `RemoteControls.guide` act on
-/// it: as shipped, Play/Pause opens Settings, and Menu steps back, first to
-/// the Settings button, then back to the programme playing. 60 s without
-/// activity closes it and stays on the current channel.
+/// Opened from watching with `RemoteControls.watching` (click ▼ or slide ▲,
+/// as shipped). Select tunes to the channel. The buttons in
+/// `RemoteControls.guide` act on it: as shipped, Play/Pause opens Settings,
+/// and Menu closes it, back to the channel playing. 60 s without activity
+/// closes it too and stays on the current channel.
 struct GuideView: View {
     static let idleTimeout: Duration = .seconds(60)
 
@@ -73,9 +73,7 @@ struct GuideView: View {
             }
             .padding(.horizontal, 80)
             .padding(.vertical, 50)
-            .remoteControls(RemoteControls.guide) { action in
-                if action == .stepBack { stepBack() } else { onRemote(action) }
-            }
+            .remoteControls(RemoteControls.guide, perform: onRemote)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(.black.opacity(0.88))
@@ -121,17 +119,6 @@ struct GuideView: View {
 
     /// Focus ID of the Settings button.
     static let settingsFocusID = "settings"
-
-
-    /// Menu, as shipped: from a programme up to the Settings button
-    /// (highlighted, not pressed), and from there back to the programme playing.
-    private func stepBack() {
-        if focusedID == Self.settingsFocusID {
-            onRemote(.close)
-        } else {
-            focusedID = Self.settingsFocusID
-        }
-    }
 
     static func id(_ schedule: ChannelSchedule, _ cell: GuideCell) -> String {
         "\(schedule.channel.number)|\(cell.id)"
