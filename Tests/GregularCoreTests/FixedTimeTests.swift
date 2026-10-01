@@ -146,13 +146,17 @@ struct FixedTimeTests {
         let a = try #require(ChannelSchedule(channel: shared.adding([FixedProgramme(match: .series("Alpha"), times: [18 * 60 + 15], timeZone: Self.zone)]),
                                              items: Fixtures.library))
         let c = try #require(ChannelSchedule(channel: shared, items: Fixtures.library))
-        let before = c.programme(at: local(day: 70, 18, 14))
-        let after = a.programme(at: local(day: 70, 19, 1))
-        #expect(a.programme(at: local(day: 70, 18, 20)).item.seriesName == "Alpha")
-        #expect(before.slotEnd > local(day: 70, 19))
-        #expect(after.item.id == before.item.id && after.start == local(day: 70, 19), "The film carries on, joined partway")
-        #expect(a.tune(at: local(day: 70, 19, 1)).airing.mediaOffset > 0)
-        #expect(a.programme(at: local(day: 70, 18, 10)).slotEnd == local(day: 70, 18, 15), "Cut at the set time")
+        // A day when one film's slot runs from before 18:15 to after 19:00.
+        let day = try #require((60..<120).first { day in
+            let film = c.programme(at: local(day: day, 18, 14))
+            return film.start < local(day: day, 18, 10) && film.slotEnd > local(day: day, 19, 1)
+        })
+        let before = c.programme(at: local(day: day, 18, 14))
+        let after = a.programme(at: local(day: day, 19, 1))
+        #expect(a.programme(at: local(day: day, 18, 20)).item.seriesName == "Alpha")
+        #expect(after.item.id == before.item.id && after.start == local(day: day, 19), "The film carries on, joined partway")
+        #expect(a.tune(at: local(day: day, 19, 1)).airing.mediaOffset > 0)
+        #expect(a.programme(at: local(day: day, 18, 10)).slotEnd == local(day: day, 18, 15), "Cut at the set time")
     }
 
     @Test func anExclusiveProgrammesOtherAiringsGetAStandIn() throws {
