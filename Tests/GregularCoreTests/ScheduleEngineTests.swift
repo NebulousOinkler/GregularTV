@@ -20,17 +20,36 @@ struct ScheduleEngineTests {
     // MARK: Runs
 
     @Test func runsAreADayUnlessAProgrammeIsLonger() throws {
-        #expect(try schedule().runDuration == 24 * 3600)
+        #expect(try schedule().run(containing: later).duration == 24 * 3600)
         let marathon = Fixtures.movie("Marathon", minutes: 1500)
-        #expect(try schedule([marathon]).runDuration == 25 * 3600, "A 25-hour programme needs a 25-hour run")
+        #expect(try schedule([marathon]).run(containing: later).duration == 48 * 3600, "A 25-hour programme needs a two-day run")
+    }
+
+    /// Every run starts at midnight Pacific, so on the days the clocks change
+    /// a run is 23 or 25 hours.
+    @Test func runsStartAtMidnightPacificThroughDaylightSaving() throws {
+        let s = try schedule()
+        var pacific = Calendar(identifier: .gregorian)
+        pacific.timeZone = ChannelSchedule.dayTimeZone
+        let springForward = pacific.date(from: DateComponents(year: 2026, month: 3, day: 8, hour: 12))!
+        let fallBack = pacific.date(from: DateComponents(year: 2026, month: 11, day: 1, hour: 12))!
+        #expect(s.run(containing: springForward).duration == 23 * 3600)
+        #expect(s.run(containing: fallBack).duration == 25 * 3600)
+        for day in stride(from: 0.0, to: 400, by: 7) {
+            let run = s.run(containing: later.addingTimeInterval(day * 86_400))
+            for edge in [run.start, run.end] {
+                let time = pacific.dateComponents([.hour, .minute, .second], from: edge)
+                #expect(time.hour == 0 && time.minute == 0 && time.second == 0, "\(edge)")
+            }
+            #expect(run.contains(later.addingTimeInterval(day * 86_400)))
+        }
+        #expect(s.run(containing: epoch).start == epoch && s.run(containing: epoch.addingTimeInterval(-1)).end == epoch)
     }
 
     @Test func programmesNeverCrossARunBoundary() throws {
         let s = try schedule()
-        let run = s.runDuration
         for airing in s.airings(from: later, to: later.addingTimeInterval(3 * 24 * 3600)) {
-            let runStart = floor(airing.start.timeIntervalSince(epoch) / run) * run
-            #expect(airing.slotEnd.timeIntervalSince(epoch) <= runStart + run)
+            #expect(airing.slotEnd <= s.run(containing: airing.start).end)
         }
     }
 
@@ -38,11 +57,12 @@ struct ScheduleEngineTests {
         let s = try schedule()
         let airings = s.airings(from: later, to: later.addingTimeInterval(4 * 24 * 3600))
         // Compare whole milliseconds; Double seconds can differ in the last bit.
-        let starts = Set(airings.filter { !$0.isFiller }.map { Int64(($0.start.timeIntervalSince(epoch) * 1000).rounded()) })
-        let run = Int64(s.runDuration * 1000)
-        let firstRun = (Int64(later.timeIntervalSince(epoch) * 1000) / run + 1) * run
-        for k in 0..<3 {
-            #expect(starts.contains(firstRun + Int64(k) * run))
+        func ms(_ date: Date) -> Int64 { Int64((date.timeIntervalSince(epoch) * 1000).rounded()) }
+        let starts = Set(airings.filter { !$0.isFiller }.map { ms($0.start) })
+        var run = s.run(containing: later)
+        for _ in 0..<3 {
+            run = s.run(containing: run.end)
+            #expect(starts.contains(ms(run.start)))
         }
     }
 
@@ -58,9 +78,8 @@ struct ScheduleEngineTests {
         // Mixed-length films in half-hour slots: the only longer gap is at the end of a run.
         let movies = (0..<40).map { Fixtures.movie("M\($0)", minutes: Double(85 + ($0 * 23) % 70)) }
         let s = try schedule(movies, strategy: ShuffledShows.id, padTo: 30)
-        let run = s.runDuration
         for airing in s.airings(from: later, to: later.addingTimeInterval(3 * 24 * 3600)) {
-            let isLastInRun = airing.slotEnd.timeIntervalSince(epoch).truncatingRemainder(dividingBy: run) == 0
+            let isLastInRun = airing.slotEnd == s.run(containing: airing.start).end
             if !isLastInRun {
                 #expect(airing.slotEnd.timeIntervalSince(airing.end) < 30 * 60)
             }
@@ -314,9 +333,9 @@ struct ScheduleEngineTests {
         let movies = (0..<60).map { Fixtures.movie("M\($0)", minutes: Double(80 + ($0 * 37) % 90)) }
         for strategy in [RandomShuffle.id, ShuffledShows.id] {
             let s = try schedule(movies, strategy: strategy, padTo: 30)
-            let runStart = Channel.defaultEpoch.addingTimeInterval(3 * s.runDuration)
+            let run = s.run(containing: Channel.defaultEpoch.addingTimeInterval(3.5 * 86_400))
             // Whole programmes: the parts of a film split by mid-roll breaks aren't repeats.
-            let day = s.programmes(from: runStart, to: runStart.addingTimeInterval(s.runDuration - 1))
+            let day = s.programmes(from: run.start, to: run.end.addingTimeInterval(-1))
             #expect(Set(day.map(\.item.id)).count == day.count, "\(strategy) repeated a movie within a run")
         }
     }

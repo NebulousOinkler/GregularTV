@@ -27,7 +27,7 @@ extension ChannelSchedule {
     func setTimeWindows(from start: Int64, to end: Int64) -> [SetTimeWindow] {
         guard !channel.fixed.isEmpty else { return [] }
         // From a day further back, so a set time is left out the same way whichever range asks.
-        let lookBack = date(atMilliseconds: start - longestSetTime - Int64(Self.minimumRunLength * 1000))
+        let lookBack = date(atMilliseconds: start - longestSetTime - Self.longestDay)
         let until = date(atMilliseconds: end)
         var pins: [Pin] = []
         for (entry, programmes) in zip(channel.fixed, setProgrammes) where !programmes.isEmpty {

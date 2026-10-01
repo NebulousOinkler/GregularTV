@@ -13,7 +13,9 @@ import Foundation
 /// share a code see the same programmes whenever neither has a set time.
 ///
 /// **Time model: runs.** From `channel.epoch`, the shared schedule is split
-/// into *runs* of a day (longer only if a single programme needs it):
+/// into *runs* of a day (longer only if a single programme needs it). A run
+/// starts at the epoch's wall-clock time in `dayTimeZone`: midnight Pacific,
+/// following daylight saving, so a run is 23, 24 or 25 hours:
 /// - Each run has one stream from the channel's strategy (an endless
 ///   generator, like Python's). Programmes are pulled from it and played back
 ///   to back, so nothing repeats or is skipped within a run.
@@ -46,11 +48,14 @@ import Foundation
 ///   schedule is identical either way.
 /// The last slot in a run also takes the run's leftover time.
 public struct ChannelSchedule: Sendable {
-    /// Runs are at least this long.
-    public static let minimumRunLength: TimeInterval = 24 * 3600
-    /// Run lengths are rounded up to a multiple of this, so runs start on
-    /// half-hour boundaries (relative to the epoch).
-    static let runRounding: Int64 = 30 * 60_000
+    /// Where every channel's day starts and ends: each run begins at
+    /// midnight here (the epoch's wall-clock time), daylight saving and all.
+    public static let dayTimeZone = TimeZone(identifier: "America/Los_Angeles")!
+    /// A day's length in milliseconds, and the shortest and longest a day
+    /// can be in `dayTimeZone` (the days the clocks change).
+    static let day: Int64 = 86_400_000
+    static let shortestDay: Int64 = 23 * 3_600_000
+    static let longestDay: Int64 = 25 * 3_600_000
 
     public let channel: Channel
     /// The schedule code this channel was built with.
@@ -74,8 +79,14 @@ public struct ChannelSchedule: Sendable {
     let longestSetTime: Int64
     /// The longest slot in the shared schedule (milliseconds).
     private let longestSlot: Int64
-    /// Milliseconds.
+    /// Whole days per run: one, or more if a programme is longer than the
+    /// shortest day.
+    let daysPerRun: Int
+    /// A run's usual length (milliseconds), for estimates such as where its
+    /// streams start. Its real length comes from the calendar (`runStart(_:)`).
     let runLength: Int64
+    /// The calendar runs are counted in, in `dayTimeZone`.
+    private let runCalendar: Calendar
     /// The shortest programme: a run with less than this left has no room for another.
     private let shortestProgramme: Int64
     private let averageSlotLength: Double
@@ -124,9 +135,13 @@ public struct ChannelSchedule: Sendable {
 
         let slots = eligible.map { Self.slotLength(of: $0, padToMinutes: channel.padToMinutes) }
         self.longestSlot = slots.max() ?? 0
-        let minimum = Int64(Self.minimumRunLength * 1000)
-        let unit = Self.runRounding
-        self.runLength = (max(minimum, slots.max() ?? minimum) + unit - 1) / unit * unit
+        // Enough whole days that even the shortest of them fits the longest slot.
+        let days = max(1, Int(((slots.max() ?? 0) + Self.shortestDay - 1) / Self.shortestDay))
+        self.daysPerRun = days
+        self.runLength = Int64(days) * Self.day
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = Self.dayTimeZone
+        self.runCalendar = calendar
         self.shortestProgramme = eligible.map { Self.milliseconds(of: $0.duration) }.min() ?? 1
         let setProgrammes = channel.fixed.map { $0.programmes(in: items) }
         self.setProgrammes = setProgrammes
@@ -145,8 +160,28 @@ public struct ChannelSchedule: Sendable {
         self.clipsPerRun = Double(runLength) * max(0, 1 - averageLength / averageSlotLength) / averageClip
     }
 
-    /// How long each run of this channel's shared schedule is.
-    public var runDuration: TimeInterval { TimeInterval(runLength) / 1000 }
+    /// The run of the shared schedule containing `date`: from one midnight
+    /// Pacific to the next (or several days, for a channel with a programme
+    /// longer than a day).
+    public func run(containing date: Date) -> DateInterval {
+        let run = run(containing: milliseconds(since: channel.epoch, to: date))
+        return DateInterval(start: self.date(atMilliseconds: runStart(run)), end: self.date(atMilliseconds: runStart(run + 1)))
+    }
+
+    /// Where `run` starts, in milliseconds since the epoch: `daysPerRun` days
+    /// per run on the calendar in `dayTimeZone`, so always at the same wall-clock time.
+    func runStart(_ run: Int) -> Int64 {
+        let start = runCalendar.date(byAdding: .day, value: run * daysPerRun, to: channel.epoch)!
+        return milliseconds(since: channel.epoch, to: start)
+    }
+
+    /// The run containing `ms` (milliseconds since the epoch).
+    func run(containing ms: Int64) -> Int {
+        var run = Int(Self.floorDivide(ms, runLength))
+        while runStart(run) > ms { run -= 1 }
+        while runStart(run + 1) <= ms { run += 1 }
+        return run
+    }
 
     /// What's on at `date` (a programme or a filler clip), and how far into it.
     public func tune(at date: Date) -> Tuning {
@@ -238,7 +273,7 @@ public struct ChannelSchedule: Sendable {
     /// their `Join`, which can be a little after their place in the calendar.
     private func walker(from date: Date) -> SlotWalker {
         let ms = milliseconds(since: channel.epoch, to: date)
-        var run = Int(Self.floorDivide(ms, runLength))
+        var run = run(containing: ms)
         var join = self.join(ofRun: run, after: lastProgramme(ofRun: run - 1))
         if ms < join.start {
             run -= 1
@@ -349,7 +384,7 @@ public struct ChannelSchedule: Sendable {
     /// The strategy's stream for one run. It starts at an estimate of how many
     /// programmes aired before the run, so sequences carry on from the day before.
     private func stream(forRun run: Int) -> AnyIterator<MediaItem> {
-        let position = Int((Double(Int64(run) * runLength) / averageSlotLength).rounded(.down))
+        let position = Int((Double(runStart(run)) / averageSlotLength).rounded(.down))
         return strategy.programmes(from: content, startingAt: position, rng: SeededRandom(seed: key, cycle: run))
     }
 
@@ -451,8 +486,8 @@ public struct ChannelSchedule: Sendable {
         /// Starts `run` afresh: nothing carries over from the run before.
         private mutating func begin(_ run: Int) {
             self.run = run
-            cursor = Int64(run) * schedule.runLength
-            runEnd = cursor + schedule.runLength
+            cursor = schedule.runStart(run)
+            runEnd = schedule.runStart(run + 1)
             leftOut = join?.leftOut ?? 0
             programmes = RuledStream(schedule.stream(forRun: run), for: .programmes)
             commercials = CommercialQueue(schedule.commercials(forRun: run))
@@ -471,7 +506,7 @@ public struct ChannelSchedule: Sendable {
             assertionFailure("Strategy '\(type(of: schedule.strategy).id)' produced nothing for a run")
             let item = schedule.content.items[ChannelContent.wrap(run, schedule.content.items.count)]
             cursor = runEnd
-            return Slot(item: item, start: runEnd - schedule.runLength, end: runEnd)
+            return Slot(item: item, start: schedule.runStart(run), end: runEnd)
         }
 
         /// The next programme that finishes before the run ends, or nil when

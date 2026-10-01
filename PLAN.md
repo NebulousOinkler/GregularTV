@@ -27,7 +27,7 @@ nowPlaying = walk run((now - epoch) / runLength) from its start to the slot that
 
 - `items` is the channel's episodes and movies. They come from Jellyfin at launch and are **kept in memory only**.
 - `seed` is a fixed number in the channel definition. Every launch gives the same line-up, like a real channel, with nothing persisted.
-- `epoch` is a fixed reference date (2024-01-01 00:00 UTC). Time since the epoch picks the run, then the programme within it.
+- `epoch` is a fixed reference date (2024-01-01 at midnight Pacific). Time since the epoch picks the run, then the programme within it.
 - A **strategy is an endless generator** (like a Python generator): the engine pulls at most a day of programmes to reach any moment. It never asks for the whole list. So channels can hold any number of items, and there can be any number of channels.
 - Each run depends only on the seed and its number, so any moment can be looked up directly, without replaying the schedule from the epoch.
 
@@ -208,7 +208,7 @@ A second, optional protocol, `DaypartStrategy`, can wrap strategies ("cartoons 7
 ## 6. Schedule engine math
 
 - **Runs:**
-  - Time from the epoch is cut into runs of a day (longer only if one programme is longer than a day), rounded up to 30 min.
+  - Time from the epoch is cut into runs of a day, from one midnight Pacific to the next (`ChannelSchedule.dayTimeZone`), following daylight saving: 23, 24 or 25 hours. A channel with a programme longer than the shortest day gets runs of whole days, enough for it. Run starts come from the calendar (`runStart(_:)`), not a fixed length.
   - Each run pulls programmes from its own stream and plays them **back to back**; a programme never waits for a boundary. (Until 2026-09-23 runs were split into 2-hour-plus blocks that programmes couldn't cross, which left movie channels with up to two hours of dead air after a film.)
   - Near the end of a run, strategies with `mayReorderToFit` may pass over up to 15 programmes that wouldn't finish in time, to find one that does.
 - **Leftover time:** time left at the end of a run (once a day) joins the last slot, like padding. It's filled with commercials up to the next programme, at most 20 minutes of them (`longestCommercialRun`); any more is blank, with the "Up next" card.
@@ -339,7 +339,7 @@ A Feistel network has none of those limits, but with 4 rounds it was uneven over
 - **Scope:** one code drives every channel, and every other random choice (other strategies, commercial breaks) too.
 - **Sharing:** two Apple TVs with the same code, library and `channels.json` show the same programmes at the same time. That was checked on the simulator: the same code gave an identical guide across relaunches, and a different code a different one.
 
-**Runs:** each run of about 24 hours is filled back to back from one stream, so nothing repeats or is skipped within a run. Looking up a moment fills at most one run, about a day of programmes, whatever the library size. Where runs meet, once a day, one programme may repeat or be skipped.
+**Runs:** each run, from one midnight Pacific to the next, is filled back to back from one stream, so nothing repeats or is skipped within a run. Looking up a moment fills at most one run, about a day of programmes, whatever the library size. Where runs meet, once a day, one programme may repeat or be skipped.
 
 ## 9c. Special rules, set times and custom channels (built 2026-09-28)
 
@@ -461,7 +461,7 @@ A record of what was built and checked, in order. Details like the remote contro
 ## 11. Testing strategy
 
 - **Determinism:** same seed + items + time → identical `nowPlaying` across runs, and when the input item order is shuffled first. We sort the input by a stable key before calling the strategy, so Jellyfin's API ordering can't change the schedule.
-- **Engine:** run boundaries, times before the epoch, a single-item channel, padding and run-end gaps, and sequences carrying on across runs. A laziness test checks that tuning into a 20,000-episode channel pulls at most two days of programmes (the run, and the one before for what aired last). All the maths is in UTC.
+- **Engine:** run boundaries, times before the epoch, a single-item channel, padding and run-end gaps, and sequences carrying on across runs. A laziness test checks that tuning into a 20,000-episode channel pulls at most two days of programmes (the run, and the one before for what aired last). All the maths is in milliseconds from the epoch; only where runs start uses the Pacific calendar, which a test checks across both daylight-saving changes.
 - **Strategies:** the shared conformance suite (§5), plus one behavioural test per strategy.
 - **Rules:** each rule on its own, set times for a year across clock changes, and `RandomChannelTests`: random small channels on every strategy, with and without set times, checking that nothing airs twice in a row, slots meet with no gaps, every walk agrees, set times are kept, and at every other time the channel is the shared schedule.
 - **Privacy:** a test that runs a full session against a mock server, then checks that the app container has no new files and `UserDefaults` is empty.

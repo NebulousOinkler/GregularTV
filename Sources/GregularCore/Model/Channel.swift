@@ -17,9 +17,11 @@ import Foundation
 /// `timeZone` (programmes at set local times, laid over the channel's shared
 /// schedule; see `FixedProgramme`).
 public struct Channel: Sendable {
-    /// The shared starting point for every channel's clock. Changing it
-    /// reshuffles what's on every channel right now.
-    public static let defaultEpoch = Date(timeIntervalSince1970: 1_704_067_200) // 2024-01-01T00:00:00Z
+    /// The shared starting point for every channel's clock, at midnight
+    /// Pacific: each day's run starts at this wall-clock time in
+    /// `ChannelSchedule.dayTimeZone`. Changing it reshuffles what's on every
+    /// channel right now.
+    public static let defaultEpoch = Date(timeIntervalSince1970: 1_704_096_000) // 2024-01-01T00:00:00-08:00
 
     public let number: Int
     public let name: String
