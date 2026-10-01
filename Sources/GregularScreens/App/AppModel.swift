@@ -163,9 +163,15 @@ public final class AppModel {
         }
     }
 
-    /// Every channel set times can go on, in order.
+    /// Every channel set times can go on, in order: those on air with this
+    /// library (a themed channel without enough variety is hidden, see
+    /// `ChannelVariety`), and any that already have set times, to change or delete them.
     public var setTimesChannels: [SetTimesChannel] {
-        (lineup(custom: customChannels, setTimes: [])?.channels ?? []).map { channel in
+        let onAir: Set<Int>? = if case .watching(let surfer) = phase { Set(surfer.channels.map(\.channel.number)) } else { nil }
+        let channels = (lineup(custom: customChannels, setTimes: [])?.channels ?? []).filter { channel in
+            onAir.map { $0.contains(channel.number) } ?? true || setTimes.contains { $0.channelNumber == channel.number }
+        }
+        return channels.map { channel in
             let times = setTimes.first { $0.channelNumber == channel.number }
             return SetTimesChannel(number: channel.number, title: "\(channel.number)  \(channel.name)", setTimes: times,
                                    // Nothing's known to be missing until the library has loaded.

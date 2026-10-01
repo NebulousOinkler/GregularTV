@@ -1,5 +1,6 @@
 /// Shows and movies in a new shuffled order each pass, each show advancing
-/// one episode per pass. Every default channel uses it.
+/// one episode per pass. Every film-only channel uses it, and so does every
+/// custom channel.
 ///
 /// - A pass plays every show or movie on the channel once, in its own
 ///   shuffle (`ShuffledOrder.Passes`, seeded by the channel's key from the
@@ -14,11 +15,26 @@ struct ShuffledShows: ScheduleStrategy {
     static let displayName = "Shuffled Shows"
 
     func programmes(from content: ChannelContent, startingAt position: Int, rng: SeededRandom) -> AnyIterator<MediaItem> {
-        let shows = content.series
-        let order = ShuffledOrder.Passes(count: shows.count, seed: content.seed)
-        return programmes(startingAt: position) { position in
-            let episodes = shows[order.index(at: position)]
-            return episodes[ChannelContent.wrap(order.pass(of: position), episodes.count)]
-        }
+        let order = ShowOrder(shows: content.series, seed: content.seed)
+        return programmes(startingAt: position, order.programme(at:))
+    }
+}
+
+/// The Shuffled Shows order over a set of shows (each a series in aired
+/// order, or a one-item film), readable at any position: pass after pass,
+/// every show once per pass in a fresh shuffle, each show on its episode `k`
+/// in pass `k`. `ShuffledMix` keeps one for its series and one for its films.
+struct ShowOrder: Sendable {
+    let shows: [[MediaItem]]
+    private let passes: ShuffledOrder.Passes
+
+    init(shows: [[MediaItem]], seed: UInt64) {
+        self.shows = shows
+        passes = ShuffledOrder.Passes(count: shows.count, seed: seed)
+    }
+
+    func programme(at position: Int) -> MediaItem {
+        let episodes = shows[passes.index(at: position)]
+        return episodes[ChannelContent.wrap(passes.pass(of: position), episodes.count)]
     }
 }

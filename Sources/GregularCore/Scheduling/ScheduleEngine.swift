@@ -101,11 +101,20 @@ public struct ChannelSchedule: Sendable {
         guard let filler = GapFillerRegistry.filler(withID: channel.fillerID) else { return nil }
         let eligible = items.filter { channel.accepts($0) && $0.duration > 0 }
         guard !eligible.isEmpty else { return nil }
+        let key = code.key(forChannelSeed: channel.seed)
+        var content = ChannelContent(items: eligible, seed: key)
+        let slotLength = { Self.slotLength(of: $0, padToMinutes: channel.padToMinutes) }
+        let variety = ChannelVariety(shows: content.series, slotLength: slotLength)
+        // A themed channel this library can't fill with enough variety is hidden.
+        guard !channel.needsVariety || variety.fillsADay else { return nil }
+        if let wanted = channel.filmShare {
+            content.filmSlotShare = variety.filmSlotShare(forAirtime: variety.filmShare(wanted: wanted))
+        }
 
         self.channel = channel
         self.code = code
-        self.key = code.key(forChannelSeed: channel.seed)
-        self.content = ChannelContent(items: eligible, seed: key)
+        self.key = key
+        self.content = content
         self.strategy = strategy
         self.filler = filler
         // Numbered alphabetically, like the shows.
@@ -126,7 +135,8 @@ public struct ChannelSchedule: Sendable {
         let typicalSlots = eligible.map {
             Self.slotEnd(of: $0, startingAt: 0, padToMinutes: channel.padToMinutes)
         }
-        self.averageSlotLength = Double(typicalSlots.reduce(0, +)) / Double(typicalSlots.count)
+        self.averageSlotLength = strategy.averageSlotLength(of: content, slotLength: slotLength)
+            ?? Double(typicalSlots.reduce(0, +)) / Double(typicalSlots.count)
         // Roughly how many commercials air in a run: the share of a slot that's
         // gap, over the run, divided by the average clip. Only used to guess
         // where each run's commercial stream starts.

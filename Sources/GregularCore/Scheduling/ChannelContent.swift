@@ -12,14 +12,19 @@ public struct ChannelContent: Sendable {
     public let series: [[MediaItem]]
     /// The channel's seed, for strategies that shuffle.
     public let seed: UInt64
+    /// The share of positions that are films, for `ShuffledMix`: worked out
+    /// from the channel's share of airtime for films (`Channel.filmShare`)
+    /// and what this library can carry (`ChannelVariety`). Nil when unset.
+    public internal(set) var filmSlotShare: Double?
 
-    public init(items: [MediaItem], seed: UInt64) {
+    public init(items: [MediaItem], seed: UInt64, filmSlotShare: Double? = nil) {
         series = MediaItem.groupedBySeries(items).sorted {
             (($0[0].seriesName ?? $0[0].name).lowercased(), $0[0].seriesKey)
                 < (($1[0].seriesName ?? $1[0].name).lowercased(), $1[0].seriesKey)
         }
         self.items = series.flatMap { $0 }
         self.seed = seed
+        self.filmSlotShare = filmSlotShare
     }
 
     /// `position` wrapped into `0..<count`. It works for negative positions
