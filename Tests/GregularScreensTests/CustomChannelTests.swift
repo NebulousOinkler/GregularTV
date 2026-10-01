@@ -86,7 +86,7 @@ struct ChannelEditorTests {
         let editor = try self.editor(editing: CustomChannel(number: 30, name: "Mine"))
         editor.stepNumber(by: 1)
         #expect(editor.deleteConfirmation.question == "Delete channel 30?", "The channel being deleted, not its new number")
-        #expect(try setTimesEditor().deleteConfirmation.question == "Delete the set times on channel 2?")
+        #expect(try setTimesEditor().deleteConfirmation.question == "Delete the set times on channel 1?")
     }
 
     @Test func savedChannelsAreKeptAndNumbersChecked() {
@@ -117,14 +117,14 @@ struct ChannelEditorTests {
 
     private func setTimesEditor(editing original: SetTimes? = nil) throws -> SetTimesEditorModel {
         let lineup = try ChannelLineup.bundled()
-        return SetTimesEditorModel(channel: try #require(lineup.channels.first { $0.number == 2 }), editing: original,
+        return SetTimesEditorModel(channel: try #require(lineup.channels.first { $0.number == 1 }), editing: original,
                                    library: Self.library, lineup: lineup, code: ScheduleCode("7KQM2-X9PDA")!,
                                    timeZone: Self.newYork)
     }
 
     @Test func setTimesAreAddedCheckedAndRemoved() throws {
         let model = try setTimesEditor()
-        #expect(model.channelName == "Comedy")
+        #expect(model.channelName == "Gregular")
         #expect(model.problem == "Add a set time first.")
         #expect(model.addDraft() == "Choose a series or film to set at a time.")
         model.draftProgramme = .series("Taskmaster")
@@ -144,7 +144,7 @@ struct ChannelEditorTests {
         model.draftWeekdays = [7]
         #expect(model.addDraft() == nil, "Another day may share the time")
         #expect(model.problem == nil)
-        #expect(model.setTimes.channelNumber == 2 && model.setTimes.programmes.count == 2)
+        #expect(model.setTimes.channelNumber == 1 && model.setTimes.programmes.count == 2)
         #expect(!model.upcoming(from: Date(timeIntervalSince1970: 1_790_000_000), days: 7).isEmpty)
 
         model.remove(model.programmes[0])
