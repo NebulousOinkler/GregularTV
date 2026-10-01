@@ -2,7 +2,7 @@ import Foundation
 
 /// A channel made on the Apple TV, in Settings, rather than in
 /// `channels.json`. It's kept deliberately simple: a name and number, which
-/// kinds of programme, one content rule, and two switches. Everything
+/// kinds of programme, a rule of a few conditions, and two switches. Everything
 /// technical takes the defaults: the Shuffled Shows strategy, a seed made
 /// from the number, and the shuffled commercials. (Set times on it, as on
 /// any channel, are a separate `SetTimes`.)
@@ -17,14 +17,55 @@ import Foundation
 /// rule may name a genre, series or tag from the library, and nothing else
 /// from the library is kept.
 public struct CustomChannel: Sendable, Hashable {
-    /// Which programmes the channel plays, by one rule. Names match as the
-    /// bundled channels' sources do: by name, ignoring case.
-    public enum Rule: Sendable, Hashable {
-        case everything
-        case genre(String)
-        case series(String)
-        case years(from: Int?, to: Int?)
-        case tag(String)
+    /// Which programmes the channel plays: conditions, each joined to the
+    /// rest one of three ways. A programme is on the channel when it matches
+    /// any of the "any of" conditions (or there are none), all of the "all
+    /// of" ones, and none of the "none of" ones. No conditions at all is
+    /// everything. Names match as the bundled channels' sources do: by name,
+    /// ignoring case.
+    public struct Rule: Sendable, Hashable {
+        /// How a condition joins the others.
+        public enum Mode: UInt8, CaseIterable, Sendable {
+            case anyOf = 0, allOf = 1, noneOf = 2
+        }
+
+        /// What one condition matches.
+        public enum Match: Sendable, Hashable {
+            case genre(String)
+            case series(String)
+            case tag(String)
+            case years(from: Int?, to: Int?)
+        }
+
+        public struct Condition: Sendable, Hashable {
+            public var mode: Mode
+            public var match: Match
+
+            public init(_ mode: Mode, _ match: Match) {
+                self.mode = mode
+                self.match = match
+            }
+        }
+
+        public var conditions: [Condition]
+
+        /// The most conditions a rule may have, so a code stays typeable.
+        public static let mostConditions = 20
+
+        public init(_ conditions: [Condition] = []) {
+            self.conditions = conditions
+        }
+
+        public static let everything = Rule()
+        public static func genre(_ name: String) -> Rule { Rule([Condition(.anyOf, .genre(name))]) }
+        public static func series(_ name: String) -> Rule { Rule([Condition(.anyOf, .series(name))]) }
+        public static func tag(_ name: String) -> Rule { Rule([Condition(.anyOf, .tag(name))]) }
+        public static func years(from: Int?, to: Int?) -> Rule { Rule([Condition(.anyOf, .years(from: from, to: to))]) }
+
+        /// The conditions joined one way.
+        public func conditions(_ mode: Mode) -> [Match] {
+            conditions.filter { $0.mode == mode }.map(\.match)
+        }
     }
 
     public var number: Int
@@ -65,13 +106,28 @@ public struct CustomChannel: Sendable, Hashable {
 }
 
 extension CustomChannel.Rule {
+    /// As a line-up source: all of the "all of" conditions, any of the "any
+    /// of" ones, and not any of the "none of" ones (`CombinedSources`).
+    var source: any ChannelSource {
+        var parts = conditions(.allOf).map(\.source)
+        let any = conditions(.anyOf), none = conditions(.noneOf)
+        if !any.isEmpty { parts.append(any.count == 1 ? any[0].source : AnyOfSource(sources: any.map(\.source))) }
+        if !none.isEmpty { parts.append(NotSource(source: AnyOfSource(sources: none.map(\.source)))) }
+        switch parts.count {
+        case 0: return AllItemsSource()
+        case 1: return parts[0]
+        default: return AllOfSource(sources: parts)
+        }
+    }
+}
+
+extension CustomChannel.Rule.Match {
     var source: any ChannelSource {
         switch self {
-        case .everything: AllItemsSource()
         case .genre(let name): GenreSource(anyOf: [name])
         case .series(let name): SeriesSource(anyOf: [name])
-        case .years(let from, let to): YearRangeSource(from: from, to: to)
         case .tag(let name): TagSource(anyOf: [name])
+        case .years(let from, let to): YearRangeSource(from: from, to: to)
         }
     }
 }
@@ -79,38 +135,81 @@ extension CustomChannel.Rule {
 // MARK: - Channel codes
 
 extension CustomChannel {
-    private static let version: UInt8 = 1
+    /// Codes of this version carry a rule of several conditions; version 1
+    /// (still read) carried one.
+    private static let version: UInt8 = 2
 
     /// The definition as a code to type into another Apple TV, in groups of
     /// five like the schedule code (see `CodeWriter`): the number, flags (the
-    /// kinds, the two switches and the rule), the name, and the rule's text
-    /// or years.
+    /// kinds and the two switches), the name, then the conditions, each a
+    /// byte (how it joins, and what it matches) and its text or years.
     public var code: String {
         var writer = CodeWriter(version: Self.version)
         writer.byte(UInt8(clamping: number))
-        let ruleType: UInt8 = switch rule {
-        case .everything: 0
-        case .genre: 1
-        case .series: 2
-        case .years: 3
-        case .tag: 4
-        }
-        writer.byte((kinds.contains(.episode) ? 1 : 0) | (kinds.contains(.movie) ? 2 : 0)
-                    | (halfHourSlots ? 4 : 0) | (commercials ? 8 : 0) | ruleType << 4)
+        writer.byte(flags)
         writer.text(name)
-        switch rule {
-        case .everything: break
-        case .genre(let text), .series(let text), .tag(let text): writer.text(text)
-        case .years(let from, let to):
-            writer.number(from ?? 0)
-            writer.number(to ?? 0)
+        writer.byte(UInt8(clamping: rule.conditions.count))
+        for condition in rule.conditions.prefix(Rule.mostConditions) {
+            let kind: UInt8 = switch condition.match {
+            case .genre: 0
+            case .series: 1
+            case .tag: 2
+            case .years: 3
+            }
+            writer.byte(condition.mode.rawValue << 4 | kind)
+            switch condition.match {
+            case .genre(let text), .series(let text), .tag(let text): writer.text(text)
+            case .years(let from, let to):
+                writer.number(from ?? 0)
+                writer.number(to ?? 0)
+            }
         }
         return writer.code
     }
 
-    /// Reads a channel code. Nil if it isn't one, or was mistyped.
+    private var flags: UInt8 {
+        (kinds.contains(.episode) ? 1 : 0) | (kinds.contains(.movie) ? 2 : 0) | (halfHourSlots ? 4 : 0) | (commercials ? 8 : 0)
+    }
+
+    /// Reads a channel code, of this version or the first. Nil if it isn't
+    /// one, was mistyped, or has more than `Rule.mostConditions` conditions.
     public init?(code: String) {
-        guard var reader = CodeReader(code: code, version: Self.version),
+        if var reader = CodeReader(code: code, version: Self.version) {
+            guard let number = reader.byte(), let flags = reader.byte(), let name = reader.text(),
+                  let count = reader.byte(), count <= Rule.mostConditions else { return nil }
+            var conditions: [Rule.Condition] = []
+            for _ in 0..<count {
+                guard let byte = reader.byte(), let mode = Rule.Mode(rawValue: byte >> 4) else { return nil }
+                let match: Rule.Match
+                switch byte & 0x0F {
+                case 0: guard let text = reader.text() else { return nil }; match = .genre(text)
+                case 1: guard let text = reader.text() else { return nil }; match = .series(text)
+                case 2: guard let text = reader.text() else { return nil }; match = .tag(text)
+                case 3:
+                    guard let from = reader.number(), let to = reader.number() else { return nil }
+                    match = .years(from: from == 0 ? nil : from, to: to == 0 ? nil : to)
+                default: return nil
+                }
+                conditions.append(Rule.Condition(mode, match))
+            }
+            guard reader.isAtEnd else { return nil }
+            self.init(number: Int(number), flags: flags, name: name, rule: Rule(conditions))
+        } else {
+            self.init(firstVersionCode: code)
+        }
+    }
+
+    private init(number: Int, flags: UInt8, name: String, rule: Rule) {
+        var kinds = Set<MediaItem.Kind>()
+        if flags & 1 != 0 { kinds.insert(.episode) }
+        if flags & 2 != 0 { kinds.insert(.movie) }
+        self.init(number: number, name: name, kinds: kinds, rule: rule,
+                  halfHourSlots: flags & 4 != 0, commercials: flags & 8 != 0)
+    }
+
+    /// A version 1 code: one rule, its kind in the flags' top four bits.
+    private init?(firstVersionCode code: String) {
+        guard var reader = CodeReader(code: code, version: 1),
               let number = reader.byte(), let flags = reader.byte(), let name = reader.text() else { return nil }
         let rule: Rule
         switch flags >> 4 {
@@ -124,10 +223,6 @@ extension CustomChannel {
         default: return nil
         }
         guard reader.isAtEnd else { return nil }
-        var kinds = Set<MediaItem.Kind>()
-        if flags & 1 != 0 { kinds.insert(.episode) }
-        if flags & 2 != 0 { kinds.insert(.movie) }
-        self.init(number: Int(number), name: name, kinds: kinds, rule: rule,
-                  halfHourSlots: flags & 4 != 0, commercials: flags & 8 != 0)
+        self.init(number: Int(number), flags: flags & 0x0F, name: name, rule: rule)
     }
 }

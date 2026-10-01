@@ -19,7 +19,7 @@ import GregularCore
 ///
 /// `-openChannelList`, `-openGuide` and `-openSettings`: open that screen on
 /// launch, to check it (and its focus handling) without a remote.
-/// `-openSettings newChannel` also opens the channel editor.
+/// `-openSettings editingPage` also opens the editing page's screen.
 ///
 /// `-pretendCommercials`: borrows a dozen real videos from the library as
 /// 30–120 second "commercials", so breaks can be tested before a real
@@ -44,11 +44,9 @@ public enum DebugOptions {
         return screens.first { arguments.contains($0.0) }?.1
     }
 
-    /// `-openSettings newChannel`: Settings opens the channel editor too.
-    public static var opensChannelEditor: Bool { settingsEditor == "newChannel" }
-
-    /// `-openSettings setTimes`: Settings opens the set-times editor for channel 1 too.
-    public static var opensSetTimesEditor: Bool { settingsEditor == "setTimes" }
+    /// `-openSettings editingPage`: Settings opens the editing page's screen
+    /// too (whether or not the switch is on), so it can be tried without the remote.
+    public static var opensEditingPage: Bool { settingsEditor == "editingPage" }
 
     private static var settingsEditor: String? {
         guard let flag = arguments.firstIndex(of: "-openSettings"), flag + 1 < arguments.count else { return nil }
