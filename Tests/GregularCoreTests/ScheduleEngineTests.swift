@@ -340,6 +340,25 @@ struct ScheduleEngineTests {
         }
     }
 
+    /// A channel of one very short clip, with no half-hour slots, used to lay
+    /// out tens of thousands of airings a day, and look ahead 64 items for
+    /// each, which froze the channel editor's preview. Slots are now at least
+    /// `shortestSlot`, and a single programme has no sequence rules to try.
+    @Test func veryShortProgrammesKeepADayShort() throws {
+        let clip = MediaItem(id: "e", kind: .episode, name: "Sting", duration: 1, seriesID: "s", seriesName: "S",
+                             seasonNumber: 1, episodeNumber: 1)
+        let tiny = MediaItem(id: "ad", kind: .video, name: "Blip", duration: 1)
+        for padTo in [nil, 30] {
+            let s = try #require(ChannelSchedule(channel: Fixtures.channel(strategy: ShuffledShows.id, padTo: padTo),
+                                                 items: [clip], fillerPool: [tiny]))
+            let day = s.programmes(from: later, to: later.addingTimeInterval(24 * 3600))
+            #expect(day.count <= 24 * 60 / 5 + 1)
+            #expect(day.allSatisfy { $0.slotEnd.timeIntervalSince($0.start) >= 5 * 60 })
+            #expect(s.fillerPool.isEmpty, "A one-second commercial isn't used")
+            #expect(s.programmeRules.isEmpty, "One programme: no rules to try")
+        }
+    }
+
     @Test func floorDivideRoundsTowardsNegativeInfinity() {
         #expect(ChannelSchedule.floorDivide(7, 3) == 2)
         #expect(ChannelSchedule.floorDivide(-7, 3) == -3)

@@ -25,6 +25,23 @@ struct ChannelConfigTests {
         #expect(lineup.channels.contains { $0.filmShare == nil && $0.itemTypes == [.movie] }, "Some channels are films only")
     }
 
+    /// "Comedy or the series Bravo, but nothing tagged Christmas", nested.
+    @Test func sourcesCombineWithAllOfAnyOfAndNot() throws {
+        let json = #"""
+        [{ "number": 9, "name": "Mix", "strategy": "shuffled-shows", "seed": 1,
+           "source": { "type": "all-of", "sources": [
+             { "type": "any-of", "sources": [
+               { "type": "genre", "anyOf": ["Comedy"] },
+               { "type": "series", "anyOf": ["Bravo"] } ] },
+             { "type": "not", "source": { "type": "tag", "anyOf": ["Christmas"] } } ] } }]
+        """#
+        let channel = try #require(try ChannelLineup.load(from: Data(json.utf8)).channels.first)
+        let names = Fixtures.library.filter(channel.accepts).map { $0.seriesName ?? $0.name }
+        #expect(Set(names) == ["Alpha", "Bravo"], "Laughs is a comedy, but tagged Christmas")
+        let bad = #"[{ "number": 9, "name": "X", "strategy": "shuffled-shows", "seed": 1, "source": { "type": "not", "source": { "type": "nope" } } }]"#
+        #expect(throws: DecodingError.self) { try ChannelLineup.load(from: Data(bad.utf8)) }
+    }
+
     @Test func decodesAllFields() throws {
         let json = """
         [{ "number": 9, "name": "Trek", "itemTypes": ["Episode"],

@@ -15,6 +15,8 @@
    - **Signing in all the way.** The demo server (`scripts/demo-server.py`) has no sign-in endpoints, so the walkthrough stops at the insecure-address message. Add fake ones (`/Users/AuthenticateByName`, `/System/Info/Public`) that accept any name, never a real account's password.
    - **Slides and a light touch on a real remote's touch surface.** XCUIRemote can't slide or touch on Apple TV, so these were only tried with the letter keys (`w`/`a`/`s`/`d`, `t`). Try them on an Apple TV, or with the simulator's own Siri Remote window.
 
+5. **The editing page on a real Apple TV.** In the simulator, Network's `acceptLocalOnly` refused every connection, so the app checks the caller's address itself (`EditingPage.isLocal`). On a device, check that a phone on the same Wi-Fi reaches the address shown, whether tvOS asks for local-network permission the first time (the usage text is set), and that the page stops when its screen closes.
+
 ## Done
 
 1. **Custom channels made on the Apple TV**, with a preview, channel codes for sharing them, and custom channels saved as their codes (privacy option (a)). See README.md, *Your own channels*, and PLAN.md §9c.

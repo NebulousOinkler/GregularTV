@@ -1,8 +1,8 @@
 import Foundation
 
 /// The app's only use of `UserDefaults`. It holds client preferences (last
-/// channel, streaming quality, schedule code, diagnostics and commercials
-/// switches, and the viewer's custom channels and set times) and **never**
+/// channel, streaming quality, schedule code, the diagnostics, commercials
+/// and editing-page switches, and the viewer's custom channels and set times) and **never**
 /// anything fetched from the server (PLAN.md §3). Custom channels and set
 /// times are kept as their codes: what the viewer typed or picked (names,
 /// numbers, times, and perhaps a genre, series or tag name), nothing more.
@@ -15,6 +15,7 @@ public struct AppPreferences: @unchecked Sendable {
         static let playsCommercials = "playsCommercials"
         static let customChannels = "customChannels"
         static let setTimes = "setTimes"
+        static let allowsEditingPage = "allowsEditingPage"
     }
 
     private let defaults: UserDefaults
@@ -56,6 +57,13 @@ public struct AppPreferences: @unchecked Sendable {
     public var setTimes: [SetTimes] {
         get { (defaults.stringArray(forKey: Key.setTimes) ?? []).compactMap(SetTimes.init(code:)) }
         nonmutating set { defaults.set(newValue.map(\.code), forKey: Key.setTimes) }
+    }
+
+    /// "Edit from a phone or computer" in Settings: whether Settings offers
+    /// the editing page on the home network. Off by default.
+    public var allowsEditingPage: Bool {
+        get { defaults.bool(forKey: Key.allowsEditingPage) }
+        nonmutating set { defaults.set(newValue, forKey: Key.allowsEditingPage) }
     }
 
     /// The shared schedule code. Nil until first launch picks one.

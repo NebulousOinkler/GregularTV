@@ -42,7 +42,8 @@ This design is what makes the privacy requirement cheap to meet. No schedule or 
 | Device ID (random UUID, made by the app) | Keychain | Jellyfin requires a stable device ID in the auth header |
 | Channel definitions (rules, seed, name) | App config (bundled JSON / Swift) | Client-side config, no library content |
 | Client settings: last channel **number**, streaming quality, schedule code, diagnostics and commercials switches | `UserDefaults`, through `AppPreferences` only | Client-side preferences; they hold no server data |
-| Custom channels, as their channel codes (name, number, rule) | `UserDefaults`, through `AppPreferences` only | Client configuration the viewer typed or picked (decided 2026-09-28, option (a) of the old TODO): a rule may name a genre, series or tag, and nothing else from the library is kept |
+| Custom channels, as their channel codes (name, number, rule) | `UserDefaults`, through `AppPreferences` only | Client configuration the viewer typed or picked (decided 2026-09-28, option (a) of the old TODO): a rule's conditions may name genres, series and tags, and nothing else from the library is kept |
+| The editing-page switch (off by default) | `UserDefaults`, through `AppPreferences` only | A client setting. The page itself keeps nothing: it edits the custom channels and set times above |
 | Set times, as their set-times codes (channel number, time zone, series or film names, times, days) | `UserDefaults`, through `AppPreferences` only | The same option (a): only the names the viewer picked |
 | Library metadata (titles, IDs, durations, artwork) | **RAM only**, gone on app exit | Needed to build the schedule and guide |
 | Password | **Never stored** | Only sent once to get a token (or use Quick Connect instead) |
@@ -63,6 +64,7 @@ Security (untrusted input, checked 2026-09-29):
 - **Server replies:** the claimed item total is capped (`LibraryQuery.mostItems`), paging stops at an empty page, and each page counts for at most `pageSize` items, so a false total can't plan billions of pages and crash every launch. Server IDs go into URL paths, where they're percent-encoded: they can't change the host or add a query. `TranscodingUrl` keeps only its path and query. The `Authorization` header drops quotes, commas and control characters. Every string Screens hands a front end is plain text; a web front end must escape it.
 - **Credentials** are kept by a `CredentialStore` that each platform brings, on the device only and in its secure storage (`KeychainStore` in `GregularKeychain` on Apple's). The shared code has no store of its own, so it can't fall back to an insecure one.
 - **Codes** (channel and set-times) are unauthenticated: the CRC-8 only catches typos. `FixedTimesAreValid` checks set times from a code like any others: times within a day, real dates, and at most `FixedProgramme.mostPerChannel` (24) set times listing `mostTimesPerChannel` (48) times in all per channel, which keeps placing them to a few milliseconds.
+- **The editing page** (`EditingPage`, served by the app's `EditingServer`, decided 2026-10-01): off by default; when on, it runs only while its screen is open. Connections are refused unless they come from a private, link-local or loopback address (`EditingPage.isLocal`; Network's `acceptLocalOnly` refused every connection in the tvOS simulator, even from the same Mac, so the app checks the peer itself). Requests must name one of the Apple TV's own addresses in `Host` (against DNS rebinding) and any `Origin` must match it (against cross-site requests), and every data request needs the six-digit code, compared in constant time; five wrong codes lock it. One request per connection, at most 8 KB of headers and 512 KB of body, within 10 seconds. What it's sent is an `EditingDocument`, resolved and checked exactly as codes are (`ChannelLineup.adding`, `Rule.mostConditions`, `FixedTimesAreValid`). The page is one inline file with a strict Content-Security-Policy (no outside requests, no framing) and puts library names on the page only through `textContent`; a test checks it never uses `innerHTML`.
 - **Device type** is trusted nowhere: the app reads no other device's name, and Jellyfin authorises by token, not by name. The device name sent is the kind of device, from the app (`AppModel.deviceName`).
 - **Sign Out and deletes** ask first. Screens decides which actions need it and what's asked (`Confirmation`: `AppModel.signOutConfirmation`, each editor's `deleteConfirmation`); the tvOS app presents it (`SettingsRows.confirmedRow`).
 
@@ -95,7 +97,7 @@ jellyfin_tv/
 │  │  └─ SeededRandom.swift         # SplitMix64: deterministic, portable RNG
 │  ├─ Channels/
 │  │  ├─ ChannelLineup.swift        # loads channels.json, adds custom channels, builds every schedule
-│  │  ├─ CustomChannel.swift        # channels made in Settings, and their channel codes
+│  │  ├─ CustomChannel.swift        # channels the viewer makes, and the codes they're saved as
 │  │  ├─ Crockford.swift            # the typing-friendly alphabet of schedule and channel codes
 │  │  ├─ ChannelSource.swift        # protocol + registry: what goes on a channel
 │  │  ├─ Sources/BasicSources.swift # all, genre, series, years, tag
@@ -124,7 +126,9 @@ jellyfin_tv/
 │  │  ├─ ChannelPlayer.swift        # every playback decision: tuning, hand-offs, breaks, retries, head
 │  │  │                             # starts, quality; plays on two PlayerDecks
 │  │  └─ ChannelSurfer.swift        # channel up/down with preview, typed numbers, the list
-│  ├─ Channels/ChannelEditorModel.swift  # making and editing a custom channel, with its preview
+│  ├─ Channels/LibraryChoices.swift # the library's names to pick from, and preview lines
+│  ├─ Editing/                      # the editing page: EditingPage (requests), EditingDocument (the JSON),
+│  │                                # HTTPMessage, EditingPageHTML (the page itself)
 │  ├─ Watch/WatchModel.swift        # the watch screen's rules: banner, overlays, curtain, remote actions,
 │  │                                # and the words on the banner, cards and badge
 │  ├─ Remote/RemoteControls.swift   # the button tables (one per screen) and hints
@@ -137,7 +141,8 @@ jellyfin_tv/
    ├─ GregularTVApp.swift, RootView.swift, DemoMode.swift   # launch; AppModel with AVFoundation decks
    ├─ Login/          LoginView (draws LoginModel)
    ├─ Player/         WatchView (draws WatchModel), AVPlayerDeck (PlayerDeck on AVQueuePlayer),
-   │                  VideoSurface, ChannelListView, SettingsView, ChannelEditorView, SettingsRows, BreakStyle
+   │                  VideoSurface, ChannelListView, SettingsView, SettingsRows, BreakStyle
+   ├─ Editing/        EditingServer (serves EditingPage on the home network), EditingPageView (address and code)
    ├─ Remote/         RemoteControls+SwiftUI (attaches the tables), RemoteGestures (clicks, slides, touches)
    ├─ Guide/          GuideView (scrolling EPG grid)
    └─ GregularTVTests/  app-hosted tests (Keychain, player on AVFoundation, commercials, surfing, remote)
@@ -287,7 +292,7 @@ Every default channel uses the `shuffle` commercials and 30-minute slots (`padTo
 
 What a medium library gives (`SCHEDULE_AUDIT=1 swift test --filter ScheduleAudit`, 90 series and 450 films made up with typical lengths and genres): every channel is on; mixed channels with plenty of series air their asked share, and themed ones with few series lean towards films (Comedy with 6 series: about 73% films). A library of 25 series and 120 films shows 7 of the 16.
 
-Source types available: `all`, `genre`, `series`, `years`, `tag` (all matched case-insensitively by name). A channel's optional `itemTypes` narrows any source to `Episode` or `Movie`. The config format looks like this:
+Source types available: `all`, `genre`, `series`, `years`, `tag` (all matched case-insensitively by name), and `all-of`, `any-of` and `not`, which combine other sources (`{ "type": "not", "source": { "type": "tag", "anyOf": ["Christmas"] } }`) and nest to any depth. A channel's optional `itemTypes` narrows any source to `Episode` or `Movie`. The config format looks like this:
 
 ```json
 [
@@ -361,7 +366,7 @@ A Feistel network has none of those limits, but with 4 rounds it was uneven over
 - **Set times themselves.** A set time is left out that day if it would overlap the one before it, or if it's the same programme straight after it. Two set times of the same film close together are the viewer's choice, and may air with only a break between.
 A channel whose shuffle has only one programme can't avoid repeating it: there, the rules give way.
 
-**Programmes at set times: an overlay (changed 2026-09-28).** Set times name series or items and local times, with optional `days` (weekdays or dates) and `exclusive`, each read in its own time zone. They come from a channel's `fixed` list in `channels.json` (with the channel's `timeZone`), or from a household's `SetTimes`, made in Settings › Set times for any channel.
+**Programmes at set times: an overlay (changed 2026-09-28).** Set times name series or items and local times, with optional `days` (weekdays or dates) and `exclusive`, each read in its own time zone. They come from a channel's `fixed` list in `channels.json` (with the channel's `timeZone`), or from a household's `SetTimes`, made on the editing page for any channel.
 
 The first version wove set times into the schedule: runs became local days and each set time a hard edge. That moved everything around it, so two households sharing a schedule code, one with a set time, agreed on only about 11% of moments (0% with `exclusive`). Now there are two layers:
 - The **shared schedule** comes from the code and the channel alone, in uniform runs, exactly as without set times.
@@ -371,9 +376,11 @@ The first version wove set times into the schedule: runs became local days and e
 
 So outside the windows and covered slots, every household with the same code sees the same programme at the same point (tested with random channels in `RandomChannelTests`). A series' episode at each set time comes from counting its airings since the channel's first day from the calendar, so any day is found without replaying the ones before. Tuning still walks at most two days.
 
-A household's set times on one channel are a `SetTimes`, with a **set-times code** (the channel number, time zone and set times, in the same Crockford base32 with a check byte as channel codes, through `CodeWriter`/`CodeReader`) to share them with another Apple TV. They're saved as their codes in `AppPreferences` (§3).
+A household's set times on one channel are a `SetTimes`, saved in `AppPreferences` (§3) packed as a short code (the channel number, time zone and set times, in Crockford base32 with a check byte, through `CodeWriter`/`CodeReader`). Codes were typed between Apple TVs until 2026-10-01; now sharing is copying the editing page's JSON.
 
-**Custom channels.** Settings › Your channels makes a channel on the Apple TV (`CustomChannel`, edited through `ChannelEditorModel`): a name, a number from 20 to 99, episodes, movies or both, one rule (everything, a genre, a series, years or a tag) picked from the library in memory, half-hour slots and commercials (both on by default). Set times on it are made in Settings › Set times, like any channel's. The strategy, seed (1000 + the number) and filler take the defaults. The editor previews how many programmes match and the next three hours, with no server calls. A **channel code** packs the definition into Crockford base32 with a check byte (a mistyped code is rejected, never misread), to type into another Apple TV: with the same schedule code, both then show the same schedule. Custom channels are saved as their codes in `AppPreferences` (§3), and a saved one whose number a newer bundled line-up takes is left out rather than breaking the line-up.
+**Custom channels.** A channel the viewer makes (`CustomChannel`): a name, a number from 20 to 99, episodes, movies or both, a rule of up to 20 conditions on genres, series, tags and years, each joined as *any of*, *all of* or *none of* (changed 2026-10-01; it was one rule), half-hour slots and commercials (both on by default). The strategy, seed (1000 + the number) and filler take the defaults. The rule becomes a line-up source through the combining sources `all-of`, `any-of` and `not` (`CombinedSources.swift`), which `channels.json` can use directly too, nested to any depth. Custom channels are saved in `AppPreferences` (§3) packed as version 2 codes (the conditions; version 1 codes, with one rule, still read), and a saved one whose number a newer bundled line-up takes is left out rather than breaking the line-up.
+
+**Where they're made (decided 2026-10-01).** Custom channels and set times are made only on the **editing page** (`EditingPage`, §3), in a browser on the home network, off by default; Settings lists them read-only. The Apple TV's own editors were removed: picking from thousands of tags with a remote froze them, and combined rules are slow to build with one. The codes typed between Apple TVs went with them; the page's JSON tab (`EditingDocument`) is how channels are shared. The page previews a channel (how many programmes match, and its next three hours) by asking the Apple TV, which works it out off the main thread with no server calls.
 
 ## 9a. Gap filler (commercials): live
 
@@ -477,9 +484,9 @@ A record of what was built and checked, in order. Details like the remote contro
 **Decided (2026-09-28)**
 - **Shuffle:** every shuffle is a `ShuffledOrder` (Fisher–Yates up to 10 items, a 12-round Feistel network above), new each pass (§9b).
 - **Special rules** live in one registry, `ScheduleRules` (§9c).
-- **Custom channels** are made in Settings and saved as channel codes: privacy option (a), allowing exactly this in `AppPreferences` (§3, §9c).
+- **Custom channels** are made on the editing page (off by default) and saved as their codes: privacy option (a), allowing exactly this in `AppPreferences` (§3, §9c).
 - **Programmes at set times** are built, in `channels.json` and in Settings for any channel (§9c).
-- **Set times are an overlay** on the shared schedule, so households sharing a code stay in step outside their set times; a household's set times are shared by set-times code (§9c).
+- **Set times are an overlay** on the shared schedule, so households sharing a code stay in step outside their set times; a household's set times are shared by copying the editing page's JSON (§9c).
 
 **Prerequisites**
 - ✅ Xcode 27 with the licence accepted, the tvOS 27 SDK, and the tvOS 27 simulator runtime (verified 2026-09-23). `GregularCore` and `GregularJellyfin` tests pass on macOS and on the Apple TV 4K simulator.

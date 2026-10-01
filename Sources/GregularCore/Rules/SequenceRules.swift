@@ -40,8 +40,14 @@ struct RuledStream {
     private(set) var previous: MediaItem?
 
     init(_ source: AnyIterator<MediaItem>, for stream: ScheduleStream, after previous: MediaItem? = nil) {
+        self.init(source, rules: ScheduleRules.sequenceRules(for: stream), after: previous)
+    }
+
+    /// With the given rules: none for a stream of a single item, where they'd
+    /// only look ahead in vain before giving way.
+    init(_ source: AnyIterator<MediaItem>, rules: [any SequenceRule], after previous: MediaItem? = nil) {
         self.source = source
-        rules = ScheduleRules.sequenceRules(for: stream)
+        self.rules = rules
         self.previous = previous
     }
 
