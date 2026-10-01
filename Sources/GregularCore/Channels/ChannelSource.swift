@@ -23,6 +23,9 @@ public enum ChannelSourceRegistry {
             SeriesSource.self,
             YearRangeSource.self,
             TagSource.self,
+            AllOfSource.self,
+            AnyOfSource.self,
+            NotSource.self,
             // ← add new source types here
         ]
     }

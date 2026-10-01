@@ -16,27 +16,9 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var codeText = ""
     @State private var codeError: String?
-    @State private var channelCodeText = ""
-    @State private var channelError: String?
-    @State private var setTimesCodeText = ""
-    @State private var setTimesError: String?
-    @State private var choosingChannel = false
-    @State private var editor: Editor?
-    @State private var setTimesEditor: SetTimesEditor?
+    @State private var editingPage = false
     /// Settings opens on the quality in use, not the top row.
     @FocusState private var focusedQuality: StreamingQuality?
-
-    /// The channel editor, while it's open.
-    private struct Editor: Identifiable {
-        let id = UUID()
-        let model: ChannelEditorModel
-    }
-
-    /// The set-times editor, while it's open.
-    private struct SetTimesEditor: Identifiable {
-        let id = UUID()
-        let model: SetTimesEditorModel
-    }
 
     var body: some View {
         SettingsRows.page {
@@ -83,21 +65,7 @@ struct SettingsView: View {
                 }
             }
 
-            SettingsRows.section("Your channels", footer: [
-                channelError,
-                "Custom channels are saved on this Apple TV as their channel codes: the name, number and the genre, series or tag you picked. Nothing else from your library is kept. To share one, type its code (shown when you edit it) into another Apple TV.",
-            ]) {
-                ForEach(app.customChannels, id: \.self) { channel in
-                    SettingsRows.row("\(channel.number)  \(channel.name)", detail: channel.summary) { openEditor(editing: channel) }
-                }
-                SettingsRows.row("Add a Channel") { openEditor(editing: nil) }
-                TextField("Or enter a channel code from another Apple TV", text: $channelCodeText)
-                    .textInputAutocapitalization(.characters)
-                    .autocorrectionDisabled()
-                    .onSubmit(addTypedChannel)
-            }
-
-            setTimesSection
+            yourChannels
 
             SettingsRows.section("Commercials", footer: [
                 "When off, breaks between programmes are blank, with the Up Next card showing what's on next and when. Programmes still start at the same times, so you stay in step with everyone using the same schedule code.",
@@ -135,46 +103,48 @@ struct SettingsView: View {
         }
         #if DEBUG
         .onAppear {
-            if DebugOptions.opensChannelEditor { openEditor(editing: nil) }
-            if DebugOptions.opensSetTimesEditor { openSetTimesEditor(forChannel: 1) }
+            if DebugOptions.opensEditingPage { editingPage = true }
         }
         #endif
-        .fullScreenCover(item: $editor) { editor in
-            ChannelEditorView(model: editor.model,
-                              onSave: { save($0, replacing: editor.model.original) },
-                              onDelete: editor.model.original.map { original in { app.delete(original); dismiss() } })
-        }
-        .fullScreenCover(item: $setTimesEditor) { editor in
-            SetTimesEditorView(model: editor.model,
-                               onSave: { setTimesError = app.save($0, replacing: editor.model.original)
-                                         if setTimesError == nil { dismiss() } },
-                               onDelete: editor.model.original.map { original in { app.delete(original); dismiss() } })
+        .fullScreenCover(isPresented: $editingPage) {
+            EditingPageView(app: app)
         }
     }
 
-    /// Programmes at set times on a channel, for this household only.
-    @ViewBuilder private var setTimesSection: some View {
-        SettingsRows.section("Set times", footer: [
-            setTimesError,
-            "Set a series or film to air at fixed times on a channel. At every other time the channel stays the same as for everyone with your schedule code. Set times are saved on this Apple TV as their set-times codes: the channel, the names you picked and the times. To share them, type the code (shown when you edit them) into another Apple TV.",
+    /// Your channels and set times, listed here and made on the editing page.
+    @ViewBuilder private var yourChannels: some View {
+        let howToEdit = app.allowsEditingPage
+            ? "Make and change them on the editing page: Open the Editing Page, below, and follow the steps on a phone or computer."
+            : "Make and change them from a phone or computer: turn on the editing page, below."
+        SettingsRows.section("Your channels", footer: [
+            app.customChannels.isEmpty ? "None yet." : nil,
+            "Your own channels join the guide like any other. They're saved on this Apple TV: the name, number and the genres, series, tags and years in each one's rule. Nothing else from your library is kept.",
+            howToEdit,
         ]) {
-            let channels = app.setTimesChannels
-            ForEach(channels.filter { $0.setTimes != nil }) { channel in
-                SettingsRows.row(channel.title, detail: channel.detail) { openSetTimesEditor(forChannel: channel.number) }
+            ForEach(app.customChannels, id: \.self) { channel in
+                SettingsRows.row("\(channel.number)  \(channel.name)", detail: channel.summary) {}
             }
-            SettingsRows.row("Set Times on a Channel", value: choosingChannel ? "Done" : "Choose") { choosingChannel.toggle() }
-            if choosingChannel {
-                ForEach(channels.filter { $0.setTimes == nil }) { channel in
-                    SettingsRows.row(channel.title) {
-                        choosingChannel = false
-                        openSetTimesEditor(forChannel: channel.number)
-                    }
-                }
+        }
+
+        SettingsRows.section("Set times", footer: [
+            app.setTimes.isEmpty ? "None yet." : nil,
+            "A series or film at fixed times on a channel. At every other time the channel stays the same as for everyone with your schedule code. They're saved on this Apple TV: the channel, the names you picked and the times.",
+            howToEdit,
+        ]) {
+            ForEach(app.setTimesChannels) { channel in
+                SettingsRows.row(channel.title, detail: channel.detail) {}
             }
-            TextField("Or enter a set-times code from another Apple TV", text: $setTimesCodeText)
-                .textInputAutocapitalization(.characters)
-                .autocorrectionDisabled()
-                .onSubmit(addTypedSetTimes)
+        }
+
+        SettingsRows.section("Edit from a phone or computer", footer: [
+            "When on, you can make and change your channels and set times in a web browser on a phone or computer on your home network, with a keyboard and search, while the editing screen is open here. Off, they can't be changed. Nothing is kept or sent anywhere else either way.",
+        ]) {
+            SettingsRows.row("Editing page", value: app.allowsEditingPage ? "On" : "Off") {
+                app.setAllowsEditingPage(!app.allowsEditingPage)
+            }
+            if app.allowsEditingPage {
+                SettingsRows.row("Open the Editing Page") { editingPage = true }
+            }
         }
     }
 
@@ -192,29 +162,5 @@ struct SettingsView: View {
         }
         app.setScheduleCode(code)
         dismiss()
-    }
-
-    private func openEditor(editing channel: CustomChannel?) {
-        editor = app.makeChannelEditor(editing: channel).map { Editor(model: $0) }
-    }
-
-    /// Saved, back to watching. (The channel playing carries on unless what's on it changed.)
-    private func save(_ channel: CustomChannel, replacing original: CustomChannel?) {
-        channelError = app.save(channel, replacing: original)
-        if channelError == nil { dismiss() }
-    }
-
-    private func openSetTimesEditor(forChannel number: Int) {
-        setTimesEditor = app.makeSetTimesEditor(forChannel: number).map { SetTimesEditor(model: $0) }
-    }
-
-    private func addTypedSetTimes() {
-        setTimesError = app.addSetTimes(code: setTimesCodeText)
-        if setTimesError == nil { dismiss() }
-    }
-
-    private func addTypedChannel() {
-        channelError = app.addChannel(code: channelCodeText)
-        if channelError == nil { dismiss() }
     }
 }

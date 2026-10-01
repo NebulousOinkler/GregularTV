@@ -206,6 +206,13 @@ extension FixedProgramme: Decodable {
         exclusive = try c.decodeIfPresent(Bool.self, forKey: .exclusive) ?? false
     }
 
+    /// Its `days` as `channels.json` writes them: weekdays ("Mon") in week
+    /// order, then dates ("Feb 2") in calendar order. Empty for every day.
+    public var days: [String] {
+        weekdays.sorted().map { Self.weekdayNames[$0 - 1].capitalized }
+            + dates.sorted { ($0.month, $0.day) < ($1.month, $1.day) }.map { "\(Self.monthNames[$0.month - 1].capitalized) \($0.day)" }
+    }
+
     /// "18:30" → 1110. Nil unless it's a time within a day.
     public static func minutes(from text: String) -> Int? {
         let parts = text.split(separator: ":")
