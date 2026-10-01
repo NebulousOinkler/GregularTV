@@ -232,16 +232,16 @@ extension ScheduleAudit {
         let lineup = try ChannelLineup.bundled()
         let code = ScheduleCode("7KQM2-X9PDA")!
         let start = Date(timeIntervalSince1970: 1_790_000_000)
-        let f = DateFormatter(); f.dateFormat = "EEE HH:mm"; f.timeZone = TimeZone(identifier: "UTC")
+        let f = DateFormatter(); f.dateFormat = "EEE HH:mm"; f.timeZone = ChannelSchedule.dayTimeZone
         for schedule in lineup.schedules(for: library, fillerPool: clips, code: code)
         where [1, 10, 14].contains(schedule.channel.number) {
             let programmes = schedule.programmes(from: start, to: start.addingTimeInterval(4 * 86_400)).filter { $0.start >= start }
-            Self.line("— ch\(schedule.channel.number) run \(schedule.runDuration / 3600) h, avg slot estimate")
+            Self.line("— ch\(schedule.channel.number) run \(schedule.run(containing: start).duration / 3600) h")
             var seen: [String: Date] = [:]
             for p in programmes {
                 let gap = p.slotEnd.timeIntervalSince(p.start) - p.item.duration
                 let again = seen[p.item.id].map { String(format: " SAME ITEM %.1f h ago", p.start.timeIntervalSince($0) / 3600) } ?? ""
-                if gap > 30 * 60 || !again.isEmpty || f.string(from: p.start).hasSuffix("23:30") || f.string(from: p.start).hasPrefix("") && Calendar(identifier: .gregorian).dateComponents(in: TimeZone(identifier: "UTC")!, from: p.start).hour! >= 21 {
+                if gap > 30 * 60 || !again.isEmpty || f.string(from: p.start).hasSuffix("23:30") || f.string(from: p.start).hasPrefix("") && Calendar(identifier: .gregorian).dateComponents(in: ChannelSchedule.dayTimeZone, from: p.start).hour! >= 21 {
                     Self.line(String(format: "%@ %@ (%.0f min) break %.0f min%@", f.string(from: p.start), p.item.name, p.item.duration / 60, gap / 60, again))
                 }
                 seen[p.item.id] = p.start
@@ -261,9 +261,10 @@ extension ScheduleAudit {
                 var lastShow: [String: Int] = [:], lastItem: [String: Date] = [:]
                 var quick: [Double] = [], sameItem: [Double] = []
                 for (i, p) in programmes.enumerated() {
-                    // Hours from this slot to the next run boundary (midnight UTC here), wrapped to ±12.
-                    var h = p.start.timeIntervalSince(schedule.channel.epoch).truncatingRemainder(dividingBy: schedule.runDuration) / 3600
-                    if h > 12 { h -= 24 }
+                    // Hours from this slot to the nearest run boundary (midnight Pacific), wrapped to ±12.
+                    let run = schedule.run(containing: p.start)
+                    var h = p.start.timeIntervalSince(run.start) / 3600
+                    if h > 12 { h -= run.duration / 3600 }
                     if let j = lastShow[p.item.seriesKey], i - j <= 6 { quick.append(h) }
                     if let t = lastItem[p.item.id], p.start.timeIntervalSince(t) < 86_400 { sameItem.append(h) }
                     lastShow[p.item.seriesKey] = i

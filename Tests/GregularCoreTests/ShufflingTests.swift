@@ -123,12 +123,11 @@ struct UniversalScheduleTests {
         let episodes = Fixtures.library.filter { $0.kind == .episode }
         let schedule = try #require(ChannelSchedule(channel: Fixtures.channel(strategy: ShuffledShows.id),
                                                     items: episodes, code: ScheduleCode("7KQM2-X9PDA")!))
-        let epoch = Channel.defaultEpoch.timeIntervalSince1970
-        let firstRun = floor((now.timeIntervalSince1970 - epoch) / schedule.runDuration)
-        for k in 0..<5 {
-            let runStart = Date(timeIntervalSince1970: epoch + (firstRun + Double(k)) * schedule.runDuration)
-            let run = schedule.airings(from: runStart, to: runStart.addingTimeInterval(schedule.runDuration - 1))
-                .filter { !$0.isFiller && $0.start >= runStart }
+        var day = schedule.run(containing: now)
+        for _ in 0..<5 {
+            let run = schedule.airings(from: day.start, to: day.end.addingTimeInterval(-1))
+                .filter { !$0.isFiller && $0.start >= day.start }
+            defer { day = schedule.run(containing: day.end) }
             for show in Set(run.map(\.item.seriesKey)) {
                 let numbers = run.filter { $0.item.seriesKey == show }.map { ($0.item.seasonNumber!, $0.item.episodeNumber!) }
                 #expect(ShuffledShowsTests.forwardsOrBackToPilot(numbers))
