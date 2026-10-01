@@ -256,28 +256,36 @@ v1: a bundled `Resources/channels.json` that users edit by hand and then rebuild
 
 **Rules that apply to every channel:**
 - If a channel's rule matches no items in your library, the channel is **hidden automatically** and doesn't show as a dead channel. So the defaults can include many genres, and you only see the ones your library supports.
+- **Variety decides the rest, from the library connected (`ChannelVariety`).** A channel marked `needsVariety` (every default channel but the two catch-alls, 1 and 10) is also hidden when its programmes can't fill a day without repeating too soon: a series at most about once a day, a film at most about once every three days (one pass of the shuffle each way). So a small library shows fewer, broader channels, and a large one shows them all.
 - A genre rule can list alternatives, such as `["Science Fiction", "Sci-Fi", "Sci-Fi & Fantasy"]`, because metadata providers name genres differently.
 - Channel numbers are fixed by config, so hidden channels leave gaps, like real TV. The surfer skips the gaps.
 
-**Default line-up:**
+**Default line-up (2026-10-01):**
 
-Every default channel uses the `shuffled-shows` strategy, the `shuffle` commercials and 30-minute slots (`padTo`), each with its own seed:
+Every default channel uses the `shuffle` commercials and 30-minute slots (`padTo`), each with its own seed. Channels 1–9 mix TV and films with the `shuffled-mix` strategy; channels 10–16 are films only, with `shuffled-shows`. Themes kept their old numbers where they still exist (Documentary and Reality became Real Life, on 7), so set times saved on a channel stay with its theme; Movies, Comedy Movies, Horror & Thriller and Classics (10, 12–14) are unchanged, programme for programme, while they have the variety to stay on. Genre lists include TMDB's and TheTVDB's names for the same theme, since TV and films are tagged differently (`Sci-Fi & Fantasy` for a series, `Science Fiction` for a film).
 
-| # | Name | Source rule |
-|---|---|---|
-| 1 | All TV | every Episode |
-| 2 | Comedy | Episodes, genre Comedy/Sitcom |
-| 3 | Drama | Episodes, genre Drama |
-| 4 | Animation | Episodes + Movies, genre Animation |
-| 5 | Sci-Fi | Episodes, genre Science Fiction/Sci-Fi/Sci-Fi & Fantasy |
-| 6 | Kids & Family | Episodes + Movies, genre Family/Kids/Children |
-| 7 | Documentary | Episodes + Movies, genre Documentary |
-| 8 | Reality | Episodes, genre Reality |
-| 10 | Movies | every Movie |
-| 11 | Action Movies | Movies, genre Action/Adventure |
-| 12 | Comedy Movies | Movies, genre Comedy |
-| 13 | Horror & Thriller | Movies, genre Horror/Thriller |
-| 14 | Classics | Movies, production year < 1980 |
+| # | Name | Source rule | Films (share of airtime asked) |
+|---|---|---|---|
+| 1 | Gregular | everything | 35% |
+| 2 | Comedy | Comedy/Sitcom/Stand-Up | 35% |
+| 3 | Drama | Drama/Romance/Soap | 40% |
+| 4 | Animation | Animation/Anime | 30% |
+| 5 | Sci-Fi & Fantasy | Science Fiction/Sci-Fi/Sci-Fi & Fantasy/Fantasy | 40% |
+| 6 | Kids & Family | Family/Kids/Children | 35% |
+| 7 | Real Life | Documentary/Reality/Food/Travel/Home and Garden/Game Show/Talk/History/Nature/Sport/Music | 25% |
+| 8 | Crime & Mystery | Crime/Mystery/Thriller/Suspense | 40% |
+| 9 | Action & Adventure | Action/Adventure/Action & Adventure/War/War & Politics/Western | 45% |
+| 10 | Movies | every film | films only |
+| 11 | Action Movies | Action/Adventure/War/Western | films only |
+| 12 | Comedy Movies | Comedy | films only |
+| 13 | Horror & Thriller | Horror/Thriller | films only |
+| 14 | Classics | made before 1980 | films only |
+| 15 | Sci-Fi & Fantasy Movies | Science Fiction/Fantasy | films only |
+| 16 | Drama & Romance Movies | Drama/Romance | films only |
+
+**The mix (`ShuffledMix`, id `shuffled-mix`).** Under `shuffled-shows` every title gets one turn per pass, so a library with far more films than series fills a mixed channel with films. A mixed channel instead asks for a share of its airtime for films (`"films": 0.35`), and the library can move it: if the series can't fill their part without one coming round more than about once a day, films take the rest, and the other way round (`ChannelVariety.filmShare(wanted:)`). The share of airtime becomes a share of slots (films are longer, so they take fewer slots than their airtime). Positions come in blocks of 10, each with exactly its share of film slots at shuffled places, so films don't arrive on a fixed beat. The series and the films each keep their own Shuffled Shows order (§9b), counted by how many slots of that kind came before: every series once per pass of the series, one episode further each pass, and every film once per pass of the films. It also tells the engine its average slot (films' share at the films' average, the rest at the series'), for where each run's stream starts.
+
+What a medium library gives (`SCHEDULE_AUDIT=1 swift test --filter ScheduleAudit`, 90 series and 450 films made up with typical lengths and genres): every channel is on; mixed channels with plenty of series air their asked share, and themed ones with few series lean towards films (Comedy with 6 series: about 73% films). A library of 25 series and 120 films shows 7 of the 16.
 
 Source types available: `all`, `genre`, `series`, `years`, `tag` (all matched case-insensitively by name). A channel's optional `itemTypes` narrows any source to `Episode` or `Movie`. The config format looks like this:
 
@@ -315,7 +323,7 @@ Channels can also be made on the Apple TV, in Settings (custom channels, §9c).
 
 A Feistel network has none of those limits, but with 4 rounds it was uneven over small domains, so it now has 12 rounds, and channels of 10 or fewer use Fisher–Yates, which is exact. After the change every tested size matched a perfect shuffle: every order of up to 9 items appears equally often, items land evenly across positions, and 20 million codes gave the number of distinct 12-show loops a perfect shuffle would. With 40 or more shows the limit is the code itself: 2⁵⁰ different schedules per channel. `LazyDerangement` and `Primes` are kept, unused, for reference.
 
-**How it's used (`ShuffledShows`, id `shuffled-shows`; every default channel uses it):**
+**How it's used (`ShuffledShows`, id `shuffled-shows`; the film-only channels and custom channels use it, and `shuffled-mix` uses its order for each side, §9):**
 - **Show IDs:** each show or movie on a channel gets a numeric ID, its index among the channel's series sorted by title.
 - **Order:** each pass plays every show once, in that pass's shuffle. On pass `k`, a show plays its episode `k`, wrapping round, so each show advances one episode per pass.
 - **Episodes only go forwards within a run.** The one exception: after a show's final episode, its next appearance cycles back to the pilot (its first available episode). Movies are exempt.

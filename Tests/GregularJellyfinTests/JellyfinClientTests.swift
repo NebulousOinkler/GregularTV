@@ -50,6 +50,23 @@ struct JellyfinLibraryTests {
         #expect(items[2].genres == ["Drama"] && items[2].productionYear == 1999)
     }
 
+    /// A library several pages long, served the way Jellyfin pages it
+    /// (`StartIndex`, `Limit`), with the pages fetched in parallel: every
+    /// episode and movie comes back exactly once, in the server's order.
+    @Test func aLibraryOfManyPagesComesBackWhole() async throws {
+        let episodes = (0..<2_345).map { self.episode(String(format: "e%05d", $0), season: 1, number: $0) }
+        let movies = (0..<678).map { #"{ "Id": "m\#(String(format: "%05d", $0))", "Name": "Film", "Type": "Movie", "RunTimeTicks": 60000000000 }"# }
+        let library = episodes + movies
+        mock.on("GET", "/Items") { request in
+            guard request.queryValue("IncludeItemTypes") == "Episode,Movie" else { return (200, self.page([], total: 0)) }
+            let start = Int(request.queryValue("StartIndex")!)!, limit = Int(request.queryValue("Limit")!)!
+            return (200, self.page(Array(library.dropFirst(start).prefix(limit)), total: library.count))
+        }
+        let items = try await JellyfinFixtures.client(mock).fetchLibrary()
+        let expected = (0..<2_345).map { String(format: "e%05d", $0) } + (0..<678).map { String(format: "m%05d", $0) }
+        #expect(items.map(\.id) == expected)
+    }
+
     @Test func aFalseTotalFromTheServerIsNotBelieved() async throws {
         // A hostile server claims the most items there could be, then sends none.
         mock.on("GET", "/Items") { request in

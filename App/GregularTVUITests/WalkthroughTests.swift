@@ -259,7 +259,7 @@ final class WalkthroughTests: XCTestCase {
         waitForWatching()
         openSettings()
         choose("Set Times on a Channel")
-        choose("1  All TV")
+        choose("1  Gregular")
         XCTAssertTrue(text("Set Times on 1").waitForExistence(timeout: 5), "The set-times editor didn't open")
         choose("Choose a series or film")
         press(.down)
@@ -274,7 +274,7 @@ final class WalkthroughTests: XCTestCase {
         pause(4)
 
         openSettings()
-        XCTAssertTrue(button("1  All TV").waitForExistence(timeout: 5), "The set times aren't listed")
+        XCTAssertTrue(button("1  Gregular").waitForExistence(timeout: 5), "The set times aren't listed")
         capture("set-times-listed")
         closeSettings()
         press(.left)   // channel 1 is where the set time is: it's the first channel
@@ -285,7 +285,7 @@ final class WalkthroughTests: XCTestCase {
         pause()
 
         openSettings()
-        choose("1  All TV")
+        choose("1  Gregular")
         choose("Delete Set Times")
         XCTAssertTrue(text("Delete the set times").waitForExistence(timeout: 3), "Deleting set times didn't ask first")
         capture("delete-set-times-asks")
@@ -294,7 +294,7 @@ final class WalkthroughTests: XCTestCase {
         capture("after-deleting-set-times")
         backToLiveTV()   // Settings was opened from the guide, so it went back there
         openSettings()
-        XCTAssertFalse(button("1  All TV").exists, "The set times are still listed after deleting")
+        XCTAssertFalse(button("1  Gregular").exists, "The set times are still listed after deleting")
         closeSettings()
     }
 
