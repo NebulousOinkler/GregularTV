@@ -5,8 +5,8 @@ import Testing
 @testable import GregularScreens
 @testable import GregularTV
 
-/// Speed tests: Auto never delays playback for one, and they never run
-/// unless Auto is selected.
+/// Speed tests: Auto asks for the original with no speed test until
+/// playback has trouble, and they never run unless Auto is selected.
 /// Serialized: the tests change the shared background-measurement delay.
 @MainActor @Suite(.serialized)
 struct AutoQualityTests {
@@ -33,26 +33,28 @@ struct AutoQualityTests {
         player.stop()
     }
 
-    @Test func autoStartsPlayingWithoutWaitingForTheSpeedTest() async throws {
+    @Test func autoAsksForTheOriginalWithoutASpeedTest() async throws {
         ChannelPlayer.backgroundMeasurementDelay = .zero
         let server = FakeServer(speedTestDelay: .seconds(2))   // like a slow link
         let player = try makePlayer(quality: .auto, server: server)
         let start = ContinuousClock.now
         player.tune()
         try await waitForPlaybackInfo(server)
-        #expect(ContinuousClock.now - start < .seconds(1), "The speed test takes 2 s; playback mustn't wait for it")
-        #expect(server.playbackInfos.first?.url?.query?.contains("maxStreamingBitrate=8000000") == true,
-                "Before any measurement, Auto starts at 8 Mbps")
+        #expect(ContinuousClock.now - start < .seconds(1), "Playback doesn't wait for a speed test")
+        try await Task.sleep(for: .milliseconds(300))
+        #expect(server.requestedCaps == [StreamingQuality.maximumBitrate],
+                "No cap until playback has trouble: a lower one would make the server re-encode")
+        #expect(server.speedTests == 0)
         player.stop()
     }
 
-    @Test func switchingAwayFromAutoStopsSpeedTests() async throws {
+    @Test func switchingAwayFromAutoUsesTheFixedCapWithNoSpeedTest() async throws {
         ChannelPlayer.backgroundMeasurementDelay = .milliseconds(200)
         let server = FakeServer(speedTestDelay: .seconds(2))   // like a slow link
         let player = try makePlayer(quality: .auto, server: server)
         player.tune()
         try await waitForPlaybackInfo(server)
-        player.setQuality(.hd720)   // before the delayed speed test starts
+        player.setQuality(.hd720)
         try await Task.sleep(for: .milliseconds(600))
         #expect(server.speedTests == 0)
         #expect(server.playbackInfos.last?.url?.query?.contains("maxStreamingBitrate=4000000") == true)
