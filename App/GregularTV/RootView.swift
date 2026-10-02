@@ -6,6 +6,8 @@ struct RootView: View {
 
     var body: some View {
         ZStack {
+            // The brand's gradient behind everything but live TV.
+            if app.liveTV == nil { Brand.gradient.ignoresSafeArea() }
             // Live TV sits underneath, in the same place whether it's on screen
             // or playing on behind the main page, so going up to the main page
             // and back never rebuilds it (or re-tunes).

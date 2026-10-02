@@ -137,14 +137,14 @@ final class WalkthroughTests: XCTestCase {
         press(.select)
         pause()
         XCTAssertFalse(button("Resume Live TV").exists, "Resume didn't close the guide")
-        XCTAssertFalse(text("Your server").exists, "Resume went to the main page, not live TV")
+        XCTAssertFalse(text("Add a Server").exists, "Resume went to the main page, not live TV")
     }
 
     /// Waits for live TV: the banner, with its remote hint, shows when it
     /// starts. The app opens on the main page, so first choose the server
     /// (the one watched last is highlighted).
     private func waitForWatching() {
-        if text("Your server").waitForExistence(timeout: 15) {
+        if text("Add a Server").waitForExistence(timeout: 15) {
             press(.select)
         }
         let started = (0..<40).contains { _ in
@@ -273,7 +273,7 @@ final class WalkthroughTests: XCTestCase {
     /// From the main page, a click on the server playing behind it goes
     /// straight back, without loading again.
     func test7MainPage() throws {
-        XCTAssertTrue(text("Your server").waitForExistence(timeout: 15), "The app didn't open on the main page")
+        XCTAssertTrue(text("Add a Server").waitForExistence(timeout: 15), "The app didn't open on the main page")
         XCTAssertTrue(text("Watched last").exists, "The server watched last isn't marked")
         capture("main-page")
         waitForWatching()
@@ -286,7 +286,7 @@ final class WalkthroughTests: XCTestCase {
         XCTAssertTrue(focusedLabel().contains("Resume Live TV"), "Menu didn't move up to Resume: \(focusedLabel())")
         capture("guide-resume")
         press(.menu)   // up to the main page
-        XCTAssertTrue(text("Your server").waitForExistence(timeout: 5), "Menu from Resume didn't go up to the main page")
+        XCTAssertTrue(text("Add a Server").waitForExistence(timeout: 5), "Menu from Resume didn't go up to the main page")
         XCTAssertTrue(text("Now playing").exists, "The server playing behind the page isn't marked")
         capture("main-page-over-live-tv")
         press(.select)
@@ -300,14 +300,14 @@ final class WalkthroughTests: XCTestCase {
         press(.right)   // Settings, on the same row: Menu from there goes up too
         XCTAssertTrue(focusedLabel().contains("Settings"), "Right didn't reach Settings: \(focusedLabel())")
         press(.menu)
-        XCTAssertTrue(text("Your server").waitForExistence(timeout: 5), "Menu from Settings' row didn't go up to the main page")
+        XCTAssertTrue(text("Add a Server").waitForExistence(timeout: 5), "Menu from Settings' row didn't go up to the main page")
         press(.playPause)
         XCTAssertTrue(text("channel list").waitForExistence(timeout: 3), "Play/Pause didn't go back to live TV")
 
         openGuide()
         press(.menu)
         press(.menu)
-        XCTAssertTrue(text("Your server").waitForExistence(timeout: 5), "Menu didn't go up to the main page")
+        XCTAssertTrue(text("Add a Server").waitForExistence(timeout: 5), "Menu didn't go up to the main page")
         press(.menu)
         let left = expectation(for: NSPredicate(format: "state != %d", XCUIApplication.State.runningForeground.rawValue),
                                evaluatedWith: app)
@@ -329,7 +329,7 @@ final class WalkthroughTests: XCTestCase {
         pause(3)
         // Back to the main page. (Demo mode can't forget its one server, so
         // it's still listed; a real sign-out with no servers left shows sign-in.)
-        XCTAssertTrue(text("Your server").waitForExistence(timeout: 5), "Signing out didn't go to the main page")
+        XCTAssertTrue(text("Add a Server").waitForExistence(timeout: 5), "Signing out didn't go to the main page")
         capture("signed-out")
 
         press(.right)   // the cards sit side by side: from the server to Add a Server
