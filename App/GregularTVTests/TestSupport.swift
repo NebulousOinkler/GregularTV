@@ -23,7 +23,7 @@ extension JellyfinClient {
     /// A client for a server that doesn't exist, whose every reply comes from `transport`.
     static func testing(_ transport: any HTTPTransport) -> JellyfinClient {
         JellyfinClient(credentials: Credentials(serverURL: URL(string: "https://tv.invalid")!, userID: "u", accessToken: "t", deviceID: "d-t"),
-                       identity: ClientIdentity(deviceID: "test", deviceName: "Apple TV"), transport: transport)
+                       identity: ClientIdentity(deviceID: "test", deviceName: "Apple TV"), formats: .appleTV, transport: transport)
     }
 }
 
@@ -42,47 +42,47 @@ final class FakeServer: HTTPTransport, @unchecked Sendable {
     let reply: String
     let speedTestDelay: Duration
     private let lock = NSLock()
-    private var log: [URLRequest] = []
+    private var log: [ServerRequest] = []
 
     init(reply: String = directPlay, speedTestDelay: Duration = .zero) {
         self.reply = reply
         self.speedTestDelay = speedTestDelay
     }
 
-    var requests: [URLRequest] { lock.withLock { log } }
-    var playbackInfos: [URLRequest] { requests.filter { $0.url!.path.hasSuffix("/PlaybackInfo") } }
-    var speedTests: Int { requests.filter { $0.url!.path.hasSuffix("/Playback/BitrateTest") }.count }
+    var requests: [ServerRequest] { lock.withLock { log } }
+    var playbackInfos: [ServerRequest] { requests.filter { $0.url.path.hasSuffix("/PlaybackInfo") } }
+    var speedTests: Int { requests.filter { $0.url.path.hasSuffix("/Playback/BitrateTest") }.count }
     /// The bitrate cap each PlaybackInfo asked for (0 if none), in order.
     var requestedCaps: [Int] {
         playbackInfos.map { request in
-            URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?
+            URLComponents(url: request.url, resolvingAgainstBaseURL: false)?
                 .queryItems?.first { $0.name == "maxStreamingBitrate" }?.value.flatMap { Int($0) } ?? 0
         }
     }
 
-    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+    func send(_ request: ServerRequest) async throws -> ServerReply {
         lock.withLock { log.append(request) }
         var body = Data()
-        if request.url!.path.hasSuffix("/Playback/BitrateTest") {
+        if request.url.path.hasSuffix("/Playback/BitrateTest") {
             try await Task.sleep(for: speedTestDelay)
             body = Data(count: 1000)
-        } else if request.url!.path.hasSuffix("/PlaybackInfo") {
+        } else if request.url.path.hasSuffix("/PlaybackInfo") {
             body = Data(reply.utf8)
         }
-        return (body, HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
+        return ServerReply(url: request.url, status: 200, body: body)
     }
 }
 
 /// A server that can't be reached.
 struct OfflineTransport: HTTPTransport {
-    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+    func send(_ request: ServerRequest) async throws -> ServerReply {
         throw URLError(.notConnectedToInternet)
     }
 }
 
 /// A server that no longer accepts the sign-in.
 struct RevokedTransport: HTTPTransport {
-    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
-        (Data(), HTTPURLResponse(url: request.url!, statusCode: 401, httpVersion: nil, headerFields: nil)!)
+    func send(_ request: ServerRequest) async throws -> ServerReply {
+        ServerReply(url: request.url, status: 401, body: Data())
     }
 }

@@ -3,3 +3,7 @@
 DerivedData/
 xcuserdata/
 *.xcuserstate
+Web/dist/
+node_modules/
+test-results/
+playwright-report/

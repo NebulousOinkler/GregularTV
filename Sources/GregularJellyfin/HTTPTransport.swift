@@ -2,7 +2,8 @@ import Foundation
 import GregularCore
 
 /// Sends one HTTP request. Each platform brings one (`URLSessionTransport`
-/// on Apple's); tests replace it with a fake server.
+/// on Apple's, `FetchTransport` in a browser); tests replace it with a fake
+/// server.
 ///
 /// **A transport must follow `TransportRules`:** follow a redirect only when
 /// `allowsRedirect(from:to:)` says so, stop a reply as it arrives once it's
@@ -11,7 +12,42 @@ import GregularCore
 /// transport there. `JellyfinAPI` checks the first two again on every reply,
 /// so a transport that gets them wrong still can't pass a reply on.
 public protocol HTTPTransport: Sendable {
-    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse)
+    func send(_ request: ServerRequest) async throws -> ServerReply
+}
+
+/// One request to a server. The app's own type rather than URLSession's
+/// `URLRequest`, which not every platform has (a browser doesn't).
+public struct ServerRequest: Sendable {
+    public var method: String
+    public var url: URL
+    public var headers: [String: String]
+    public var body: Data?
+
+    public init(method: String = "GET", url: URL, headers: [String: String] = [:], body: Data? = nil) {
+        self.method = method
+        self.url = url
+        self.headers = headers
+        self.body = body
+    }
+
+    /// The value of header `name`, whatever its case.
+    public func header(_ name: String) -> String? {
+        headers.first { $0.key.caseInsensitiveCompare(name) == .orderedSame }?.value
+    }
+}
+
+/// A server's reply to a `ServerRequest`.
+public struct ServerReply: Sendable {
+    /// Where the reply came from, after any redirect the transport followed.
+    public let url: URL
+    public let status: Int
+    public let body: Data
+
+    public init(url: URL, status: Int, body: Data) {
+        self.url = url
+        self.status = status
+        self.body = body
+    }
 }
 
 /// What every transport must do, whatever the platform (see `HTTPTransport`).
@@ -40,7 +76,8 @@ public enum TransportRules {
     }
 }
 
-/// The app's own network path: every request it makes. (Video is fetched by
+#if canImport(Darwin)
+/// The app's own network path on Apple platforms: every request it makes. (Video is fetched by
 /// the platform's player, from stream URLs that point back at the server.)
 ///
 /// It uses an ephemeral session with no URL cache and no cookies, so no
@@ -71,7 +108,16 @@ public struct URLSessionTransport: HTTPTransport {
         return config
     }
 
-    public func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+    public func send(_ request: ServerRequest) async throws -> ServerReply {
+        var urlRequest = URLRequest(url: request.url)
+        urlRequest.httpMethod = request.method
+        urlRequest.allHTTPHeaderFields = request.headers
+        urlRequest.httpBody = request.body
+        let (data, response) = try await send(urlRequest)
+        return ServerReply(url: response.url ?? request.url, status: response.statusCode, body: data)
+    }
+
+    private func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
         let task = session.dataTask(with: request)
         let load = BoundedLoad(limit: TransportRules.largestResponse)
         task.delegate = load
@@ -150,3 +196,4 @@ final class BoundedLoad: NSObject, URLSessionDataDelegate, @unchecked Sendable {
         continuation?.resume(with: result)
     }
 }
+#endif

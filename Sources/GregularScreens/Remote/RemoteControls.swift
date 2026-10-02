@@ -221,13 +221,15 @@ extension RemoteControls {
     ///   - paused: live TV is paused, so Play/Pause jumps to live.
     ///   - onScreen: buttons on the screen that do an action too, listed
     ///     with the remote's: `[.close: "Done"]` gives "Menu or Done: close".
+    ///   - names: how the buttons are named: the Siri Remote's, or a
+    ///     keyboard's (`KeyboardControls.names`), which leaves out buttons
+    ///     it has no key for.
     public static func hint(for map: [RemoteButton: RemoteAction], paused: Bool = false,
-                            onScreen: [RemoteAction: String] = [:]) -> String {
+                            onScreen: [RemoteAction: String] = [:], names: ButtonNames = .siriRemote) -> String {
         // The usual pairings read better as one.
         let pairs: [(RemoteButton, RemoteButton, String)] = [
-            (.clickDown, .clickUp, "click ▼▲"), (.clickLeft, .clickRight, "click ◀▶"),
-            (.swipeDown, .swipeUp, "slide ▼▲"), (.swipeLeft, .swipeRight, "slide ◀▶"),
-        ]
+            (.clickDown, .clickUp), (.clickLeft, .clickRight), (.swipeDown, .swipeUp), (.swipeLeft, .swipeRight),
+        ].compactMap { down, up in names.pair(down, up).map { (down, up, $0) } }
         let paired = pairs.filter { map[$0.0] == .channelDown && map[$0.1] == .channelUp }
         let pairedButtons = Set(paired.flatMap { [$0.0, $0.1] })
         var parts = paired.isEmpty ? [] : [paired.map(\.2).joined(separator: " or ") + ": channels"]
@@ -236,7 +238,7 @@ extension RemoteControls {
         var buttonsByLabel: [String: [RemoteButton]] = [:]
         var namesByLabel: [String: [String]] = [:]
         for action in RemoteAction.allCases {
-            let buttons = RemoteButton.allCases.filter { map[$0] == action && !pairedButtons.contains($0) }
+            let buttons = RemoteButton.allCases.filter { map[$0] == action && !pairedButtons.contains($0) && names.name($0) != nil }
             let name = onScreen[action]
             guard !buttons.isEmpty || name != nil else { continue }
             let label = paused ? action.pausedLabel : action.label
@@ -246,7 +248,7 @@ extension RemoteControls {
         }
         for label in labels {
             let buttons = RemoteButton.allCases.filter { buttonsByLabel[label]!.contains($0) }
-            parts.append(orList(buttons.map(\.symbol) + namesByLabel[label, default: []]) + ": " + label)
+            parts.append(orList(buttons.compactMap(names.name) + namesByLabel[label, default: []]) + ": " + label)
         }
         return parts.joined(separator: " · ")
     }
@@ -255,6 +257,31 @@ extension RemoteControls {
     /// to the highlighted server, and Menu, which tvOS takes to the Home screen.
     public static var mainPageHint: String {
         "click: watch · hold click: sign out · " + hint(for: mainPage) + " · Menu: Home screen"
+    }
+
+    /// How hints name the buttons.
+    public struct ButtonNames: Sendable {
+        /// A button's name, or nil if there's no way to press it.
+        public let name: @Sendable (RemoteButton) -> String?
+        /// Two buttons named as one, such as "click ◀▶", or nil to name them apart.
+        public let pair: @Sendable (RemoteButton, RemoteButton) -> String?
+
+        public init(name: @escaping @Sendable (RemoteButton) -> String?,
+                    pair: @escaping @Sendable (RemoteButton, RemoteButton) -> String?) {
+            self.name = name
+            self.pair = pair
+        }
+
+        /// The Siri Remote: "click ◀", "slide ▲", "Menu".
+        public static let siriRemote = ButtonNames(name: { $0.symbol }) { down, up in
+            switch (down, up) {
+            case (.clickDown, .clickUp): "click ▼▲"
+            case (.clickLeft, .clickRight): "click ◀▶"
+            case (.swipeDown, .swipeUp): "slide ▼▲"
+            case (.swipeLeft, .swipeRight): "slide ◀▶"
+            default: nil
+            }
+        }
     }
 
     /// "A", "A or B", "A, B or C".

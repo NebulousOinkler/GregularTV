@@ -48,16 +48,15 @@ public final class LoginModel {
         return Self.unencryptedNote
     }
 
-    private let deviceName: String
+    private let access: ServerAccess
     private let onSignedIn: (Credentials) async -> Void
     private var quickConnectTask: Task<Void, Never>?
     /// An administrator's sign-in, waiting on the warning.
     private var pending: (signIn: JellyfinServer.SignIn, server: JellyfinServer, serverName: String)?
 
     /// Made by `AppModel.makeLoginModel()`, which keeps the Jellyfin types to itself.
-    /// - Parameter deviceName: the kind of device, such as "Apple TV".
-    init(deviceName: String, onSignedIn: @escaping (Credentials) async -> Void) {
-        self.deviceName = deviceName
+    init(access: ServerAccess, onSignedIn: @escaping (Credentials) async -> Void) {
+        self.access = access
         self.onSignedIn = onSignedIn
     }
 
@@ -77,7 +76,7 @@ public final class LoginModel {
         step = .connecting
         var lastError: (any Error)?
         for url in candidates {
-            let server = JellyfinServer(url: url, identity: .forSignIn(deviceName: deviceName))
+            let server = access.newServer(at: url)
             do {
                 let info = try await server.publicInfo()
                 step = .signIn(server: server, serverName: info.serverName)
@@ -120,7 +119,7 @@ public final class LoginModel {
     public func useAnotherAccount() async {
         guard let pending else { return }
         self.pending = nil
-        await Self.revoke(pending.signIn, on: pending.server)
+        await Self.revoke(pending.signIn, through: access)
         step = .signIn(server: pending.server, serverName: pending.serverName)
         startQuickConnect(pending.server, serverName: pending.serverName)
     }
@@ -142,7 +141,7 @@ public final class LoginModel {
         password = ""
         if let pending {
             self.pending = nil
-            Task { await Self.revoke(pending.signIn, on: pending.server) }
+            Task { await Self.revoke(pending.signIn, through: access) }
         }
     }
 
@@ -153,8 +152,8 @@ public final class LoginModel {
         step = .administrator(serverName: serverName)
     }
 
-    private static func revoke(_ signIn: JellyfinServer.SignIn, on server: JellyfinServer) async {
-        await JellyfinClient(credentials: signIn.credentials, identity: server.identity).revoke()
+    private static func revoke(_ signIn: JellyfinServer.SignIn, through access: ServerAccess) async {
+        await access.client(for: signIn.credentials).revoke()
     }
 
     /// Shows a code and waits for the user to approve it in another Jellyfin app.

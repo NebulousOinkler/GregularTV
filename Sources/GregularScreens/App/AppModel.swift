@@ -82,7 +82,8 @@ public final class AppModel {
     public private(set) var allowsEditingPage: Bool
     /// The kind of device, as servers list it, such as "Apple TV". Each
     /// sign-in pairs it with a device ID of its own (`ClientIdentity`).
-    let deviceName: String
+    var deviceName: String { access.deviceName }
+    private let access: ServerAccess
     private let store: any CredentialStore
     private let preferences: AppPreferences
     private let makeDecks: @MainActor () -> [any PlayerDeck]
@@ -100,14 +101,16 @@ public final class AppModel {
     /// - Parameters:
     ///   - deviceName: the kind of device, as Jellyfin lists it, such as
     ///     "Apple TV" (never the name the user gave their device).
+    ///   - formats: what the device's player can play.
+    ///   - transport: the platform's network path (`HTTPTransport`).
     ///   - makeDecks: the two video decks for each channel player
     ///     (see `PlayerDeck`): AVFoundation on Apple TV.
-    public init(deviceName: String, store: any CredentialStore, preferences: AppPreferences = AppPreferences(),
-                makeDecks: @escaping @MainActor () -> [any PlayerDeck]) {
+    public init(deviceName: String, formats: PlayableFormats, transport: any HTTPTransport, store: any CredentialStore,
+                preferences: AppPreferences, makeDecks: @escaping @MainActor () -> [any PlayerDeck]) {
+        access = ServerAccess(deviceName: deviceName, formats: formats, transport: transport)
         self.makeDecks = makeDecks
         self.store = store
         self.preferences = preferences
-        self.deviceName = deviceName
         showsDiagnostics = preferences.showsDiagnostics
         playsCommercials = preferences.playsCommercials
         customChannels = preferences.customChannels
@@ -124,6 +127,17 @@ public final class AppModel {
             preferences.scheduleCode = scheduleCode
         }
     }
+
+    #if canImport(Darwin)
+    /// On Apple platforms: requests go through URLSession, and preferences
+    /// are kept in UserDefaults.
+    public convenience init(deviceName: String, formats: PlayableFormats, store: any CredentialStore,
+                            preferences: AppPreferences = AppPreferences(),
+                            makeDecks: @escaping @MainActor () -> [any PlayerDeck]) {
+        self.init(deviceName: deviceName, formats: formats, transport: URLSessionTransport.shared, store: store,
+                  preferences: preferences, makeDecks: makeDecks)
+    }
+    #endif
 
     /// The main page, or the sign-in screen if there are no servers yet.
     public func launch() async {
@@ -170,8 +184,7 @@ public final class AppModel {
     public func loadServerNames() async {
         for server in servers where server.name == nil {
             guard let credentials = credentials(for: server) else { continue }
-            let name = try? await JellyfinServer(url: credentials.serverURL, identity: identity(for: credentials))
-                .publicInfo().serverName
+            let name = try? await access.server(of: credentials).publicInfo().serverName
             guard let name, !name.trimmingCharacters(in: .whitespaces).isEmpty,
                   let index = servers.firstIndex(where: { $0.id == server.id }) else { continue }
             servers[index].name = String(name.prefix(Self.longestServerName))
@@ -232,7 +245,7 @@ public final class AppModel {
         notice = nil
         guard let credentials = credentials(for: server) else { return showMainPage() }
         if client?.credentials.signInID == credentials.signInID { forgetLibrary() }
-        let revoked = await JellyfinClient(credentials: credentials, identity: identity(for: credentials)).signOut(clearing: store)
+        let revoked = await access.client(for: credentials).signOut(clearing: store)
         servers.removeAll { $0.id == server.id }
         showMainPage()
         guard !revoked else { return }
@@ -240,11 +253,6 @@ public final class AppModel {
             + "so it still works there. To cancel it, remove this \(deviceName) from the devices in \(Self.serverName)'s dashboard."
         // The sign-in screen, if that was the last server.
         if case .signedOut = phase { signedOutReason = message } else { notice = message }
-    }
-
-    /// How this device introduces itself with `credentials`: with the device ID they signed in with.
-    private func identity(for credentials: Credentials) -> ClientIdentity {
-        ClientIdentity(credentials, deviceName: deviceName)
     }
 
     private func credentials(for server: Server) -> Credentials? {
@@ -270,7 +278,7 @@ public final class AppModel {
 
     /// The sign-in steps for the sign-in screen. Signing in there carries on here.
     public func makeLoginModel() -> LoginModel {
-        LoginModel(deviceName: deviceName) { [weak self] credentials in await self?.didSignIn(credentials) }
+        LoginModel(access: access) { [weak self] credentials in await self?.didSignIn(credentials) }
     }
 
     private func didSignIn(_ credentials: Credentials) async {
@@ -530,7 +538,7 @@ public final class AppModel {
     private func connect(_ credentials: Credentials) async {
         liveTV?.player.stop()
         phase = .loading
-        let client = JellyfinClient(credentials: credentials, identity: identity(for: credentials))
+        let client = access.client(for: credentials)
         self.client = client
         do {
             library = try await client.fetchProgrammes()

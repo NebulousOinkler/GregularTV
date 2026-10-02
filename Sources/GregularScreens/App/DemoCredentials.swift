@@ -11,11 +11,17 @@ import GregularJellyfin
 public struct DemoCredentials: CredentialStore {
     public let credentials: Credentials
 
+    /// Demo mode with the server at `url`. (The web version takes it from
+    /// the page's address: `?demoServer=http://127.0.0.1:8765`.)
+    public init(server url: URL) {
+        credentials = Credentials(serverURL: url, userID: "demo", accessToken: "demo", deviceID: "demo")
+    }
+
     public static func fromLaunchArguments() -> DemoCredentials? {
         let arguments = ProcessInfo.processInfo.arguments
         guard let index = arguments.firstIndex(of: "-demoServer"), index + 1 < arguments.count,
               let url = URL(string: arguments[index + 1]) else { return nil }
-        return DemoCredentials(credentials: Credentials(serverURL: url, userID: "demo", accessToken: "demo", deviceID: "demo"))
+        return DemoCredentials(server: url)
     }
 
     public func allCredentials() -> [Credentials] { [credentials] }

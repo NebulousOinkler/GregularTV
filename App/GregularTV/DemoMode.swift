@@ -1,3 +1,4 @@
+import GregularCore
 import GregularKeychain
 import GregularScreens
 
@@ -13,9 +14,9 @@ extension AppModel {
     static func forLaunch() -> AppModel {
         #if DEBUG
         if let demo = DemoCredentials.fromLaunchArguments() {
-            return AppModel(deviceName: deviceName, store: demo, makeDecks: AVPlayerDeck.pair)
+            return AppModel(deviceName: deviceName, formats: .appleTV, store: demo, makeDecks: AVPlayerDeck.pair)
         }
         #endif
-        return AppModel(deviceName: deviceName, store: KeychainStore(), makeDecks: AVPlayerDeck.pair)
+        return AppModel(deviceName: deviceName, formats: .appleTV, store: KeychainStore(), makeDecks: AVPlayerDeck.pair)
     }
 }

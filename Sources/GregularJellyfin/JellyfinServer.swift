@@ -37,7 +37,7 @@ public struct JellyfinServer: Sendable {
     public let identity: ClientIdentity
     private let api: JellyfinAPI
 
-    public init(url: URL, identity: ClientIdentity, transport: any HTTPTransport = URLSessionTransport.shared) {
+    public init(url: URL, identity: ClientIdentity, transport: any HTTPTransport) {
         self.url = url
         self.identity = identity
         api = JellyfinAPI(server: url, identity: identity, token: nil, transport: transport)

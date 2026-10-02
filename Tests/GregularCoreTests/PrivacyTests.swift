@@ -4,6 +4,7 @@ import Testing
 
 /// Guards the privacy rules in PLAN.md §3.
 struct PrivacyTests {
+    #if canImport(Darwin)   // UserDefaults keeps nothing on other platforms
     @Test func preferencesStoreOnlyClientSettings() throws {
         let suite = "GregularTVTests-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suite))
@@ -40,6 +41,7 @@ struct PrivacyTests {
         #expect(defaults.persistentDomain(forName: suite)?.keys.sorted()
                 == ["customChannels", "lastChannelNumber", "playsCommercials", "scheduleCode", "setTimes", "showsDiagnostics", "streamingQuality"])
     }
+    #endif
 
     #if os(macOS)
     /// Runs `scripts/privacy-check.sh`, the same check the app build runs,

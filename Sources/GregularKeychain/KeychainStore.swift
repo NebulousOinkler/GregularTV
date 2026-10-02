@@ -1,3 +1,5 @@
+// Apple platforms only: other platforms bring their own CredentialStore.
+#if canImport(Security)
 import Foundation
 import GregularJellyfin
 import Security
@@ -119,3 +121,4 @@ public struct KeychainStore: CredentialStore {
         guard status == errSecSuccess || status == errSecItemNotFound else { throw KeychainError(status: status) }
     }
 }
+#endif

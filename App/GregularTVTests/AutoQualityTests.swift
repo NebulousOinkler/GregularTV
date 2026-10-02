@@ -28,7 +28,7 @@ struct AutoQualityTests {
         player.tune()
         try await waitForPlaybackInfo(server)
         try await Task.sleep(for: .milliseconds(300))
-        #expect(server.playbackInfos.first?.url?.query?.contains("maxStreamingBitrate=10000000") == true)
+        #expect(server.playbackInfos.first?.url.query?.contains("maxStreamingBitrate=10000000") == true)
         #expect(server.speedTests == 0)
         player.stop()
     }
@@ -57,7 +57,7 @@ struct AutoQualityTests {
         player.setQuality(.hd720)
         try await Task.sleep(for: .milliseconds(600))
         #expect(server.speedTests == 0)
-        #expect(server.playbackInfos.last?.url?.query?.contains("maxStreamingBitrate=4000000") == true)
+        #expect(server.playbackInfos.last?.url.query?.contains("maxStreamingBitrate=4000000") == true)
         player.stop()
     }
 }

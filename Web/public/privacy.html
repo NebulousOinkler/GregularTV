@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="dark">
+<title>Privacy · Gregular TV</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<main class="page">
+  <header class="app-bar">
+    <a class="brand" href="/" aria-label="Gregular TV">
+      <span class="wordmark">Gregular TV</span>
+      <span class="bars" aria-hidden="true"><span class="bar bar-0"></span><span class="bar bar-1"></span><span class="bar bar-2"></span><span class="bar bar-3"></span><span class="bar bar-4"></span><span class="bar bar-5"></span><span class="bar bar-6"></span></span>
+    </a>
+  </header>
+  <article class="content prose">
+    <h1 class="page-title">Privacy</h1>
+    <p class="page-lede">Gregular TV collects nothing. This covers the Apple TV app and the web version at gregular.tv.</p>
+
+    <h2>What we collect</h2>
+    <p>Nothing. There are no accounts, analytics, advertising, tracking or crash reports, and no servers of ours that your data goes to. The apps talk only to your own Jellyfin server.</p>
+
+    <h2>What stays on your device</h2>
+    <ul>
+      <li>For each server you sign in to: its address, your user ID, the access token Jellyfin gives the app, and a random device ID for that sign-in. On Apple TV they're in the Keychain; in a browser, encrypted in its storage for this site. Never your password.</li>
+      <li>Your settings: the last channel, streaming quality, schedule code and switches.</li>
+      <li>The channels and set times you make: their names, numbers, times, and the genre, series, tag and film names you picked.</li>
+    </ul>
+    <p>Your library, schedules and viewing are never stored: the library is fetched into memory and gone when the app closes. To delete everything, sign out of each server, or in the web version use Settings › Forget Everything. Deleting the Apple TV app removes its settings, and if it's installed again it forgets any sign-ins left behind.</p>
+
+    <h2>What your Jellyfin server sees</h2>
+    <p>As with any Jellyfin app: that you signed in, a device named "Apple TV" or "Web Browser", and which programmes are streamed, since the server has to send them. The apps never report what you watch, so your watched status and resume points are untouched. A browser also sends what browsers always send: its name and version, and that the request came from gregular.tv.</p>
+
+    <h2>What gregular.tv sees</h2>
+    <p>Only requests for the web version's own files, which every website receives (including your IP address), through Cloudflare, which hosts it. Nothing from your server ever passes through gregular.tv: your browser talks to your server directly. The site sets no cookies and uses no analytics.</p>
+
+    <h2>Questions</h2>
+    <p>Gregular TV is open source: the code, including how it keeps to this, is at <a href="https://github.com/NebulousOinkler/GregularTV">github.com/NebulousOinkler/GregularTV</a>.</p>
+  </article>
+</main>
+</body>
+</html>

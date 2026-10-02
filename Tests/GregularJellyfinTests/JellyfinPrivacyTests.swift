@@ -30,9 +30,9 @@ struct JellyfinPrivacyTests {
 
         #expect(mock.requests.count >= 5)
         for request in mock.requests {
-            let path = request.url!.path.lowercased()
+            let path = request.url.path.lowercased()
             for fragment in Self.forbiddenPathFragments {
-                #expect(!path.contains(fragment.lowercased()), "Forbidden request: \(request.url!)")
+                #expect(!path.contains(fragment.lowercased()), "Forbidden request: \(request.url)")
             }
         }
     }
@@ -44,6 +44,6 @@ struct JellyfinPrivacyTests {
         try store.saveCredentials(JellyfinFixtures.credentials)
         #expect(await JellyfinFixtures.client(mock).signOut(clearing: store) == false, "Says the server wasn't told")
         #expect(store.allCredentials() == [other], "Only this server's sign-in goes")
-        #expect(mock.requests.map(\.url!.path) == ["/Sessions/Logout"])
+        #expect(mock.requests.map(\.url.path) == ["/Sessions/Logout"])
     }
 }

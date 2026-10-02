@@ -75,29 +75,25 @@ struct JellyfinAPI: Sendable {
                       anonymous: Bool = false) async throws -> Data {
         // Nothing, a password or token least of all, goes over plain http beyond the local network.
         guard ServerAddress.isAllowed(server) else { throw JellyfinError.insecureAddress }
-        var request = URLRequest(url: url(path, query: query))
-        request.httpMethod = method
+        var request = ServerRequest(method: method, url: url(path, query: query), headers: ["Accept": "application/json"], body: body)
         if !anonymous {
-            request.setValue(identity.authorizationHeader(token: token), forHTTPHeaderField: "Authorization")
+            request.headers["Authorization"] = identity.authorizationHeader(token: token)
         }
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        if let body {
-            request.httpBody = body
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        if body != nil {
+            request.headers["Content-Type"] = "application/json"
         }
 
-        let (data, response) = try await transport.send(request)
+        let reply = try await transport.send(request)
         // Checked here too, whatever the transport: a reply from somewhere a
         // redirect shouldn't have gone, or too large, is never used.
-        guard let answered = response.url, let asked = request.url,
-              asked == answered || TransportRules.allowsRedirect(from: asked, to: answered)
+        guard reply.url == request.url || TransportRules.allowsRedirect(from: request.url, to: reply.url)
         else { throw JellyfinError.invalidResponse }
-        guard data.count <= TransportRules.largestResponse else { throw JellyfinError.responseTooLarge }
-        switch response.statusCode {
-        case 200..<300: return data
+        guard reply.body.count <= TransportRules.largestResponse else { throw JellyfinError.responseTooLarge }
+        switch reply.status {
+        case 200..<300: return reply.body
         case 401: throw JellyfinError.unauthorized
         case 403: throw JellyfinError.forbidden
-        default: throw JellyfinError.httpStatus(response.statusCode)
+        default: throw JellyfinError.httpStatus(reply.status)
         }
     }
 
