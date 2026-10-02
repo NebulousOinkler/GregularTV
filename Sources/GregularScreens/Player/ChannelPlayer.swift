@@ -34,7 +34,8 @@ import Observation
 /// - **Pause** really pauses. Resuming jumps back to live (PLAN.md §7): it
 ///   seeks what's loaded to live if it's still on, and only tunes in afresh if
 ///   the airing has changed (or a re-encoded one hasn't buffered that far).
-/// - **Drift:** if buffering leaves playback over a minute behind live, it re-tunes.
+/// - **Drift:** if buffering leaves playback over a minute behind live, it
+///   re-tunes (in Auto, measuring the connection first).
 /// - **Failures** (server down, network drop) retry with backoff: 5 s, 10 s,
 ///   20 s, 40 s, then every minute, so playback returns by itself when the
 ///   server does.
@@ -61,12 +62,16 @@ import Observation
 ///   for just the programme on now, if it keeps having trouble. Changing
 ///   channel, changing quality, or the next programme starting puts it back
 ///   to standard.
-/// - **Quality** caps the bitrate the server sends. Auto never delays playback
-///   to measure: it plays at the last measured rate (8 Mbps before the first
-///   measurement), then runs the speed test in the background once playback
-///   has settled, for the next programme. After a playback failure it measures
-///   *before* retrying, because the retry waits anyway. With a fixed quality,
-///   no speed test ever runs.
+/// - **Quality** caps the bitrate the server sends. A cap below the file's
+///   own bitrate makes the server re-encode, far more work than sending the
+///   file, and more than a small server can do in real time. So Auto asks for
+///   the original, with no cap, until playback has trouble on the
+///   connection: a failure, a stall, or falling a minute behind live. Then it
+///   measures *before* retrying (the retry waits anyway), with nothing else
+///   downloading, and caps at 70% of that. Once capped, a speed test in the
+///   background every 10 minutes can raise the cap but never lower it, since
+///   one run while video downloads understates the connection. With a fixed
+///   quality, no speed test ever runs.
 ///
 /// **The stream only restarts on an explicit change:** a different channel, a
 /// different quality, resuming from pause once the airing has changed, or recovery
@@ -201,11 +206,12 @@ public final class ChannelPlayer {
     private var skippedCommercialIDs: Set<String> = []
     /// Failures since video last actually played, on this channel. Sets the retry backoff.
     private var consecutiveFailures = 0
-    /// Auto's latest bandwidth-based cap, and when it was measured.
+    /// Auto's cap after playback had trouble, and when it was measured. Nil
+    /// until then: no cap.
     private var autoBitrate: (bitsPerSecond: Int, measuredAt: Date)?
     /// A background speed test that's waiting or running (Auto only).
     private var measurementTask: Task<Void, Never>?
-    /// Set by a playback failure in Auto: measure before the next load.
+    /// Set by playback trouble in Auto: measure before the next load.
     private var needsMeasurementFirst = false
     /// When the playhead last moved, for spotting stalls.
     private var lastProgress: (position: Double, at: Date)?
@@ -296,7 +302,7 @@ public final class ChannelPlayer {
             guard programmeFix != .standard else { return }
             clearProgrammeFix()
         case .stepDown:
-            let from = fixedProgramme?.cap ?? current?.cap ?? StreamingQuality.fallbackAutoBitrate
+            let from = fixedProgramme?.cap ?? current?.cap ?? StreamingQuality.maximumBitrate
             fixedProgramme = (programme, StreamingQuality.bitrate(below: from) ?? StreamingQuality.lowestBitrate)
         case .hd720:
             fixedProgramme = (programme, StreamingQuality.hd720.fixedBitrate!)
@@ -531,8 +537,11 @@ public final class ChannelPlayer {
                                              preloaded: (nextIsOnStandby ? next : afterBreak)?.item)
         }
 
-        // A long buffering stall left us well behind live, so jump back.
+        // A long buffering stall left us well behind live, so jump back. The
+        // connection may not carry this stream, so Auto measures it first
+        // (unless the server re-encodes it: then its processor is the limit).
         if player.state == .playing, behindLive > Self.maxDriftBehindLive {
+            if quality == .auto, !current.reencodes { needsMeasurementFirst = true }
             tune()
             return
         }
@@ -733,21 +742,21 @@ public final class ChannelPlayer {
 
     /// The bitrate cap for the current quality setting.
     ///
-    /// Fixed qualities return their cap and never measure. Auto returns its
-    /// last measurement straight away, and schedules a background re-measure
-    /// if there's none yet or it's over 10 minutes old. It only waits for a
-    /// measurement after a playback failure.
+    /// Fixed qualities return their cap and never measure. Auto has no cap
+    /// until playback has trouble, then measures before loading. Once capped,
+    /// it returns the cap straight away, and schedules a background
+    /// re-measure, which may raise it, when the cap is over 10 minutes old.
     private func maxBitrate() async -> Int {
         if let fixed = quality.fixedBitrate { return fixed }
 
         if needsMeasurementFirst {
             needsMeasurementFirst = false
             cancelMeasurement()
-            await measureBandwidth()
-        } else if autoBitrate.map({ Date.now.timeIntervalSince($0.measuredAt) >= Self.autoRemeasureInterval }) ?? true {
+            await measureBandwidth(raiseOnly: false)
+        } else if let capped = autoBitrate, Date.now.timeIntervalSince(capped.measuredAt) >= Self.autoRemeasureInterval {
             measureInBackground()
         }
-        return autoBitrate?.bitsPerSecond ?? StreamingQuality.fallbackAutoBitrate
+        return autoBitrate?.bitsPerSecond ?? StreamingQuality.maximumBitrate
     }
 
     /// Runs the speed test after `backgroundMeasurementDelay`, unless one is already pending.
@@ -756,18 +765,23 @@ public final class ChannelPlayer {
         measurementTask = Task { [weak self] in
             try? await Task.sleep(for: Self.backgroundMeasurementDelay)
             guard !Task.isCancelled else { return }
-            await self?.measureBandwidth()
+            await self?.measureBandwidth(raiseOnly: true)
             // A cancelled task leaves the slot alone: a newer one may be in it.
             if !Task.isCancelled { self?.measurementTask = nil }
         }
     }
 
-    private func measureBandwidth() async {
+    /// Sets Auto's cap from a speed test, or with `raiseOnly` (a test run
+    /// while video plays), only raises it. A cap at the maximum is no cap.
+    /// A test that fails leaves the cap as it was.
+    private func measureBandwidth(raiseOnly: Bool) async {
         guard quality == .auto else { return }
         let measured = try? await streams.measureBandwidth()
         // Dropped if cancelled, or if the viewer left Auto meanwhile.
-        guard !Task.isCancelled, quality == .auto else { return }
-        autoBitrate = (measured.map(StreamingQuality.autoBitrate(measured:)) ?? StreamingQuality.fallbackAutoBitrate, .now)
+        guard !Task.isCancelled, quality == .auto, let measured else { return }
+        let cap = StreamingQuality.autoBitrate(measured: measured)
+        let newCap = raiseOnly ? autoBitrate.map { max($0.bitsPerSecond, cap) } : cap
+        autoBitrate = newCap.flatMap { $0 < StreamingQuality.maximumBitrate ? ($0, .now) : nil }
     }
 
     private func cancelMeasurement() {

@@ -116,8 +116,11 @@ struct JellyfinPlaybackTests {
             #expect(request.jsonBody["DeviceProfile"] != nil)
             #expect(request.jsonBody["UserId"] as? String == "user-1")
             // No subtitles, so Jellyfin never burns them in (forcing a transcode).
+            // It only honours that for a request naming its media source.
             #expect(request.jsonBody["SubtitleStreamIndex"] as? Int == -1)
             #expect(request.queryValue("subtitleStreamIndex") == "-1")
+            #expect(request.jsonBody["MediaSourceId"] as? String == "abc")
+            #expect(request.queryValue("mediaSourceId") == "abc")
             return (200, #"{ "MediaSources": [{ "Id": "src1", "Container": "mp4,m4v", "SupportsDirectPlay": true }], "PlaySessionId": "ps1" }"#)
         }
         let source = try await JellyfinFixtures.client(mock).playbackSource(for: "abc")
@@ -142,6 +145,9 @@ struct JellyfinPlaybackTests {
             #expect(subtitles.contains { $0["Format"] == "pgssub" && $0["Method"] == "External" })
             #expect(subtitles.allSatisfy { $0["Method"] == "External" })
             #expect(profile?["MaxStaticBitrate"] as? Int == 4_000_000)
+            // A re-encode makes H.264, far less work than HEVC for a small server.
+            let transcoding = profile?["TranscodingProfiles"] as? [[String: Any]] ?? []
+            #expect(transcoding.first?["VideoCodec"] as? String == "h264,hevc")
             return (200, #"{ "MediaSources": [{ "Id": "s", "SupportsDirectPlay": true }] }"#)
         }
         _ = try await JellyfinFixtures.client(mock).playbackSource(for: "abc", maxBitrate: 4_000_000)

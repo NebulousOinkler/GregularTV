@@ -178,6 +178,8 @@ TEST_RUNNER_SHOTS_DIR=/path/to/shots scripts/test-app.sh walkthrough
 
 **Playback diagnostics** are a setting, not a build type: turn on **Show playback diagnostics** in Settings (click and hold while watching) to add a technical line to the banner. It shows quality, whether the server is transcoding and why, buffering, and how far behind live playback is. It's off by default. It never shows the server address, token, user or stream URLs.
 
+**Auto quality** plays the original file, with no bitrate cap, until playback has trouble on the connection (a failure, a stall, or falling a minute behind live). Only then does it measure the connection and cap the bitrate, because a cap below a file's own bitrate makes Jellyfin re-encode it, which a small server such as a Raspberry Pi can't do in real time. **Subtitles are off**: the app asks Jellyfin for none, so it never burns them into the video (another full re-encode). A subtitle track inside a file that plays as-is follows the Apple TV's own Subtitles setting.
+
 **When Jellyfin can't re-encode fast enough** (a slow server converting a file the Apple TV can't play as-is), a programme that fails or stalls is retried with less work: 720p, then a step lower on each further failure, for that programme only (Settings shows it as the programme's fix). A programme Jellyfin would re-encode isn't started with under 3 minutes left; the screen shows "Up next" instead, so the server isn't asked for an expensive transcode for a minute of video.
 
 ## Where to edit things
