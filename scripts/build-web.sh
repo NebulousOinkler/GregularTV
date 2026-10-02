@@ -51,4 +51,30 @@ if grep -rqE "(from|import)[[:space:]]*\(?[[:space:]]*['\"](https?:|//|@)" "$dis
     echo "error: the packaged app still loads something from outside the site." >&2
     exit 1
 fi
-echo "Built the web version ($configuration) into Web/dist: $(du -sh "$dist" | cut -f1), app.wasm $(du -h "$dist/app/"*.wasm | cut -f1)."
+# Cloudflare serves no file over 25 MiB, and the app is larger, so it's
+# split into parts that js/main.js joins as they download (Cloudflare still
+# compresses each). The parts are named for the build, so a page loading
+# during a deploy can't mix two versions; app/wasm.json lists them.
+python3 - "$dist/app" <<'SPLIT'
+import hashlib, json, os, sys
+app = sys.argv[1]
+whole = os.path.join(app, "GregularWeb.wasm")
+data = open(whole, "rb").read()
+build = hashlib.sha256(data).hexdigest()[:16]
+part_size = 20 * 1024 * 1024
+parts = []
+for start in range(0, len(data), part_size):
+    name = f"GregularWeb.{build}.{start // part_size}.wasm"
+    with open(os.path.join(app, name), "wb") as part:
+        part.write(data[start:start + part_size])
+    parts.append(name)
+os.remove(whole)
+with open(os.path.join(app, "wasm.json"), "w") as manifest:
+    json.dump({"parts": parts, "size": len(data)}, manifest)
+SPLIT
+too_large=$(find "$dist" -type f -size +25M)
+if [ -n "$too_large" ]; then
+    echo "error: Cloudflare won't serve a file over 25 MiB: $too_large" >&2
+    exit 1
+fi
+echo "Built the web version ($configuration) into Web/dist: $(du -sh "$dist" | cut -f1), the app in $(ls "$dist/app/"*.wasm | wc -l | tr -d ' ') parts."

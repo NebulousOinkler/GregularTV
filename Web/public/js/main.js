@@ -40,8 +40,36 @@ function showStopped(reason) {
 addEventListener("error", (event) => showStopped(event.error));
 addEventListener("unhandledrejection", (event) => showStopped(event.reason));
 
+/**
+ * The app, joined from its parts as they download (scripts/build-web.sh
+ * splits it: Cloudflare serves no file over 25 MiB). All the parts are
+ * asked for at once, and the browser compiles the app as they arrive.
+ */
+async function app() {
+  const manifest = await (await fetch(new URL("../app/wasm.json", import.meta.url), { cache: "no-cache" })).json();
+  const downloads = manifest.parts.map((part) => fetch(new URL("../app/" + part, import.meta.url)));
+  let next = 0;
+  let reader = null;
+  const joined = new ReadableStream({
+    async pull(controller) {
+      for (;;) {
+        if (!reader) {
+          if (next === downloads.length) return controller.close();
+          const response = await downloads[next++];
+          if (!response.ok) throw new Error("Couldn't download the app (" + response.status + ").");
+          reader = response.body.getReader();
+        }
+        const { done, value } = await reader.read();
+        if (!done) return controller.enqueue(value);
+        reader = null;
+      }
+    },
+  });
+  return new Response(joined, { headers: { "Content-Type": "application/wasm" } });
+}
+
 try {
-  await init();
+  await init({ module: app() });
 } catch (error) {
   const page = document.querySelector("#app .page") ?? document.body;
   const note = document.createElement("p");
