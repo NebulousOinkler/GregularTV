@@ -45,6 +45,11 @@ public final class AppModel {
 
         /// The name, or the address until the name is known.
         public var title: String { name ?? address }
+
+        /// "Now playing" or "Watched last", under its name.
+        public var badge: String? {
+            isPlaying ? "Now playing" : isLastWatched ? "Watched last" : nil
+        }
     }
 
     /// The servers signed in to, the one watched last first.
@@ -68,7 +73,9 @@ public final class AppModel {
     /// "Edit from a phone or computer" in Settings (off by default): whether
     /// Settings offers the editing page (`EditingPage`) on the home network.
     public private(set) var allowsEditingPage: Bool
-    public let identity: ClientIdentity
+    /// How this device appears to Jellyfin. Stays inside Screens: the
+    /// front end never sees a Jellyfin type.
+    let identity: ClientIdentity
     private let store: any CredentialStore
     private let preferences: AppPreferences
     private let makeDecks: @MainActor () -> [any PlayerDeck]
@@ -127,8 +134,7 @@ public final class AppModel {
         let playingID = behind == nil ? nil : client?.credentials.signInID
         let known = Dictionary(servers.map { ($0.id, $0.name) }, uniquingKeysWith: { first, _ in first })
         servers = saved.enumerated().map { index, credentials in
-            Server(id: credentials.signInID, address: Self.address(of: credentials.serverURL),
-                   name: known[credentials.signInID] ?? nil, isLastWatched: index == 0,
+            Server(credentials, name: known[credentials.signInID] ?? nil, isLastWatched: index == 0,
                    isPlaying: credentials.signInID == playingID)
         }
         phase = .mainPage(over: behind)
@@ -200,7 +206,7 @@ public final class AppModel {
     /// Whether the sign-in screen can go back to the main page (there's a server to go back to).
     public var canCancelSignIn: Bool { !store.allCredentials().isEmpty }
 
-    /// Ask this before `signOut(of:)`.
+    /// Ask this before `signOut(of:)`, on the main page or in Settings.
     public func signOutConfirmation(for server: Server) -> Confirmation {
         Confirmation(action: "Sign Out", question: "Sign out of \(server.title)?",
                      detail: "You'll need to sign in again to watch it. Your channels and set times stay on this \(identity.deviceName).")
@@ -221,7 +227,7 @@ public final class AppModel {
     }
 
     /// "192.168.1.5:8096" from "http://192.168.1.5:8096/jellyfin": host, port and any path.
-    static func address(of url: URL) -> String {
+    nonisolated static func address(of url: URL) -> String {
         guard let host = url.host() else { return url.absoluteString }
         let port = url.port.map { ":\($0)" } ?? ""
         let path = url.path() == "/" ? "" : url.path()
@@ -242,7 +248,7 @@ public final class AppModel {
         LoginModel(identity: identity) { [weak self] credentials in await self?.didSignIn(credentials) }
     }
 
-    public func didSignIn(_ credentials: Credentials) async {
+    private func didSignIn(_ credentials: Credentials) async {
         signedOutReason = nil
         // If the Keychain write fails, still carry on for this session.
         try? store.saveCredentials(credentials)
@@ -395,20 +401,7 @@ public final class AppModel {
     /// The server being watched, as the main page lists it.
     public var currentServer: Server? {
         guard let credentials = client?.credentials else { return nil }
-        return Server(id: credentials.signInID, address: Self.address(of: credentials.serverURL),
-                      name: servers.first { $0.id == credentials.signInID }?.name, isLastWatched: true)
-    }
-
-    /// Ask this before `signOut()` (Settings: the server being watched).
-    public var signOutConfirmation: Confirmation {
-        Confirmation(action: "Sign Out", question: "Sign out of \(currentServer?.title ?? "this server")?",
-                     detail: "You'll need to sign in again to watch it. Your channels and set times stay on this \(identity.deviceName).")
-    }
-
-    /// Signs out of the server being watched, then the main page.
-    public func signOut() async {
-        guard let server = currentServer else { return showMainPage() }
-        await signOut(of: server)
+        return Server(credentials, name: servers.first { $0.id == credentials.signInID }?.name, isLastWatched: true)
     }
 
     /// Tries the server watched last again, after a failure.
@@ -523,5 +516,13 @@ public final class AppModel {
         } catch {
             phase = .failed(FriendlyError.message(for: error))
         }
+    }
+}
+
+private extension AppModel.Server {
+    /// A sign-in as the main page lists it: by its address until the server gives its name.
+    init(_ credentials: Credentials, name: String?, isLastWatched: Bool, isPlaying: Bool = false) {
+        self.init(id: credentials.signInID, address: AppModel.address(of: credentials.serverURL), name: name,
+                  isLastWatched: isLastWatched, isPlaying: isPlaying)
     }
 }

@@ -22,7 +22,7 @@ struct BreakEndTests {
         let lastClipEnd = try #require(firstSlot.last { $0.isFiller }).end.timeIntervalSince(probe.channel.epoch)
         let schedule = try channel(epoch: Date.now.addingTimeInterval(-(lastClipEnd - seconds)))
         let surfer = ChannelSurfer(channels: [schedule], startingWith: schedule, streams: FakeStreams(),
-                                   preferences: Fixture.preferences(), decks: FakeDeck.pair())
+                                   preferences: AppPreferences.testing(), decks: FakeDeck.pair())
         let model = WatchModel(surfer: surfer)
         model.player.start()
         try await Fixture.settle(model.player)

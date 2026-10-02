@@ -10,9 +10,7 @@ import Testing
 struct YourChannelsTests {
     static let newYork = TimeZone(identifier: "America/New_York")!
 
-    private func app() -> AppModel {
-        AppModel(deviceName: "Test Device", store: InMemoryCredentialStore(), preferences: Fixture.preferences(), makeDecks: FakeDeck.pair)
-    }
+    private func app() -> AppModel { Fixture.app() }
 
     private func document(_ channels: [CustomChannel], _ setTimes: [SetTimes] = []) -> EditingDocument {
         EditingDocument(channels: channels, setTimes: setTimes)
@@ -20,8 +18,9 @@ struct YourChannelsTests {
 
     @Test func theAppNamesItsDevice() {
         #expect(app().identity.deviceName == "Test Device")
-        #expect(app().signOutConfirmation.detail.hasSuffix("stay on this Test Device."))
-        #expect(app().signOutConfirmation.action == "Sign Out")
+        let server = AppModel.Server(id: "s", address: "nas:8096", isLastWatched: true)
+        #expect(app().signOutConfirmation(for: server).detail.hasSuffix("stay on this Test Device."))
+        #expect(app().signOutConfirmation(for: server).action == "Sign Out")
     }
 
     @Test func channelsAreReplacedWholeAndChecked() {

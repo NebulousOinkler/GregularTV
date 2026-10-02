@@ -19,9 +19,7 @@ struct EditingPageTests {
         return request
     }
 
-    private func app() -> AppModel {
-        AppModel(deviceName: "Test Device", store: InMemoryCredentialStore(), preferences: Fixture.preferences(), makeDecks: FakeDeck.pair)
-    }
+    private func app() -> AppModel { Fixture.app() }
 
     private func page(_ app: AppModel) -> EditingPage {
         EditingPage(app: app, hosts: [Self.host], code: "123456")

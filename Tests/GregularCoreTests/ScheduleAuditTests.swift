@@ -241,7 +241,9 @@ extension ScheduleAudit {
             for p in programmes {
                 let gap = p.slotEnd.timeIntervalSince(p.start) - p.item.duration
                 let again = seen[p.item.id].map { String(format: " SAME ITEM %.1f h ago", p.start.timeIntervalSince($0) / 3600) } ?? ""
-                if gap > 30 * 60 || !again.isEmpty || f.string(from: p.start).hasSuffix("23:30") || f.string(from: p.start).hasPrefix("") && Calendar(identifier: .gregorian).dateComponents(in: ChannelSchedule.dayTimeZone, from: p.start).hour! >= 21 {
+                // Long breaks, repeats, and the evening before each run boundary.
+                let hour = Calendar(identifier: .gregorian).dateComponents(in: ChannelSchedule.dayTimeZone, from: p.start).hour!
+                if gap > 30 * 60 || !again.isEmpty || hour >= 21 {
                     Self.line(String(format: "%@ %@ (%.0f min) break %.0f min%@", f.string(from: p.start), p.item.name, p.item.duration / 60, gap / 60, again))
                 }
                 seen[p.item.id] = p.start

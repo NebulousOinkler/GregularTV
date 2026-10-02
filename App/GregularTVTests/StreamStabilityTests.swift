@@ -9,12 +9,6 @@ import Testing
 /// every re-tune, so these tests count re-tunes directly.
 @MainActor
 struct StreamStabilityTests {
-    private struct OfflineTransport: HTTPTransport {
-        func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
-            throw URLError(.notConnectedToInternet)
-        }
-    }
-
     private func makeSurfer(quality: StreamingQuality = .auto) throws -> ChannelSurfer {
         let items = (1...3).map { MediaItem(id: "m\($0)", kind: .movie, name: "M\($0)", duration: 3600) }
         let channels = try ChannelSchedule.testing([1, 2], items: items)
@@ -68,7 +62,7 @@ struct StreamStabilityTests {
         let items = [MediaItem(id: "ep", kind: .episode, name: "E", duration: 3600)]
         let schedule = try #require(try ChannelSchedule.testing(epoch: Date.now.addingTimeInterval(-600), items: items).first)
         // Plays directly from a server that doesn't exist.
-        let client = JellyfinClient.testing(HeadStartTests.Server(reply: HeadStartTests.directPlay))
+        let client = JellyfinClient.testing(FakeServer())
         let player = ChannelPlayer(schedule: schedule, streams: client, quality: .hd10)
         player.start()
         try await waitUntil(15) { player.status.isFailed || player.status.isBetweenProgrammes }

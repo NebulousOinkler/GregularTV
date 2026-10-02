@@ -5,6 +5,13 @@ import Testing
 struct CommercialsTests {
     let ads = (0..<6).map { MediaItem(id: "ad\($0)", kind: .video, name: "Ad \($0)", duration: 30 + Double($0) * 15) }
 
+    /// One unpadded channel of 50-minute episodes, with `ads` as commercials.
+    private func fiftyMinuteEpisodesWithAds() throws -> ChannelSchedule {
+        let json = #"[{ "number": 1, "name": "T", "source": { "type": "all" }, "strategy": "sequential-by-series", "seed": 1, "filler": "shuffle" }]"#
+        return try #require(try ChannelLineup.load(from: Data(json.utf8))
+            .schedules(for: Fixtures.series("Fifty", seasons: 1, episodes: 6, minutes: 50), fillerPool: ads).first)
+    }
+
     @Test func bundledLineupNamesTheCommercialsLibraryAndUsesItEverywhere() throws {
         let lineup = try ChannelLineup.bundled()
         #expect(lineup.commercialsLibrary == "Commercials")
@@ -46,9 +53,7 @@ struct CommercialsTests {
 
     @Test func commercialsFillTheRunEndGapOnUnpaddedChannelsToo() throws {
         // 50-minute episodes: 28 fit in a day, leaving 40 minutes for ads.
-        let json = #"[{ "number": 1, "name": "T", "source": { "type": "all" }, "strategy": "sequential-by-series", "seed": 1, "filler": "shuffle" }]"#
-        let schedule = try #require(try ChannelLineup.load(from: Data(json.utf8))
-            .schedules(for: Fixtures.series("Fifty", seasons: 1, episodes: 6, minutes: 50), fillerPool: ads).first)
+        let schedule = try fiftyMinuteEpisodesWithAds()
         let day = schedule.airings(from: Channel.defaultEpoch, to: Channel.defaultEpoch.addingTimeInterval(24 * 3600 - 1))
         let breakTime = day.filter(\.isFiller).reduce(0) { $0 + $1.length }
         // 20 minutes of the 40, the most in one break (`longestCommercialRun`), less
@@ -58,9 +63,7 @@ struct CommercialsTests {
     }
 
     @Test func aBreakRunsFromItsFirstClipToTheNextProgramme() throws {
-        let json = #"[{ "number": 1, "name": "T", "source": { "type": "all" }, "strategy": "sequential-by-series", "seed": 1, "filler": "shuffle" }]"#
-        let schedule = try #require(try ChannelLineup.load(from: Data(json.utf8))
-            .schedules(for: Fixtures.series("Fifty", seasons: 1, episodes: 6, minutes: 50), fillerPool: ads).first)
+        let schedule = try fiftyMinuteEpisodesWithAds()
         let lastHour = schedule.airings(from: Channel.defaultEpoch.addingTimeInterval(23 * 3600),
                                         to: Channel.defaultEpoch.addingTimeInterval(24 * 3600 - 1))
         let clips = lastHour.filter(\.isFiller)

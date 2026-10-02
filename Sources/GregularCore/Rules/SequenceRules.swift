@@ -70,16 +70,6 @@ struct RuledStream {
         previous = item
     }
 
-    /// Items taken but not used, back at the front in their order.
-    mutating func putBack(_ items: [MediaItem]) {
-        waiting.insert(contentsOf: items, at: 0)
-    }
-
-    /// Takes back an item that was put back, when it airs after all.
-    mutating func withdraw(_ item: MediaItem) {
-        if let i = waiting.firstIndex(of: item) { waiting.remove(at: i) }
-    }
-
     /// Whether the rules let `next` air straight after `item`.
     func allows(_ next: MediaItem, after item: MediaItem) -> Bool {
         rules.allow(next, after: item)
