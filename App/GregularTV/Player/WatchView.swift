@@ -70,7 +70,10 @@ struct WatchView: View {
                            perform: model.perform)
                 .frame(width: 0, height: 0)
 
-            if let card = model.statusCard {
+            if let station = model.stationCard {
+                StationCard(content: station)
+                    .transition(.opacity)
+            } else if let card = model.statusCard {
                 StatusCard(content: card)
             }
             if isCovered {
@@ -117,6 +120,7 @@ struct WatchView: View {
         .animation(.default, value: model.showsBreakBadge)
         .animation(.default, value: model.showingList)
         .animation(.default, value: model.showingGuide)
+        .animation(.easeInOut(duration: WatchModel.quickFade), value: model.stationCardShowing)
         .sheet(isPresented: $model.showingSettings) {
             SettingsView(app: app, player: player,
                          commercialsStatus: model.commercialsDiagnostics(playsCommercials: app.playsCommercials,
@@ -157,6 +161,7 @@ struct WatchView: View {
             }
         }
         .task(id: model.curtainTrigger) { await model.runCurtain() }
+        .task(id: model.curtainTrigger) { await model.runStationCard() }
         .task(id: model.bannerTrigger) { await model.runBannerTimer() }
     }
 

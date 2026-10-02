@@ -13,14 +13,14 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
-		C0FFEE000000000000000001 /* PBXContainerItemProxy */ = {
+		3AAB893A2F03A5775690C89F /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 4DC844ABCCFC0D132D087C1C /* Project object */;
 			proxyType = 1;
 			remoteGlobalIDString = 3D4C91345015A4DD0A099400;
 			remoteInfo = GregularTV;
 		};
-		3AAB893A2F03A5775690C89F /* PBXContainerItemProxy */ = {
+		C0FFEE000000000000000001 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 4DC844ABCCFC0D132D087C1C /* Project object */;
 			proxyType = 1;
@@ -30,9 +30,9 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		C0FFEE000000000000000002 /* GregularTVUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = GregularTVUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		81918909E83595C8F4212CCC /* GregularTV.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = GregularTV.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		858E33F033846B57054E0712 /* GregularTVTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = GregularTVTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		C0FFEE000000000000000002 /* GregularTVUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = GregularTVUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -46,6 +46,12 @@
 /* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		5A4ED0F1C5A1E5000000A001 /* Shared test fixtures */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			name = "Shared test fixtures";
+			path = ../Tests/Shared;
+			sourceTree = "<group>";
+		};
 		C0FFEE000000000000000003 /* GregularTVUITests */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = GregularTVUITests;
@@ -64,22 +70,9 @@
 			path = GregularTVTests;
 			sourceTree = "<group>";
 		};
-		5A4ED0F1C5A1E5000000A001 /* Shared */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			name = "Shared test fixtures";
-			path = ../Tests/Shared;
-			sourceTree = "<group>";
-		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		C0FFEE000000000000000004 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		0248D6DB510EB0F7E9C05175 /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -87,6 +80,13 @@
 				5DC6E38EC18FAA932A196971 /* GregularCore in Frameworks */,
 				A1C0DE5E0000000000000003 /* GregularScreens in Frameworks */,
 				A1C0DE5E0000000000000005 /* GregularKeychain in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C0FFEE000000000000000004 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -115,7 +115,7 @@
 			children = (
 				CE882751F8B3EE4485706ED4 /* GregularTV */,
 				F850DA3429877D0A2E262956 /* GregularTVTests */,
-				5A4ED0F1C5A1E5000000A001 /* Shared */,
+				5A4ED0F1C5A1E5000000A001 /* Shared test fixtures */,
 				C0FFEE000000000000000003 /* GregularTVUITests */,
 				86024CAD1E83101D97359D73 /* Products */,
 			);
@@ -124,27 +124,6 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		C0FFEE000000000000000007 /* GregularTVUITests */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = C0FFEE000000000000000011 /* Build configuration list for PBXNativeTarget "GregularTVUITests" */;
-			buildPhases = (
-				C0FFEE000000000000000006 /* Sources */,
-				C0FFEE000000000000000004 /* Frameworks */,
-				C0FFEE000000000000000005 /* Resources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-				C0FFEE000000000000000008 /* PBXTargetDependency */,
-			);
-			fileSystemSynchronizedGroups = (
-				C0FFEE000000000000000003 /* GregularTVUITests */,
-			);
-			name = GregularTVUITests;
-			productName = GregularTVUITests;
-			productReference = C0FFEE000000000000000002 /* GregularTVUITests.xctest */;
-			productType = "com.apple.product-type.bundle.ui-testing";
-		};
 		3D4C91345015A4DD0A099400 /* GregularTV */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 95215D892A9569EAAC35BB20 /* Build configuration list for PBXNativeTarget "GregularTV" */;
@@ -171,6 +150,27 @@
 			productReference = 81918909E83595C8F4212CCC /* GregularTV.app */;
 			productType = "com.apple.product-type.application";
 		};
+		C0FFEE000000000000000007 /* GregularTVUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = C0FFEE000000000000000011 /* Build configuration list for PBXNativeTarget "GregularTVUITests" */;
+			buildPhases = (
+				C0FFEE000000000000000006 /* Sources */,
+				C0FFEE000000000000000004 /* Frameworks */,
+				C0FFEE000000000000000005 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				C0FFEE000000000000000008 /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				C0FFEE000000000000000003 /* GregularTVUITests */,
+			);
+			name = GregularTVUITests;
+			productName = GregularTVUITests;
+			productReference = C0FFEE000000000000000002 /* GregularTVUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 		DFEE19449146DDDB4DD78AD1 /* GregularTVTests */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = E3E7AA9FA9AA003ABB6EDAEB /* Build configuration list for PBXNativeTarget "GregularTVTests" */;
@@ -185,8 +185,8 @@
 				E24E74DA6AB271C34E8CB717 /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
+				5A4ED0F1C5A1E5000000A001 /* Shared test fixtures */,
 				F850DA3429877D0A2E262956 /* GregularTVTests */,
-				5A4ED0F1C5A1E5000000A001 /* Shared */,
 			);
 			name = GregularTVTests;
 			productName = GregularTVTests;
@@ -206,11 +206,11 @@
 					3D4C91345015A4DD0A099400 = {
 						CreatedOnToolsVersion = 27.0;
 					};
-					DFEE19449146DDDB4DD78AD1 = {
+					C0FFEE000000000000000007 = {
 						CreatedOnToolsVersion = 27.0;
 						TestTargetID = 3D4C91345015A4DD0A099400;
 					};
-					C0FFEE000000000000000007 = {
+					DFEE19449146DDDB4DD78AD1 = {
 						CreatedOnToolsVersion = 27.0;
 						TestTargetID = 3D4C91345015A4DD0A099400;
 					};
@@ -241,13 +241,6 @@
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		C0FFEE000000000000000005 /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 		82A968CB662751220D4DFE2D /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -256,6 +249,13 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 		887D9852F7F2A508189160F7 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C0FFEE000000000000000005 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -288,14 +288,14 @@
 /* End PBXShellScriptBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		C0FFEE000000000000000006 /* Sources */ = {
+		8F11E0AE1293B031D2165BF2 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		8F11E0AE1293B031D2165BF2 /* Sources */ = {
+		C0FFEE000000000000000006 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -325,38 +325,6 @@
 /* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
-		C0FFEE000000000000000009 /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = dev.gregulartv.GregularTVUITests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				STRING_CATALOG_GENERATE_SYMBOLS = NO;
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				TARGETED_DEVICE_FAMILY = 3;
-				TEST_TARGET_NAME = GregularTV;
-			};
-			name = Debug;
-		};
-		C0FFEE000000000000000010 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				GENERATE_INFOPLIST_FILE = YES;
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = dev.gregulartv.GregularTVUITests;
-				PRODUCT_NAME = "$(TARGET_NAME)";
-				STRING_CATALOG_GENERATE_SYMBOLS = NO;
-				SWIFT_EMIT_LOC_STRINGS = NO;
-				TARGETED_DEVICE_FAMILY = 3;
-				TEST_TARGET_NAME = GregularTV;
-			};
-			name = Release;
-		};
 		191734982F22ABEBB64A1AE0 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -450,6 +418,38 @@
 				TARGETED_DEVICE_FAMILY = 3;
 			};
 			name = Debug;
+		};
+		C0FFEE000000000000000009 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.gregulartv.GregularTVUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				TARGETED_DEVICE_FAMILY = 3;
+				TEST_TARGET_NAME = GregularTV;
+			};
+			name = Debug;
+		};
+		C0FFEE000000000000000010 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = dev.gregulartv.GregularTVUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				TARGETED_DEVICE_FAMILY = 3;
+				TEST_TARGET_NAME = GregularTV;
+			};
+			name = Release;
 		};
 		FA9139DD8B03E3F922556BF8 /* Debug */ = {
 			isa = XCBuildConfiguration;
@@ -582,15 +582,6 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
-		C0FFEE000000000000000011 /* Build configuration list for PBXNativeTarget "GregularTVUITests" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				C0FFEE000000000000000009 /* Debug */,
-				C0FFEE000000000000000010 /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
 		2BC11C2E235606CD0C7B4EEB /* Build configuration list for PBXProject "GregularTV" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -605,6 +596,15 @@
 			buildConfigurations = (
 				72FB3ED29B4639D83EC5DB14 /* Debug */,
 				191734982F22ABEBB64A1AE0 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		C0FFEE000000000000000011 /* Build configuration list for PBXNativeTarget "GregularTVUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				C0FFEE000000000000000009 /* Debug */,
+				C0FFEE000000000000000010 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
