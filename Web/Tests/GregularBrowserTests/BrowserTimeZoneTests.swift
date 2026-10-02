@@ -15,7 +15,8 @@ import Testing
     @Test func foundationTakesTheBrowsersTimeZone() throws {
         let zone = try #require(BrowserTimeZone.browser)
         BrowserTimeZone.adopt()
-        #expect(TimeZone.current.identifier == zone)
+        // The same zone, though not always by name: Foundation calls "UTC" "GMT".
+        #expect(TimeZone.current == TimeZone(identifier: zone))
         // Summer and winter, so daylight saving time is followed too.
         for date in [Date(timeIntervalSince1970: 1_783_000_000), Date(timeIntervalSince1970: 1_798_000_000)] {
             #expect(-TimeZone.current.secondsFromGMT(for: date) / 60 == browserOffset(at: date))
