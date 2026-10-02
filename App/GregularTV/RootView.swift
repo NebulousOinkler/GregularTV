@@ -66,8 +66,7 @@ private struct BrandedWait: View {
 
     var body: some View {
         VStack(spacing: 28) {
-            Text("Gregular TV").font(.system(size: 80, weight: .heavy, design: .rounded))
-            Text("We now return to your Gregular programming.").font(.title3).foregroundStyle(.secondary)
+            Masthead()
             ProgressView().padding(.top, 20)
             if let message { Text(message).foregroundStyle(.secondary) }
         }

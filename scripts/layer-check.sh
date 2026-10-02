@@ -14,9 +14,13 @@
 #                              and GregularJellyfin in SCREENS_JELLYFIN only.
 #                              No SwiftUI, UIKit or AVFoundation.
 #   App/GregularTV             Apple TV: views, AVFoundation, the remote.
-#                              Never imports GregularJellyfin: it gets
-#                              everything through GregularScreens (and its
-#                              sign-in storage from GregularKeychain).
+#                              Never imports (or links) GregularJellyfin: it
+#                              gets everything through GregularScreens (and
+#                              its sign-in storage from GregularKeychain).
+#
+# Imports hold file by file: Package.swift and the Xcode project turn on
+# MemberImportVisibility, so a file can't use another module's extension
+# members just because a different file in its module imports it.
 #
 # Also a contract no script can check: every string GregularScreens hands a
 # front end is plain text. SwiftUI's Text shows it as such; a web front end
@@ -51,6 +55,9 @@ violations=$(
             echo "$SCREENS_JELLYFIN" | grep -qxF "$file" || echo "$line"
           done
     grep -rn '^import GregularJellyfin' App/GregularTV --include='*.swift' || true
+    # Nor does the Xcode project link it into the app: it comes in only
+    # through GregularScreens and GregularKeychain.
+    grep -n 'GregularJellyfin' App/GregularTV.xcodeproj/project.pbxproj | sed 's|^|App/GregularTV.xcodeproj/project.pbxproj:|' || true
 )
 
 if [ -n "$violations" ]; then

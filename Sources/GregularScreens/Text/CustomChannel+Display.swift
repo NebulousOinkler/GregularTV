@@ -8,7 +8,7 @@ extension CustomChannel {
     }
 
     /// "Episodes", "Movies" or "Episodes and Movies".
-    public var playsLabel: String {
+    private var playsLabel: String {
         switch (kinds.contains(.episode), kinds.contains(.movie)) {
         case (true, false): "Episodes"
         case (false, true): "Movies"
@@ -36,27 +36,6 @@ extension CustomChannel.Rule.Match {
         switch self {
         case .genre(let name), .series(let name), .tag(let name): name
         case .years(let from, let to): "\(from.map(String.init) ?? "Any year")–\(to.map(String.init) ?? "now")"
-        }
-    }
-
-    /// What kind of thing it matches: "Genre", "Series", "Tag", "Years".
-    public var kindLabel: String {
-        switch self {
-        case .genre: "Genre"
-        case .series: "Series"
-        case .tag: "Tag"
-        case .years: "Years"
-        }
-    }
-}
-
-extension CustomChannel.Rule.Mode {
-    /// "Any of", "All of", "None of".
-    public var label: String {
-        switch self {
-        case .anyOf: "Any of"
-        case .allOf: "All of"
-        case .noneOf: "None of"
         }
     }
 }

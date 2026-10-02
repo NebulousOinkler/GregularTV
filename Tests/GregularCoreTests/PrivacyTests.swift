@@ -45,17 +45,8 @@ struct PrivacyTests {
     /// Runs `scripts/privacy-check.sh`, the same check the app build runs,
     /// so `swift test` also fails if persistence APIs creep in.
     @Test func sourceUsesNoPersistenceOutsideAllowedFiles() throws {
-        let repo = URL(fileURLWithPath: #filePath)
-            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
-        let process = Process()
-        process.executableURL = repo.appendingPathComponent("scripts/privacy-check.sh")
-        let output = Pipe()
-        process.standardOutput = output
-        process.standardError = output
-        try process.run()
-        process.waitUntilExit()
-        let log = String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-        #expect(process.terminationStatus == 0, "\(log)")
+        let (status, log) = try Fixtures.runScript("privacy-check.sh")
+        #expect(status == 0, "\(log)")
     }
     #endif
 

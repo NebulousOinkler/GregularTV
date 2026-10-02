@@ -21,8 +21,7 @@ struct LoginView: View {
 
     var body: some View {
         VStack(spacing: 48) {
-            Text("Gregular TV").font(.system(size: 80, weight: .heavy, design: .rounded))
-            Text("We now return to your Gregular programming.").font(.title3).foregroundStyle(.secondary)
+            Masthead()
             if let notice {
                 Text(notice).foregroundStyle(.yellow).multilineTextAlignment(.center)
             }

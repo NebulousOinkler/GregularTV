@@ -129,11 +129,6 @@ private struct ConfirmedRow: View {
 
     var body: some View {
         SettingsRows.row(confirmation.action, role: .destructive) { asking = true }
-            .confirmationDialog(confirmation.question, isPresented: $asking, titleVisibility: .visible) {
-                Button(confirmation.action, role: .destructive, action: action)
-                Button("Cancel", role: .cancel) {}
-            } message: {
-                Text(confirmation.detail)
-            }
+            .confirming(confirmation, isPresented: $asking, action: action)
     }
 }

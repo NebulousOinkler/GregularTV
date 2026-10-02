@@ -10,12 +10,6 @@ import Testing
 /// these tests only check which channel it's told to play.
 @MainActor
 struct ChannelSurferTests {
-    private struct OfflineTransport: HTTPTransport {
-        func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
-            throw URLError(.notConnectedToInternet)
-        }
-    }
-
     private let preferences = AppPreferences.testing()
 
     /// Channels 1, 2, 5 and 10 (note the gaps), each with a few movies.
@@ -91,11 +85,6 @@ struct ChannelSurferTests {
 /// hands off to sign-in.
 @MainActor
 struct ChannelPlayerAuthTests {
-    private struct RevokedTransport: HTTPTransport {
-        func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
-            (Data(), HTTPURLResponse(url: request.url!, statusCode: 401, httpVersion: nil, headerFields: nil)!)
-        }
-    }
 
     @Test func revokedTokenCallsOnUnauthorizedInsteadOfRetrying() async throws {
         let items = [MediaItem(id: "m", kind: .movie, name: "M", duration: 3600)]
