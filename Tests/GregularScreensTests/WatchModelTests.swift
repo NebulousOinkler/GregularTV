@@ -13,37 +13,42 @@ struct WatchModelTests {
         return model
     }
 
-    /// Menu while watching: the banner goes first, then the app goes up to
-    /// the main page, with everything closed.
-    @Test func menuHidesTheBannerFirstThenGoesUpToTheMainPage() async throws {
+    @Test func menuHidesTheBannerFirstThenOpensTheGuide() async throws {
+        let model = try await playing()
+        #expect(model.bannerIsShowing, "Up as the programme starts")
+        model.perform(try #require(RemoteControls.watching[.menu]))
+        #expect(!model.bannerIsShowing && !model.showingGuide)
+        model.perform(try #require(RemoteControls.watching[.menu]))
+        #expect(model.showingGuide)
+        model.player.stop()
+    }
+
+    /// Resume Live TV in the guide closes it, back to the channel as it is.
+    @Test func resumeClosesTheGuideBackToTheChannel() async throws {
         let model = try await playing()
         var opened = 0
         model.onOpenMainPage = { opened += 1 }
-        #expect(model.bannerIsShowing, "Up as the programme starts")
-        model.perform(.hideInfoOrOpenMainPage)
-        #expect(!model.bannerIsShowing && opened == 0)
-        model.perform(.hideInfoOrOpenMainPage)
+        model.show(.guide)
+        let tunes = model.player.tuneCount
+        model.perform(.close)
+        #expect(!model.overlayOpen && opened == 0 && model.player.tuneCount == tunes)
+        model.player.stop()
+    }
+
+    /// Menu from the guide's top row: everything closes and the app takes
+    /// over, with the channel playing on behind the main page.
+    @Test func upToTheMainPageHandsOverToTheApp() async throws {
+        let model = try await playing()
+        var opened = 0
+        model.onOpenMainPage = { opened += 1 }
+        model.show(.guide)
+        model.perform(.openMainPage)
         #expect(opened == 1 && !model.overlayOpen && !model.showingSettings)
         let trigger = model.bannerTrigger
         model.returnedFromMainPage()
         #expect(model.bannerTrigger != trigger, "Back from the main page, the banner says where you are")
         model.perform(.watchLastServer)
         #expect(opened == 1, "Only the main page watches a server")
-        model.player.stop()
-    }
-
-    /// The guide opens with its own buttons and Menu closes it, back to the
-    /// channel: it never passes the main page.
-    @Test func menuClosesTheGuideBackToTheChannel() async throws {
-        let model = try await playing()
-        var opened = 0
-        model.onOpenMainPage = { opened += 1 }
-        let opens = RemoteControls.watching.filter { $0.value == .openGuide }.keys
-        #expect(Set(opens) == [.clickDown, .swipeUp])
-        model.perform(.openGuide)
-        #expect(model.showingGuide)
-        model.perform(try #require(RemoteControls.guide[.menu]))
-        #expect(!model.overlayOpen && opened == 0)
         model.player.stop()
     }
 

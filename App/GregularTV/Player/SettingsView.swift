@@ -85,7 +85,7 @@ struct SettingsView: View {
             }
 
             SettingsRows.section("Server", footer: [
-                "All Servers goes to the main page, to watch another server or add one. Menu from live TV goes there too; the channel plays on behind it.",
+                "All Servers goes to the main page, to watch another server or add one. Menu from the guide's top row goes there too; the channel plays on behind it.",
             ]) {
                 if let server = app.currentServer {
                     SettingsRows.row("Watching", detail: server.name == nil ? nil : server.address, value: server.title) {}

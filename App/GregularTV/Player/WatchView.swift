@@ -14,12 +14,12 @@ import SwiftUI
 /// - **Click left / right** (the edge of the pad): channel down / up (the
 ///   banner previews each channel as you go).
 /// - **Slide left:** channel list (slide right closes it).
-/// - **Click down, or slide up:** the programme guide. Menu closes it, back
-///   to the channel.
 /// - **Light touch** (a click touches the pad too): show the info banner.
 ///   Again while it's showing: switch between the end time and the time left.
-/// - **Menu (or Back ‹):** hide the banner if it's up; otherwise back up to
-///   the main page (the servers), with the channel playing on behind it.
+/// - **Menu (or Back ‹):** hide the banner if it's up; otherwise the
+///   programme guide. In the guide, Menu moves up to Resume Live TV; from
+///   there, Menu goes up to the main page (the servers), with the channel
+///   playing on behind it.
 /// - **Click and hold:** Settings (quality, schedule code, your channels, diagnostics, sign out).
 /// - **Play/Pause:** pause, then press again to jump back to live.
 /// - **Digits** (keyboard only; the Siri Remote has none): type a channel number.
@@ -37,7 +37,7 @@ struct WatchView: View {
 
     init(surfer: ChannelSurfer, app: AppModel, isCovered: Bool = false) {
         let model = WatchModel(surfer: surfer)
-        // Menu: the app shows the main page over this channel.
+        // Menu from the guide's top row: the app shows the main page over this channel.
         model.onOpenMainPage = { [weak app] in app?.showMainPage() }
         _model = State(initialValue: model)
         self.app = app

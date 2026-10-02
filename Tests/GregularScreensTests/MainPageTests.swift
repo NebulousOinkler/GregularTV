@@ -63,14 +63,15 @@ struct MainPageTests {
 
     // MARK: The remote
 
-    /// Menu always goes back one level: guide → live TV → main page → Home.
-    @Test func menuGoesBackOneLevelAtATime() {
+    /// Menu: live TV → guide → Resume Live TV → main page → Home screen.
+    @Test func menuStepsFromLiveTVUpToTheHomeScreen() {
+        #expect(RemoteControls.watching[.menu] == .hideInfoOrOpenGuide)
+        #expect(RemoteControls.guide[.menu] == .stepBack, "Up to Resume, then the main page (GuideView)")
         #expect(RemoteControls.mainPage[.menu] == nil, "Menu goes to the Home screen, as Apple asks")
         #expect(RemoteControls.mainPage[.playPause] == .watchLastServer)
         #expect(RemoteControls.mainPageHint.hasSuffix("Menu: Home screen"))
-        #expect(RemoteControls.watching[.menu] == .hideInfoOrOpenMainPage)
-        for table in [RemoteControls.guide, RemoteControls.channelList, RemoteControls.settings] {
-            #expect(table[.menu] == .close, "Menu closes what's over live TV, back to the channel")
+        for table in [RemoteControls.channelList, RemoteControls.settings] {
+            #expect(table[.menu] == .close)
         }
     }
 }

@@ -5,9 +5,9 @@ import SwiftUI
 /// opens here, with the server watched last highlighted, so one click (or
 /// Play/Pause) starts live TV. Holding a click on a server signs out of it.
 /// Menu isn't handled, so tvOS takes it to the Home screen, as Apple asks of
-/// an app's first screen. Menu from live TV comes back up here (see
-/// `RemoteControls`), with the channel playing on, dimmed, behind the page:
-/// a click on its server goes straight back to it.
+/// an app's first screen. Menu from the guide's top row comes back up here
+/// (see `RemoteControls`), with the channel playing on, dimmed, behind the
+/// page: a click on its server goes straight back to it.
 struct MainPageView: View {
     let app: AppModel
 
