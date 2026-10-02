@@ -31,6 +31,8 @@ struct LoginView: View {
                 addressForm
             case .signIn(_, let serverName):
                 signInForms(serverName: serverName)
+            case .administrator(let serverName):
+                administratorWarning(serverName: serverName)
             }
 
             if let error = model.errorMessage {
@@ -42,6 +44,22 @@ struct LoginView: View {
         }
         .padding(80)
         .onExitCommand(perform: onCancel)
+        // A Quick Connect code approved after this signs nothing in.
+        .onDisappear { model.stop() }
+    }
+
+    private func administratorWarning(serverName: String) -> some View {
+        VStack(spacing: 40) {
+            Text("Sign in to \(serverName) as an administrator?").font(.title2)
+            Text(LoginModel.administratorWarning)
+                .foregroundStyle(.secondary).multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: 1200)
+            HStack(spacing: 40) {
+                Button("Use Another Account") { Task { await model.useAnotherAccount() } }
+                Button("Sign In Anyway") { Task { await model.continueAsAdministrator() } }
+            }
+        }
     }
 
     private var addressForm: some View {
@@ -67,6 +85,11 @@ struct LoginView: View {
     private func signInForms(serverName: String) -> some View {
         VStack(spacing: 40) {
             Text("Sign in to \(serverName)").font(.title2)
+            if let note = model.connectionNote {
+                Label(note, systemImage: "lock.open").font(.callout).foregroundStyle(.yellow)
+                    .multilineTextAlignment(.center).fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: 1300)
+            }
 
             HStack(alignment: .top, spacing: 120) {
                 VStack(spacing: 24) {

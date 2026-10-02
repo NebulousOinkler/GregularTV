@@ -62,6 +62,9 @@ public final class AppModel {
     public private(set) var phase: Phase = .launching
     /// Why the user is back at sign-in, if it wasn't their choice.
     public private(set) var signedOutReason: String?
+    /// Something the main page should say, such as a sign-out the server
+    /// couldn't be told about. Gone at the next thing done there.
+    public private(set) var notice: String?
     /// Decides every channel's running order. Shown and editable in Settings;
     /// the same code gives the same schedule on any device with the same library.
     public private(set) var scheduleCode: ScheduleCode
@@ -77,9 +80,9 @@ public final class AppModel {
     /// "Edit from a phone or computer" in Settings (off by default): whether
     /// Settings offers the editing page (`EditingPage`) on the home network.
     public private(set) var allowsEditingPage: Bool
-    /// How this device appears to Jellyfin. Stays inside Screens: the
-    /// front end never sees a Jellyfin type.
-    let identity: ClientIdentity
+    /// The kind of device, as servers list it, such as "Apple TV". Each
+    /// sign-in pairs it with a device ID of its own (`ClientIdentity`).
+    let deviceName: String
     private let store: any CredentialStore
     private let preferences: AppPreferences
     private let makeDecks: @MainActor () -> [any PlayerDeck]
@@ -104,7 +107,7 @@ public final class AppModel {
         self.makeDecks = makeDecks
         self.store = store
         self.preferences = preferences
-        identity = ClientIdentity(deviceID: store.deviceID(), deviceName: deviceName)
+        self.deviceName = deviceName
         showsDiagnostics = preferences.showsDiagnostics
         playsCommercials = preferences.playsCommercials
         customChannels = preferences.customChannels
@@ -113,7 +116,11 @@ public final class AppModel {
         if let saved = preferences.scheduleCode {
             scheduleCode = saved
         } else {
-            scheduleCode = .random()   // first launch
+            // First launch after installing (preferences go with the app).
+            // Secure storage can outlive the app, so a sign-in from before
+            // it was deleted would otherwise come back: start with none.
+            try? store.deleteAll()
+            scheduleCode = .random()
             preferences.scheduleCode = scheduleCode
         }
     }
@@ -161,10 +168,10 @@ public final class AppModel {
     /// Asks each server on the main page for its name, to show instead of
     /// its address. In memory only; a server that doesn't answer keeps its address.
     public func loadServerNames() async {
-        let identity = identity
         for server in servers where server.name == nil {
             guard let credentials = credentials(for: server) else { continue }
-            let name = try? await JellyfinServer(url: credentials.serverURL, identity: identity).publicInfo().serverName
+            let name = try? await JellyfinServer(url: credentials.serverURL, identity: identity(for: credentials))
+                .publicInfo().serverName
             guard let name, !name.trimmingCharacters(in: .whitespaces).isEmpty,
                   let index = servers.firstIndex(where: { $0.id == server.id }) else { continue }
             servers[index].name = String(name.prefix(Self.longestServerName))
@@ -178,6 +185,7 @@ public final class AppModel {
     /// is; the one watched just before goes straight back to live TV from the
     /// library in memory; another loads its library.
     public func watch(_ server: Server) async {
+        notice = nil
         guard let credentials = credentials(for: server) else { return showMainPage() }
         try? store.saveCredentials(credentials)   // now the one watched last
         let sameServer = client?.credentials.signInID == credentials.signInID
@@ -202,6 +210,7 @@ public final class AppModel {
 
     /// The sign-in screen, to add another server.
     public func addServer() {
+        notice = nil
         liveTV?.player.stop()
         signedOutReason = nil
         phase = .signedOut
@@ -213,17 +222,29 @@ public final class AppModel {
     /// Ask this before `signOut(of:)`, on the main page or in Settings.
     public func signOutConfirmation(for server: Server) -> Confirmation {
         Confirmation(action: "Sign Out", question: "Sign out of \(server.title)?",
-                     detail: "You'll need to sign in again to watch it. Your channels and set times stay on this \(identity.deviceName).")
+                     detail: "You'll need to sign in again to watch it. Your channels and set times stay on this \(deviceName).")
     }
 
     /// Signs out of `server`: revokes its token and forgets it. Then the main
-    /// page, or the sign-in screen if it was the last.
+    /// page, or the sign-in screen if it was the last. If the server couldn't
+    /// be told, the main page says how to cancel the sign-in there.
     public func signOut(of server: Server) async {
+        notice = nil
         guard let credentials = credentials(for: server) else { return showMainPage() }
         if client?.credentials.signInID == credentials.signInID { forgetLibrary() }
-        await JellyfinClient(credentials: credentials, identity: identity).signOut(clearing: store)
+        let revoked = await JellyfinClient(credentials: credentials, identity: identity(for: credentials)).signOut(clearing: store)
         servers.removeAll { $0.id == server.id }
         showMainPage()
+        guard !revoked else { return }
+        let message = "Signed out on this \(deviceName), but \(server.title) couldn't be reached to cancel the sign-in, "
+            + "so it still works there. To cancel it, remove this \(deviceName) from the devices in \(Self.serverName)'s dashboard."
+        // The sign-in screen, if that was the last server.
+        if case .signedOut = phase { signedOutReason = message } else { notice = message }
+    }
+
+    /// How this device introduces itself with `credentials`: with the device ID they signed in with.
+    private func identity(for credentials: Credentials) -> ClientIdentity {
+        ClientIdentity(credentials, deviceName: deviceName)
     }
 
     private func credentials(for server: Server) -> Credentials? {
@@ -249,10 +270,12 @@ public final class AppModel {
 
     /// The sign-in steps for the sign-in screen. Signing in there carries on here.
     public func makeLoginModel() -> LoginModel {
-        LoginModel(identity: identity) { [weak self] credentials in await self?.didSignIn(credentials) }
+        LoginModel(deviceName: deviceName) { [weak self] credentials in await self?.didSignIn(credentials) }
     }
 
     private func didSignIn(_ credentials: Credentials) async {
+        // Only from the sign-in screen: a sign-in finishing after it closed is dropped.
+        guard case .signedOut = phase else { return }
         signedOutReason = nil
         // If the Keychain write fails, still carry on for this session.
         try? store.saveCredentials(credentials)
@@ -507,10 +530,9 @@ public final class AppModel {
     private func connect(_ credentials: Credentials) async {
         liveTV?.player.stop()
         phase = .loading
-        let client = JellyfinClient(credentials: credentials, identity: identity)
+        let client = JellyfinClient(credentials: credentials, identity: identity(for: credentials))
         self.client = client
         do {
-            try? await client.registerCapabilities()
             library = try await client.fetchProgrammes()
             commercials = await loadCommercials(from: client)
             phase = watch(library: library, commercials: commercials, streams: client,

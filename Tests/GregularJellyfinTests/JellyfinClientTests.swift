@@ -106,6 +106,22 @@ struct JellyfinLibraryTests {
         mock.on("GET", "/Items", status: 401)
         await #expect(throws: JellyfinError.unauthorized) { try await JellyfinFixtures.client(mock).fetchLibrary() }
     }
+
+    /// Only a 401 means the sign-in is gone: a 403 (a proxy's block, a
+    /// programme the account may not watch) leaves it saved.
+    @Test func aRefusalIsNotASignOut() async {
+        mock.on("GET", "/Items", status: 403)
+        await #expect(throws: JellyfinError.forbidden) { try await JellyfinFixtures.client(mock).fetchLibrary() }
+        #expect(!JellyfinError.forbidden.isSessionExpired && JellyfinError.unauthorized.isSessionExpired)
+    }
+
+    /// A server sending pages of huge names is stopped before it fills memory.
+    @Test func aLibraryOfHugeNamesIsStopped() async {
+        let name = String(repeating: "x", count: 1_000_000)
+        let items = (0..<100).map { #"{ "Id": "i\#($0)", "Name": "\#(name)", "Type": "Movie", "RunTimeTicks": 1 }"# }
+        mock.on("GET", "/Items", json: #"{ "Items": [\#(items.joined(separator: ","))], "TotalRecordCount": 100000 }"#)
+        await #expect(throws: JellyfinError.responseTooLarge) { try await JellyfinFixtures.client(mock).fetchLibrary() }
+    }
 }
 
 struct JellyfinPlaybackTests {

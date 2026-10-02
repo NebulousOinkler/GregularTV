@@ -2,8 +2,11 @@ import Foundation
 import GregularCore
 
 public enum JellyfinError: Error, Equatable, Sendable {
-    /// The token was rejected. The user needs to sign in again.
+    /// The token was rejected (HTTP 401). The user needs to sign in again.
     case unauthorized
+    /// The server refused this request (HTTP 403): the account isn't allowed
+    /// it. Not a sign-out: the sign-in still works for everything else.
+    case forbidden
     case httpStatus(Int)
     case invalidResponse
     /// Plain http to an address outside the local network (see `ServerAddress.isAllowed(_:)`).
@@ -21,6 +24,7 @@ extension JellyfinError: MediaServiceFailure {
     public var errorDescription: String? {
         switch self {
         case .unauthorized: "Your Jellyfin sign-in has expired or was revoked. Please sign in again."
+        case .forbidden: "Your Jellyfin account isn't allowed to do this. It may be disabled, or limited by its parental controls."
         case .httpStatus(let code): "The Jellyfin server returned an error (HTTP \(code))."
         case .invalidResponse: "The server didn't respond like a Jellyfin server."
         case .insecureAddress: "Plain http only works on your home network. For an address on the internet, use https."
@@ -40,8 +44,10 @@ struct JellyfinAPI: Sendable {
     let token: String?
     let transport: any HTTPTransport
 
-    func get<Response: Decodable>(_ path: String, query: [URLQueryItem] = []) async throws -> Response {
-        try decode(await send("GET", path, query: query))
+    /// - Parameter anonymous: send no `Authorization` header at all, so the
+    ///   server learns nothing about this device (for its public endpoints).
+    func get<Response: Decodable>(_ path: String, query: [URLQueryItem] = [], anonymous: Bool = false) async throws -> Response {
+        try decode(await send("GET", path, query: query, anonymous: anonymous))
     }
 
     func post<Response: Decodable>(
@@ -65,12 +71,15 @@ struct JellyfinAPI: Sendable {
 
     // MARK: - Internals
 
-    private func send(_ method: String, _ path: String, query: [URLQueryItem], body: Data? = nil) async throws -> Data {
+    private func send(_ method: String, _ path: String, query: [URLQueryItem], body: Data? = nil,
+                      anonymous: Bool = false) async throws -> Data {
         // Nothing, a password or token least of all, goes over plain http beyond the local network.
         guard ServerAddress.isAllowed(server) else { throw JellyfinError.insecureAddress }
         var request = URLRequest(url: url(path, query: query))
         request.httpMethod = method
-        request.setValue(identity.authorizationHeader(token: token), forHTTPHeaderField: "Authorization")
+        if !anonymous {
+            request.setValue(identity.authorizationHeader(token: token), forHTTPHeaderField: "Authorization")
+        }
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         if let body {
             request.httpBody = body
@@ -86,7 +95,8 @@ struct JellyfinAPI: Sendable {
         guard data.count <= TransportRules.largestResponse else { throw JellyfinError.responseTooLarge }
         switch response.statusCode {
         case 200..<300: return data
-        case 401, 403: throw JellyfinError.unauthorized
+        case 401: throw JellyfinError.unauthorized
+        case 403: throw JellyfinError.forbidden
         default: throw JellyfinError.httpStatus(response.statusCode)
         }
     }

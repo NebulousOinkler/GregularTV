@@ -45,12 +45,14 @@ extension URLRequest {
 enum JellyfinFixtures {
     static let server = URL(string: "http://tv.local:8096")!
     static let identity = ClientIdentity(deviceID: "device-123", deviceName: "Apple TV")
-    static let credentials = Credentials(serverURL: server, userID: "user-1", accessToken: "token-abc")
+    static let credentials = Credentials(serverURL: server, userID: "user-1", accessToken: "token-abc", deviceID: "device-123")
 
     static func client(_ mock: MockJellyfin, server: URL = server) -> JellyfinClient {
-        JellyfinClient(credentials: Credentials(serverURL: server, userID: "user-1", accessToken: "token-abc"),
+        JellyfinClient(credentials: Credentials(serverURL: server, userID: "user-1", accessToken: "token-abc", deviceID: "device-123"),
                        identity: identity, transport: mock)
     }
 
     static let authResult = #"{ "AccessToken": "token-abc", "User": { "Id": "user-1", "Name": "sam" }, "ServerId": "srv" }"#
+    static let adminAuthResult =
+        #"{ "AccessToken": "token-abc", "User": { "Id": "user-1", "Name": "sam", "Policy": { "IsAdministrator": true } }, "ServerId": "srv" }"#
 }

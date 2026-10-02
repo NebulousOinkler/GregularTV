@@ -97,8 +97,12 @@ enum Fixture {
 
     /// An app named "Test Device", signed in to whatever `store` holds,
     /// playing on fake decks.
-    @MainActor static func app(store: InMemoryCredentialStore = InMemoryCredentialStore()) -> AppModel {
-        AppModel(deviceName: "Test Device", store: store, preferences: AppPreferences.testing(), makeDecks: FakeDeck.pair)
+    /// - Parameter firstLaunch: as if just installed (no preferences yet),
+    ///   which forgets what's in `store`; otherwise an app launched before.
+    @MainActor static func app(store: InMemoryCredentialStore = InMemoryCredentialStore(), firstLaunch: Bool = false) -> AppModel {
+        let preferences = AppPreferences.testing()
+        if !firstLaunch { preferences.scheduleCode = .standard }
+        return AppModel(deviceName: "Test Device", store: store, preferences: preferences, makeDecks: FakeDeck.pair)
     }
 
     @MainActor static func settle(_ player: ChannelPlayer) async throws {

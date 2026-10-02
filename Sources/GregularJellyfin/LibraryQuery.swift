@@ -14,6 +14,10 @@ struct LibraryQuery: Sendable {
     /// Far beyond any real library; it stops a false total from planning
     /// billions of pages (and the app running out of memory at every launch).
     static let mostItems = 200_000
+    /// The most text (bytes of IDs, names, genres and tags) one listing may
+    /// hold. A real library of 100,000 items is about 10 MB; a server sending
+    /// pages of huge names is stopped here, before it fills the app's memory.
+    static let mostText = 64 * 1024 * 1024
 
     let api: JellyfinAPI
     let userID: String
@@ -42,11 +46,18 @@ struct LibraryQuery: Sendable {
     /// The first page reports the total. The rest are then fetched in
     /// parallel, a few at a time, and put back together in order. The total
     /// is only the server's word: it's capped at `mostItems`, pages stop
-    /// being asked for once one comes back empty, and each page counts for
-    /// at most `pageSize` items.
+    /// being asked for once one comes back empty, each page counts for at
+    /// most `pageSize` items, and all of them for at most `mostText` of text.
     private func fetchPages(types: String, parentID: String? = nil) async throws -> [ItemDTO] {
+        var text = 0
+        func kept(_ items: [ItemDTO]) throws -> [ItemDTO] {
+            let page = Array(items.prefix(Self.pageSize))
+            text += page.reduce(0) { $0 + $1.textSize }
+            guard text <= Self.mostText else { throw JellyfinError.responseTooLarge }
+            return page
+        }
         let first = try await fetchPage(types: types, parentID: parentID, startIndex: 0)
-        let firstItems = Array(first.items.prefix(Self.pageSize))
+        let firstItems = try kept(first.items)
         let total = min(first.totalRecordCount, Self.mostItems)
         let starts = Array(stride(from: firstItems.count, to: total, by: Self.pageSize))
         guard !firstItems.isEmpty, !starts.isEmpty else { return firstItems }
@@ -61,7 +72,7 @@ struct LibraryQuery: Sendable {
             }
             for _ in 0..<Self.maxConcurrentPages { addNext() }
             while let (start, items) = try await group.next() {
-                pages[start] = Array(items.prefix(Self.pageSize))
+                pages[start] = try kept(items)
                 if items.isEmpty { reachedTheEnd = true }
                 addNext()
             }
@@ -109,6 +120,12 @@ struct ItemDTO: Decodable, Sendable {
     let premiereDate: String?
     let genres: [String]?
     let tags: [String]?
+
+    /// Bytes of text it holds, for `LibraryQuery.mostText`.
+    var textSize: Int {
+        let texts = [id, name, type, seriesId, seriesName, premiereDate].compactMap { $0 } + (genres ?? []) + (tags ?? [])
+        return texts.reduce(0) { $0 + $1.utf8.count }
+    }
 
     /// Nil for item types we don't schedule, or items with no runtime.
     func mediaItem(series: ItemDTO?) -> MediaItem? {

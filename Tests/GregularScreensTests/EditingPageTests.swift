@@ -21,6 +21,9 @@ struct EditingPageTests {
 
     private func app() -> AppModel { Fixture.app() }
 
+    /// The address requests come from, unless a test says otherwise.
+    static let phone = "192.168.1.30"
+
     private func page(_ app: AppModel) -> EditingPage {
         EditingPage(app: app, hosts: [Self.host], code: "123456")
     }
@@ -60,13 +63,23 @@ struct EditingPageTests {
         #expect(await page.handle(request("/api/state", code: "123456", origin: "http://\(Self.host)")).status == 200)
     }
 
-    @Test func wrongCodesLockThePage() async {
+    @Test func wrongCodesShutOutThatDeviceThenLockThePage() async {
         let page = page(app())
         for _ in 0..<EditingPage.mostWrongCodes {
             #expect(await page.handle(request("/api/state", code: "000000")).status == 401)
         }
+        #expect(!page.isLocked, "One device can't lock everyone out")
+        #expect(await page.handle(request("/api/state", code: "123456")).status == 423, "That device is refused, even with the right code")
+        #expect(await page.handle(request("/api/state", code: "123456"), from: "192.168.1.31").status == 200, "Another still gets in")
+
+        // Wrong codes from many devices lock the page for everyone.
+        for device in 0..<(EditingPage.mostWrongCodesInAll / EditingPage.mostWrongCodes) {
+            for _ in 0..<EditingPage.mostWrongCodes {
+                _ = await page.handle(request("/api/state", code: "000000"), from: "10.0.0.\(device)")
+            }
+        }
         #expect(page.isLocked)
-        #expect(await page.handle(request("/api/state", code: "123456")).status == 423, "Even the right code, once locked")
+        #expect(await page.handle(request("/api/state", code: "123456"), from: "192.168.1.31").status == 423)
         #expect(EditingPage(app: app(), hosts: []).code.count == 6)
     }
 
@@ -131,5 +144,12 @@ struct EditingPageTests {
         #expect(!EditingPageHTML.page.contains("innerHTML") && !EditingPageHTML.page.contains("outerHTML")
                 && !EditingPageHTML.page.contains("insertAdjacentHTML") && !EditingPageHTML.page.contains("document.write"))
         #expect(!EditingPageHTML.page.contains("http://") && !EditingPageHTML.page.contains("https://"), "Nothing fetched from elsewhere")
+    }
+}
+
+extension EditingPage {
+    /// From the test's phone.
+    func handle(_ request: HTTPRequest) async -> HTTPResponse {
+        await handle(request, from: EditingPageTests.phone)
     }
 }

@@ -18,6 +18,17 @@ public struct ClientIdentity: Sendable, Equatable {
         self.deviceName = deviceName
     }
 
+    /// For a new sign-in: a device ID of its own, random, so servers can't
+    /// tell they're talking to the same device.
+    public static func forSignIn(deviceName: String) -> ClientIdentity {
+        ClientIdentity(deviceID: UUID().uuidString, deviceName: deviceName)
+    }
+
+    /// For a saved sign-in: the device ID it signed in with, which its token goes with.
+    public init(_ credentials: Credentials, deviceName: String) {
+        self.init(deviceID: credentials.deviceID, deviceName: deviceName)
+    }
+
     /// The value of the `Authorization` header Jellyfin expects.
     public func authorizationHeader(token: String?) -> String {
         var fields = [

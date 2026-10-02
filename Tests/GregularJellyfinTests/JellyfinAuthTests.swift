@@ -81,20 +81,33 @@ struct JellyfinAuthTests {
     let mock = MockJellyfin()
     var server: JellyfinServer { JellyfinServer(url: JellyfinFixtures.server, identity: JellyfinFixtures.identity, transport: mock) }
 
-    @Test func publicInfo() async throws {
+    @Test func publicInfoIsAskedAnonymously() async throws {
         mock.on("GET", "/System/Info/Public", json: #"{ "ServerName": "Den", "Version": "10.10.3", "Id": "x" }"#)
         #expect(try await server.publicInfo() == .init(serverName: "Den", version: "10.10.3"))
+        let request = try #require(mock.requests.first)
+        #expect(request.value(forHTTPHeaderField: "Authorization") == nil, "A server only probed learns nothing about this device")
     }
 
     @Test func passwordSignInSendsCredentialsOnceAndReturnsToken() async throws {
         mock.on("POST", "/Users/AuthenticateByName", json: JellyfinFixtures.authResult)
-        let credentials = try await server.signIn(username: "sam", password: "hunter2")
+        let signIn = try await server.signIn(username: "sam", password: "hunter2")
 
-        #expect(credentials == JellyfinFixtures.credentials)
+        #expect(signIn.credentials == JellyfinFixtures.credentials, "With the device ID it signed in with")
+        #expect(!signIn.isAdministrator)
         let request = try #require(mock.requests.first)
         #expect(request.jsonBody["Username"] as? String == "sam")
         #expect(request.jsonBody["Pw"] as? String == "hunter2")
         #expect(request.value(forHTTPHeaderField: "Authorization")?.contains("Token=") == false)
+    }
+
+    @Test func anAdministratorSaysSo() async throws {
+        mock.on("POST", "/Users/AuthenticateByName", json: JellyfinFixtures.adminAuthResult)
+        #expect(try await server.signIn(username: "sam", password: "hunter2").isAdministrator)
+    }
+
+    @Test func aRefusedSignInIsForbiddenNotWrongPassword() async {
+        mock.on("POST", "/Users/AuthenticateByName", status: 403)
+        await #expect(throws: JellyfinError.forbidden) { try await server.signIn(username: "sam", password: "pw") }
     }
 
     @Test func wrongPasswordIsUnauthorized() async {
@@ -119,8 +132,8 @@ struct JellyfinAuthTests {
 
         let request = try await server.startQuickConnect()
         #expect(request.code == "123456")
-        let credentials = try await server.waitForQuickConnect(request, pollInterval: .milliseconds(1))
-        #expect(credentials == JellyfinFixtures.credentials)
+        let signIn = try await server.waitForQuickConnect(request, pollInterval: .milliseconds(1))
+        #expect(signIn.credentials == JellyfinFixtures.credentials)
         #expect(polls.value == 3)
     }
 

@@ -17,7 +17,7 @@ struct YourChannelsTests {
     }
 
     @Test func theAppNamesItsDevice() {
-        #expect(app().identity.deviceName == "Test Device")
+        #expect(app().deviceName == "Test Device")
         let server = AppModel.Server(id: "s", address: "nas:8096", isLastWatched: true)
         #expect(app().signOutConfirmation(for: server).detail.hasSuffix("stay on this Test Device."))
         #expect(app().signOutConfirmation(for: server).action == "Sign Out")
