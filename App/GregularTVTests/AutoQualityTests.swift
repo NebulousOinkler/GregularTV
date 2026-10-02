@@ -10,43 +10,20 @@ import Testing
 /// Serialized: the tests change the shared background-measurement delay.
 @MainActor @Suite(.serialized)
 struct AutoQualityTests {
-    /// A fake server that records every request. Speed tests answer slowly,
-    /// like the real one over a slow link.
-    final class RecordingServer: HTTPTransport, @unchecked Sendable {
-        private let lock = NSLock()
-        private var log: [URLRequest] = []
-
-        var requests: [URLRequest] { lock.withLock { log } }
-        var speedTests: Int { requests.filter { $0.url!.path.hasSuffix("/Playback/BitrateTest") }.count }
-        var playbackInfos: [URLRequest] { requests.filter { $0.url!.path.hasSuffix("/PlaybackInfo") } }
-
-        func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
-            lock.withLock { log.append(request) }
-            var body = Data()
-            if request.url!.path.hasSuffix("/Playback/BitrateTest") {
-                try await Task.sleep(for: .seconds(2))
-                body = Data(count: 1000)
-            } else if request.url!.path.hasSuffix("/PlaybackInfo") {
-                body = Data(#"{ "MediaSources": [{ "Id": "s", "SupportsDirectPlay": true }], "PlaySessionId": "p" }"#.utf8)
-            }
-            return (body, HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
-        }
-    }
-
-    private func makePlayer(quality: StreamingQuality, server: RecordingServer) throws -> ChannelPlayer {
+    private func makePlayer(quality: StreamingQuality, server: FakeServer) throws -> ChannelPlayer {
         let items = [MediaItem(id: "m", kind: .movie, name: "M", duration: 3600)]
         let schedule = try #require(try ChannelSchedule.testing(items: items).first)
         let client = JellyfinClient.testing(server)
         return ChannelPlayer(schedule: schedule, streams: client, quality: quality)
     }
 
-    private func waitForPlaybackInfo(_ server: RecordingServer) async throws {
+    private func waitForPlaybackInfo(_ server: FakeServer) async throws {
         try await waitUntil(1) { !server.playbackInfos.isEmpty }
     }
 
     @Test func fixedQualityNeverRunsASpeedTest() async throws {
         ChannelPlayer.backgroundMeasurementDelay = .zero
-        let server = RecordingServer()
+        let server = FakeServer(speedTestDelay: .seconds(2))   // like a slow link
         let player = try makePlayer(quality: .hd10, server: server)
         player.tune()
         try await waitForPlaybackInfo(server)
@@ -58,7 +35,7 @@ struct AutoQualityTests {
 
     @Test func autoStartsPlayingWithoutWaitingForTheSpeedTest() async throws {
         ChannelPlayer.backgroundMeasurementDelay = .zero
-        let server = RecordingServer()
+        let server = FakeServer(speedTestDelay: .seconds(2))   // like a slow link
         let player = try makePlayer(quality: .auto, server: server)
         let start = ContinuousClock.now
         player.tune()
@@ -71,7 +48,7 @@ struct AutoQualityTests {
 
     @Test func switchingAwayFromAutoStopsSpeedTests() async throws {
         ChannelPlayer.backgroundMeasurementDelay = .milliseconds(200)
-        let server = RecordingServer()
+        let server = FakeServer(speedTestDelay: .seconds(2))   // like a slow link
         let player = try makePlayer(quality: .auto, server: server)
         player.tune()
         try await waitForPlaybackInfo(server)

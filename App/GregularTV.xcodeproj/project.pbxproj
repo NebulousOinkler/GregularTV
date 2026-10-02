@@ -8,7 +8,6 @@
 
 /* Begin PBXBuildFile section */
 		5DC6E38EC18FAA932A196971 /* GregularCore in Frameworks */ = {isa = PBXBuildFile; productRef = 39239ABE91B67D192800D71C /* GregularCore */; };
-		A1C0DE5E0000000000000001 /* GregularJellyfin in Frameworks */ = {isa = PBXBuildFile; productRef = A1C0DE5E0000000000000002 /* GregularJellyfin */; };
 		A1C0DE5E0000000000000003 /* GregularScreens in Frameworks */ = {isa = PBXBuildFile; productRef = A1C0DE5E0000000000000004 /* GregularScreens */; };
 		A1C0DE5E0000000000000005 /* GregularKeychain in Frameworks */ = {isa = PBXBuildFile; productRef = A1C0DE5E0000000000000006 /* GregularKeychain */; };
 /* End PBXBuildFile section */
@@ -65,6 +64,12 @@
 			path = GregularTVTests;
 			sourceTree = "<group>";
 		};
+		5A4ED0F1C5A1E5000000A001 /* Shared */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			name = "Shared test fixtures";
+			path = ../Tests/Shared;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -80,7 +85,6 @@
 			buildActionMask = 2147483647;
 			files = (
 				5DC6E38EC18FAA932A196971 /* GregularCore in Frameworks */,
-				A1C0DE5E0000000000000001 /* GregularJellyfin in Frameworks */,
 				A1C0DE5E0000000000000003 /* GregularScreens in Frameworks */,
 				A1C0DE5E0000000000000005 /* GregularKeychain in Frameworks */,
 			);
@@ -111,6 +115,7 @@
 			children = (
 				CE882751F8B3EE4485706ED4 /* GregularTV */,
 				F850DA3429877D0A2E262956 /* GregularTVTests */,
+				5A4ED0F1C5A1E5000000A001 /* Shared */,
 				C0FFEE000000000000000003 /* GregularTVUITests */,
 				86024CAD1E83101D97359D73 /* Products */,
 			);
@@ -159,7 +164,6 @@
 			name = GregularTV;
 			packageProductDependencies = (
 				39239ABE91B67D192800D71C /* GregularCore */,
-				A1C0DE5E0000000000000002 /* GregularJellyfin */,
 				A1C0DE5E0000000000000004 /* GregularScreens */,
 				A1C0DE5E0000000000000006 /* GregularKeychain */,
 			);
@@ -182,6 +186,7 @@
 			);
 			fileSystemSynchronizedGroups = (
 				F850DA3429877D0A2E262956 /* GregularTVTests */,
+				5A4ED0F1C5A1E5000000A001 /* Shared */,
 			);
 			name = GregularTVTests;
 			productName = GregularTVTests;
@@ -626,10 +631,6 @@
 		39239ABE91B67D192800D71C /* GregularCore */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = GregularCore;
-		};
-		A1C0DE5E0000000000000002 /* GregularJellyfin */ = {
-			isa = XCSwiftPackageProductDependency;
-			productName = GregularJellyfin;
 		};
 		A1C0DE5E0000000000000004 /* GregularScreens */ = {
 			isa = XCSwiftPackageProductDependency;

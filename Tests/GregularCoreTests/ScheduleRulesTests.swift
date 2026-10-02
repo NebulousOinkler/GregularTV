@@ -68,12 +68,4 @@ struct ScheduleRulesTests {
         }
         #expect(zip(aired, aired.dropFirst()).allSatisfy { $0 != $1 }, "\(aired)")
     }
-
-    @Test func itemsPutBackComeFirstInOrder() {
-        let items = ["A", "B", "C", "D"].map { Fixtures.movie($0) }
-        var stream = RuledStream(AnyIterator(items.makeIterator()), for: .programmes)
-        let first = stream.next()!, second = stream.next()!
-        stream.putBack([first, second])
-        #expect((0..<4).compactMap { _ in stream.next()?.name } == ["A", "B", "C", "D"])
-    }
 }

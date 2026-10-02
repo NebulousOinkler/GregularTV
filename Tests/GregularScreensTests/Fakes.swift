@@ -1,5 +1,7 @@
 import Foundation
 import GregularCore
+import GregularJellyfin
+import Testing
 @testable import GregularScreens
 
 /// A `PlayerDeck` with no video at all: it records what it's told, so the
@@ -67,43 +69,25 @@ enum Fixture {
     @MainActor static func surfer(elapsed: TimeInterval = 600) throws -> ChannelSurfer {
         let items = (1...3).map { MediaItem(id: "m\($0)", kind: .movie, name: "Film \($0)", duration: 3600) }
         let channels = try ChannelSchedule.testing([1, 2], epoch: Date.now.addingTimeInterval(-elapsed), items: items)
-        let preferences = Self.preferences()
+        let preferences = AppPreferences.testing()
         preferences.streamingQuality = .hd10
         return ChannelSurfer(channels: channels, startingWith: channels[0], streams: FakeStreams(),
                              preferences: preferences, decks: FakeDeck.pair())
     }
 
-    /// Preferences of their own, so tests never share (or touch the app's).
-    static func preferences() -> AppPreferences {
-        AppPreferences(defaults: UserDefaults(suiteName: "ScreensTests-\(UUID())")!)
+    /// An app named "Test Device", signed in to whatever `store` holds,
+    /// playing on fake decks.
+    @MainActor static func app(store: InMemoryCredentialStore = InMemoryCredentialStore()) -> AppModel {
+        AppModel(deviceName: "Test Device", store: store, preferences: AppPreferences.testing(), makeDecks: FakeDeck.pair)
     }
 
     @MainActor static func settle(_ player: ChannelPlayer) async throws {
         try await waitUntil(2) { player.status == .playing }
     }
-}
 
-extension ChannelSchedule {
-    /// Test channels numbered `numbers` (each seeded with its number), all
-    /// playing `items`, with `ads` as commercials if there are any.
-    static func testing(_ numbers: [Int] = [1], strategy: String = "shuffled-shows", epoch: Date? = nil,
-                        padTo: Int? = nil, items: [MediaItem], ads: [MediaItem] = [],
-                        playsCommercials: Bool = true) throws -> [ChannelSchedule] {
-        let channels = numbers.map { n in
-            var fields = [#""number": \#(n)"#, #""name": "C\#(n)""#, #""source": { "type": "all" }"#,
-                          #""strategy": "\#(strategy)""#, #""seed": \#(n)"#]
-            if let padTo { fields.append(#""padTo": \#(padTo)"#) }
-            if !ads.isEmpty { fields.append(#""filler": "shuffle""#) }
-            if let epoch { fields.append(#""epoch": "\#(ISO8601DateFormatter().string(from: epoch))""#) }
-            return "{ " + fields.joined(separator: ", ") + " }"
-        }
-        return try ChannelLineup.load(from: Data("[\(channels.joined(separator: ","))]".utf8))
-            .schedules(for: items, fillerPool: ads, playsCommercials: playsCommercials)
+    /// Waits for `player` to play, then the deck it's playing on.
+    @MainActor static func playingDeck(_ player: ChannelPlayer) async throws -> FakeDeck {
+        try await settle(player)
+        return try #require(player.decks[player.activeIndex] as? FakeDeck)
     }
-}
-
-/// Waits, checking every 10 ms, until `condition` holds or `seconds` pass.
-@MainActor func waitUntil(_ seconds: TimeInterval, _ condition: () -> Bool) async throws {
-    let deadline = Date.now.addingTimeInterval(seconds)
-    while !condition(), Date.now < deadline { try await Task.sleep(for: .milliseconds(10)) }
 }

@@ -13,7 +13,7 @@ struct MainPageTests {
     private func app(_ signIns: [Credentials]) throws -> (AppModel, InMemoryCredentialStore) {
         let store = InMemoryCredentialStore()
         for credentials in signIns.reversed() { try store.saveCredentials(credentials) }
-        return (AppModel(deviceName: "Apple TV", store: store, preferences: Fixture.preferences(), makeDecks: FakeDeck.pair), store)
+        return (Fixture.app(store: store), store)
     }
 
     @Test func theAppOpensOnTheMainPageOrSignInIfThereAreNoServers() async throws {
@@ -27,6 +27,7 @@ struct MainPageTests {
         guard case .mainPage = app.phase else { Issue.record("Should open on the main page"); return }
         #expect(app.servers.map(\.address) == ["tv.example/jellyfin", "192.168.1.5:8096"], "The one watched last first; no scheme")
         #expect(app.servers.map(\.isLastWatched) == [true, false])
+        #expect(app.servers.map(\.badge) == ["Watched last", nil], "Nothing's playing behind the page at launch")
         #expect(app.servers[0].title == "tv.example/jellyfin", "The address until the server gives its name")
     }
 

@@ -44,7 +44,7 @@ struct ChannelListView: View {
                 .task {
                     // Scroll the current channel's row into existence, then focus it.
                     proxy.scrollTo(currentNumber, anchor: .center)
-                    try? await Task.sleep(for: .milliseconds(100))
+                    await FocusSettling.wait()
                     focusedNumber = currentNumber
                 }
             }

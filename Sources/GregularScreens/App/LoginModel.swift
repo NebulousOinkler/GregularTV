@@ -27,7 +27,8 @@ public final class LoginModel {
     private let onSignedIn: (Credentials) async -> Void
     private var quickConnectTask: Task<Void, Never>?
 
-    public init(identity: ClientIdentity, onSignedIn: @escaping (Credentials) async -> Void) {
+    /// Made by `AppModel.makeLoginModel()`, which keeps the Jellyfin types to itself.
+    init(identity: ClientIdentity, onSignedIn: @escaping (Credentials) async -> Void) {
         self.identity = identity
         self.onSignedIn = onSignedIn
     }

@@ -10,8 +10,7 @@ struct ChannelPlayerDeckTests {
         let surfer = try Fixture.surfer(elapsed: 600)
         let player = surfer.player
         player.tune()
-        try await Fixture.settle(player)
-        let deck = try #require(player.decks[player.activeIndex] as? FakeDeck)
+        let deck = try await Fixture.playingDeck(player)
         let item = try #require(deck.queue.first)
         #expect(player.status == .playing && deck.state == .playing)
         #expect(item.start == 0 && item.end == 3600, "The whole film, stopping at its scheduled end")
@@ -24,8 +23,7 @@ struct ChannelPlayerDeckTests {
         let surfer = try Fixture.surfer(elapsed: 600)
         let player = surfer.player
         player.tune()
-        try await Fixture.settle(player)
-        let deck = try #require(player.decks[player.activeIndex] as? FakeDeck)
+        let deck = try await Fixture.playingDeck(player)
         let item = try #require(deck.queue.first)
         player.togglePause()
         #expect(deck.state == .paused)
@@ -47,11 +45,10 @@ struct ChannelPlayerDeckTests {
         let items = (1...3).map { MediaItem(id: "m\($0)", kind: .movie, name: "Film \($0)", duration: 3600) }
         let channels = try ChannelSchedule.testing([1, 2], epoch: epoch, items: items)
         let surfer = ChannelSurfer(channels: channels, startingWith: channels[0], streams: FakeStreams(),
-                                   preferences: Fixture.preferences(), decks: FakeDeck.pair())
+                                   preferences: AppPreferences.testing(), decks: FakeDeck.pair())
         let player = surfer.player
         player.start()
-        try await Fixture.settle(player)
-        let deck = try #require(player.decks[player.activeIndex] as? FakeDeck)
+        let deck = try await Fixture.playingDeck(player)
         let item = try #require(deck.queue.first)
         let tunes = player.tuneCount
 
@@ -81,8 +78,7 @@ struct ChannelPlayerDeckTests {
         let surfer = try Fixture.surfer()
         let player = surfer.player
         player.start()
-        try await Fixture.settle(player)
-        let deck = try #require(player.decks[player.activeIndex] as? FakeDeck)
+        let deck = try await Fixture.playingDeck(player)
         deck.queue.first?.hasFailed = true
         try await waitUntil(3) { player.status.isFailed }
         guard case .failed = player.status else {

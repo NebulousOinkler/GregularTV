@@ -94,9 +94,11 @@ struct SettingsView: View {
                     dismiss()
                     app.showMainPage()
                 }
-                SettingsRows.confirmedRow(app.signOutConfirmation) {
-                    dismiss()
-                    Task { await app.signOut() }
+                if let server = app.currentServer {
+                    SettingsRows.confirmedRow(app.signOutConfirmation(for: server)) {
+                        dismiss()
+                        Task { await app.signOut(of: server) }
+                    }
                 }
             }
 
@@ -107,7 +109,7 @@ struct SettingsView: View {
         .defaultFocus($focusedQuality, player.quality)
         .task {
             // In case the default didn't take (it's the top row otherwise).
-            try? await Task.sleep(for: .milliseconds(100))
+            await FocusSettling.wait()
             if focusedQuality == nil || focusedQuality == StreamingQuality.allCases.first { focusedQuality = player.quality }
         }
         .remoteControls(RemoteControls.settings) { action in
