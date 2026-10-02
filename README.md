@@ -121,7 +121,7 @@ The app opens on its **main page**: the Jellyfin servers you're signed in to, th
 
 Each server is a sign-in kept in the Keychain. The page shows a server's address, and its name once the server answers (asked each time the page shows, never stored). Your schedule code, channels and set times are the same on every server: a name a library doesn't have just doesn't match there.
 
-**Menu always goes back one level:** guide → live TV → main page → Home screen. From live TV, Menu goes up to the main page (after hiding the banner, if it's up), and the channel carries on playing, dimmed, behind it. Your server is marked **Now playing**, so a click (or Play/Pause) goes straight back to the channel, without loading or re-tuning. The guide opens from live TV with its own buttons (below), and Menu closes it back to the channel, so looking at the guide never goes past the main page. Settings also has **All Servers**.
+**Menu, one step at a time:** live TV → guide → **Resume Live TV** → main page → Home screen. While watching, Menu opens the guide (after hiding the banner, if it's up). In the guide, Menu moves up to the top row, onto **Resume Live TV**, next to Settings; a click there goes back to the channel. Menu again goes up to the main page, and the channel carries on playing, dimmed, behind it. Your server is marked **Now playing**, so a click (or Play/Pause) goes straight back to the channel, without loading or re-tuning. Settings also has **All Servers**.
 
 ## Remote controls
 
@@ -136,9 +136,8 @@ A light tap anywhere on the pad, edges included, only brings up the banner; only
 | Click left / right (edge of the pad) | Channel down / up (the banner previews each channel, and tunes when you stop; the picture fades out while you surf and back in once the new channel plays) |
 | Slide left | Channel list; Select tunes. Slide right, Menu, or 15 s idle closes it and stays on the current channel. Play/Pause opens Settings |
 | Light touch (a click touches the pad too) | Show the info banner (clock, progress, time in). Again while showing: switch between end time and time left |
-| Click down (bottom edge of the pad), or slide up | The programme guide, six hours ahead, scrolling sideways. Select on a programme tunes to its channel; Menu, or 60 s idle, closes it and stays on the current channel. Play/Pause opens Settings |
-| Menu (or Back ‹) | If the banner is up, hide it. Otherwise back up to the main page, with the channel playing on behind it (a click goes straight back). On the main page, Menu goes to the Home screen |
-| Click and hold | Settings: streaming quality, trouble with this programme (step down quality, 720p, standard), schedule code, your channels and set times, the editing page, commercials, diagnostics, and the server (All Servers, Sign Out). In the guide, Play/Pause also opens Settings. Close with Menu, Play/Pause or Done |
+| Menu (or Back ‹) | If the banner is up, hide it. Otherwise the programme guide, six hours ahead, scrolling sideways; Select on a programme tunes to its channel, **Resume Live TV** (top row) goes back to the channel, and 60 s idle closes it. In the guide, Menu first moves up to Resume Live TV (highlighted, not pressed); Menu again goes up to the main page, with the channel playing on behind it (a click goes straight back). On the main page, Menu goes to the Home screen |
+| Click and hold | Settings: streaming quality, trouble with this programme (step down quality, 720p, standard), schedule code, your channels and set times, the editing page, commercials, diagnostics, and the server (All Servers, Sign Out). In the guide, it's the button next to Resume Live TV. Close with Menu, Play/Pause or Done |
 | Play/Pause | Pause; press again to jump back to live |
 | Digits (keyboard only) | Type a channel number |
 

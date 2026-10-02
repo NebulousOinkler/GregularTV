@@ -8,11 +8,13 @@ import SwiftUI
 /// the channel names pinned on the left and the times pinned along the top.
 /// Each block's break (commercials or blank airtime after the programme) is a
 /// darker tail at its right edge.
-/// Opened from watching with `RemoteControls.watching` (click ▼ or slide ▲,
-/// as shipped). Select tunes to the channel. The buttons in
-/// `RemoteControls.guide` act on it: as shipped, Play/Pause opens Settings,
-/// and Menu closes it, back to the channel playing. 60 s without activity
-/// closes it too and stays on the current channel.
+/// Opened from watching with `RemoteControls.watching` (Menu, as shipped).
+/// Select tunes to the channel. The top row has **Resume Live TV**, back to
+/// the channel playing, and Settings. The buttons in `RemoteControls.guide`
+/// act on it: as shipped, Menu steps back,
+/// first up to Resume Live TV (highlighted, not pressed), then from that row
+/// up to the main page. 60 s without activity closes it and stays on the
+/// current channel.
 struct GuideView: View {
     static let idleTimeout: Duration = .seconds(60)
 
@@ -73,7 +75,9 @@ struct GuideView: View {
             }
             .padding(.horizontal, 80)
             .padding(.vertical, 50)
-            .remoteControls(RemoteControls.guide, perform: onRemote)
+            .remoteControls(RemoteControls.guide) { action in
+                if action == .stepBack { stepBack() } else { onRemote(action) }
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(.black.opacity(0.88))
@@ -117,8 +121,19 @@ struct GuideView: View {
         }
     }
 
-    /// Focus ID of the Settings button.
+    /// Focus IDs of the top row's buttons.
+    static let resumeFocusID = "resume"
     static let settingsFocusID = "settings"
+
+    /// Menu, as shipped: from a programme up to Resume Live TV (highlighted,
+    /// not pressed), and from the top row up to the main page.
+    private func stepBack() {
+        if focusedID == Self.resumeFocusID || focusedID == Self.settingsFocusID {
+            onRemote(.openMainPage)
+        } else {
+            focusedID = Self.resumeFocusID
+        }
+    }
 
     static func id(_ schedule: ChannelSchedule, _ cell: GuideCell) -> String {
         "\(schedule.channel.number)|\(cell.id)"
@@ -169,16 +184,23 @@ struct GuideView: View {
             .frame(height: 170, alignment: .top)
             Spacer()
             VStack(alignment: .trailing, spacing: 12) {
-                Button { onRemote(.openSettings) } label: {
-                    Label("Settings", systemImage: "gearshape")
+                HStack(spacing: 24) {
+                    // Back to the channel playing, as it is: no re-tune.
+                    Button { onRemote(.close) } label: {
+                        Label("Resume Live TV", systemImage: "play.fill")
+                    }
+                    .focused($focusedID, equals: Self.resumeFocusID)
+                    Button { onRemote(.openSettings) } label: {
+                        Label("Settings", systemImage: "gearshape")
+                    }
+                    .focused($focusedID, equals: Self.settingsFocusID)
                 }
-                .focused($focusedID, equals: Self.settingsFocusID)
                 Text(RemoteControls.hint(for: RemoteControls.guide))
                     .font(.caption).foregroundStyle(.secondary)
             }
         }
-        // A focus section: pressing Up from the top row reaches Settings
-        // from anywhere across the grid, not just from below the button.
+        // A focus section: pressing Up from the grid reaches the top row
+        // from anywhere across it, not just from below the buttons.
         .focusSection()
     }
 }

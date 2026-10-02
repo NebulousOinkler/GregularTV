@@ -13,9 +13,9 @@ import Foundation
 //   .click .clickAndHold                          the centre (or the touch surface)
 //   .touchTap                                     a light touch, without clicking
 //   .playPause .menu
-// Actions: .channelUp .channelDown .showInfo .hideInfo .hideInfoOrOpenMainPage
+// Actions: .channelUp .channelDown .showInfo .hideInfo .hideInfoOrOpenGuide
 //          .pauseOrJumpToLive .openChannelList .openGuide .openSettings
-//          .close .openMainPage .watchLastServer
+//          .close .stepBack .openMainPage .watchLastServer
 //
 // Fixed, not in the tables:
 // - Clicks and swipes are told apart only while watching. In the channel
@@ -35,21 +35,21 @@ import Foundation
 //   just `.touchTap`. If that ever misfires, "Click Only" stops tvOS doing it.
 // - Don't map both `.click` and `.touchTap` to `.showInfo`: a click also
 //   touches the pad, so it would count twice (show, then switch the time).
-// - How Menu moves around the app: always back one level, never deeper.
+// - How Menu moves around the app, one step at a time:
 //
-//     Home screen  ←Menu─  main page  ←Menu─  live TV  ←Menu─  guide
+//     live TV ─Menu─▶ guide ─Menu─▶ Resume ─Menu─▶ main page ─Menu─▶ Home screen
 //
-//   The main page (the servers) is the top: the app opens there, and Menu
-//   on it goes to the Apple TV Home screen, as Apple asks of an app's first
-//   screen (`mainPage` leaves `.menu` to tvOS). Choosing a server goes into
-//   its live TV. There, Menu hides the banner if it's up, or goes back up to
-//   the main page, with the channel still playing behind it and its server
-//   highlighted, so a click (or Play/Pause) carries on without re-tuning.
-//   The guide opens from live TV with its own buttons (click ▼ or slide ▲),
-//   so looking at it never passes the main page, and Menu closes it again,
-//   back to the channel. The channel list and Settings close with Menu too.
-//   (`.openMainPage`, as carried out, and `.watchLastServer` are the app's
-//   to do, not `WatchModel`'s.)
+//   While watching, Menu hides the banner if it's up; otherwise it opens
+//   the guide. In the guide, Menu moves up to the top row, onto **Resume
+//   Live TV** (next to Settings): a click there goes back to the channel.
+//   Menu again, from anywhere on that top row, goes
+//   up to the main page (the servers), with the channel still playing
+//   behind it and its server highlighted, so a click (or Play/Pause) carries
+//   on without re-tuning. The main page is the app's first screen, so Menu
+//   there goes to the Apple TV Home screen, as Apple asks (`mainPage` leaves
+//   `.menu` to tvOS). The channel list and Settings close with Menu.
+//   (`.openMainPage` and `.watchLastServer` are carried out by the app, and
+//   `.stepBack` in the guide by `GuideView`, which knows where focus is.)
 // - Digits on a keyboard always type a channel number.
 
 public enum RemoteControls {
@@ -57,13 +57,11 @@ public enum RemoteControls {
     public static let watching: [RemoteButton: RemoteAction] = [
         .clickLeft: .channelDown,
         .clickRight: .channelUp,
-        .clickDown: .openGuide,
-        .swipeUp: .openGuide,
         .swipeLeft: .openChannelList,
         .touchTap: .showInfo,
         .clickAndHold: .openSettings,
         .playPause: .pauseOrJumpToLive,
-        .menu: .hideInfoOrOpenMainPage,
+        .menu: .hideInfoOrOpenGuide,
     ]
 
     /// The channel list (opened by sliding left while watching).
@@ -73,10 +71,9 @@ public enum RemoteControls {
         .playPause: .openSettings,
     ]
 
-    /// The programme guide (opened with click ▼ or slide ▲ while watching).
+    /// The programme guide (opened with Menu while watching).
     public static let guide: [RemoteButton: RemoteAction] = [
-        .menu: .close,
-        .playPause: .openSettings,
+        .menu: .stepBack,
     ]
 
     /// The main page: the servers, and adding one. The app opens here. Menu
@@ -173,8 +170,8 @@ public enum RemoteAction: Hashable, CaseIterable, Sendable {
     case showInfo
     /// Put the banner away at once.
     case hideInfo
-    /// Put the banner away if it's up; otherwise back up to the main page.
-    case hideInfoOrOpenMainPage
+    /// Put the banner away if it's up; otherwise open the guide.
+    case hideInfoOrOpenGuide
     /// Pause, or if paused, jump back to live.
     case pauseOrJumpToLive
     case openChannelList
@@ -182,6 +179,10 @@ public enum RemoteAction: Hashable, CaseIterable, Sendable {
     case openSettings
     /// Close whatever's open (the channel list, guide or Settings).
     case close
+    /// One step back. In the guide: from the programmes up to Resume Live TV
+    /// (highlighted, not pressed), and from that top row up to the main page.
+    /// Elsewhere, `.close`.
+    case stepBack
     /// The main page: the servers, with the channel playing on behind it.
     /// Carried out by the app.
     case openMainPage
@@ -200,12 +201,13 @@ public enum RemoteAction: Hashable, CaseIterable, Sendable {
         case .channelDown: "channel down"
         case .showInfo: "info"
         case .hideInfo: "hide info"
-        case .hideInfoOrOpenMainPage: "hide info, or servers"
+        case .hideInfoOrOpenGuide: "hide info, or guide"
         case .pauseOrJumpToLive: "pause"
         case .openChannelList: "channel list"
         case .openGuide: "guide"
         case .openSettings: "Settings"
         case .close: "close"
+        case .stepBack: "back"
         case .openMainPage: "servers"
         case .watchLastServer: "watch"
         }
