@@ -75,23 +75,14 @@ import GregularScreens
 
     // MARK: - Diagnostics
 
-    /// Only playback state: no server address, token, user or file details.
-    func diagnostics(behindLive: TimeInterval, conversionReasons: String?, preloaded: (any PlayerItem)?) -> String {
-        let state = switch player.timeControlStatus {
+    var activity: String {
+        switch player.timeControlStatus {
         case .playing: "Playing"
         case .paused: "Paused"
         case .waitingToPlayAtSpecifiedRate:
             "Buffering" + (player.reasonForWaitingToPlay.map { " (\(Self.describe($0)))" } ?? "")
         @unknown default: "Unknown"
         }
-        let live = behindLive.formatted(.number.precision(.fractionLength(1)))
-        let at = Duration.seconds(position).formatted(.time(pattern: .hourMinuteSecond))
-        let work = conversionReasons.map { "transcoding: \(Self.readable($0))" } ?? "no transcoding"
-        let buffered = (preloaded as? Item).map { item in
-            item.avItem.loadedTimeRanges.map(\.timeRangeValue.duration.seconds).filter(\.isFinite).reduce(0, +)
-        }
-        let next = buffered.map { " · next programme: \(Int($0)) s buffered" } ?? ""
-        return "\(state) · \(live) s behind live · at \(at) · \(work)\(next)"
     }
 
     private static func describe(_ reason: AVPlayer.WaitingReason) -> String {
@@ -101,16 +92,6 @@ import GregularScreens
         case .noItemToPlay: "nothing loaded"
         default: "waiting"
         }
-    }
-
-    /// "ContainerNotSupported,SubtitleCodecNotSupported" → "container not supported, subtitle codec not supported".
-    private static func readable(_ reasons: String) -> String {
-        reasons.split(separator: ",").map { reason in
-            reason.reduce(into: "") { text, character in
-                if character.isUppercase, !text.isEmpty { text.append(" ") }
-                text.append(character.lowercased())
-            }
-        }.joined(separator: ", ")
     }
 
     // MARK: - Items
@@ -143,6 +124,10 @@ import GregularScreens
             return avItem.loadedTimeRanges.map(\.timeRangeValue)
                 .first { $0.containsTime(now) }
                 .map { ($0.end - now).seconds } ?? 0
+        }
+
+        var bufferedInAll: TimeInterval {
+            avItem.loadedTimeRanges.map(\.timeRangeValue.duration.seconds).filter(\.isFinite).reduce(0, +)
         }
     }
 }

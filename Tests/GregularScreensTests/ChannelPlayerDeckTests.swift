@@ -19,6 +19,22 @@ struct ChannelPlayerDeckTests {
         #expect(deck.queue.isEmpty && deck.state == .paused)
     }
 
+    /// With "Show playback diagnostics" on, the player writes the line
+    /// itself, from what the deck says it's doing.
+    @Test func theDiagnosticsLineSaysWhatTheDeckIsDoing() async throws {
+        let player = try Fixture.surfer(elapsed: 600).player
+        player.diagnosticsEnabled = true
+        player.start()
+        try await Fixture.settle(player)
+        try await waitUntil(2) { player.diagnostics != nil }
+        let line = try #require(player.diagnostics)
+        #expect(line.hasPrefix("Playing · ") && line.contains("s behind live · at 0:10:0") && line.hasSuffix("no transcoding"),
+                "\(line)")
+        player.diagnosticsEnabled = false
+        #expect(player.diagnostics == nil)
+        player.stop()
+    }
+
     @Test func resumingSeeksToLiveWithoutLoadingAgain() async throws {
         let surfer = try Fixture.surfer(elapsed: 600)
         let player = surfer.player

@@ -41,7 +41,7 @@ struct EditingPageView: View {
             }
 
             SettingsRows.section(nil, footer: [
-                "The page edits your channels and set times, the same ones as in Settings. It only works while this screen is open, and only from your home network. It never sees your Jellyfin address, password or token. Turn \u{201C}Edit from a phone or computer\u{201D} off in Settings to hide this screen.",
+                "The page edits your channels and set times, the same ones as in Settings. It only works while this screen is open, and only from your home network. It never sees your \(AppModel.serverName) address, password or token. Turn \u{201C}Edit from a phone or computer\u{201D} off in Settings to hide this screen.",
             ]) {
                 SettingsRows.row("Done") { dismiss() }
             }

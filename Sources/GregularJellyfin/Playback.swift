@@ -41,13 +41,21 @@ public struct PlaybackSource: Sendable, Equatable {
         return transcodeReasons.contains { $0 != "ContainerNotSupported" && !$0.hasPrefix("Audio") }
     }
 
+    /// "SubtitleCodecNotSupported" → "subtitle codec not supported".
+    static func plainWords(_ reason: String) -> String {
+        reason.reduce(into: "") { text, character in
+            if character.isUppercase, !text.isEmpty { text.append(" ") }
+            text.append(character.lowercased())
+        }
+    }
+
     /// The same stream, as the schedule's player sees it. Only an HLS
     /// session has a transcode for `StreamSource.release(_:)` to stop.
     public var mediaStream: MediaStream {
         MediaStream(url: url,
                     delivery: method == .directPlay ? .original : .converted,
                     reencodes: reencodesVideo,
-                    conversionReasons: transcodeReasons,
+                    conversionReasons: transcodeReasons.map(Self.plainWords),
                     sessionID: method == .hls ? playSessionID : nil)
     }
 }

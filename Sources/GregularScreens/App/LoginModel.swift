@@ -14,6 +14,13 @@ public final class LoginModel {
         case signIn(server: JellyfinServer, serverName: String)
     }
 
+    /// The sign-in screen's words that depend on the server: what to type,
+    /// with an example at the server's usual port, and where Quick Connect is.
+    public static let addressPrompt = "Enter your \(AppModel.serverName) server address"
+    public static let addressExample = "e.g. 192.168.1.10:8096"
+    public static let quickConnectHint =
+        "In another \(AppModel.serverName) app, open your profile \u{25B8} Quick Connect and enter this code."
+
     public var address = ""
     public var username = ""
     public var password = ""
@@ -56,7 +63,7 @@ public final class LoginModel {
             }
         }
         step = .enterAddress
-        errorMessage = "Couldn't reach a Jellyfin server at \(address). \(FriendlyError.message(for: lastError))"
+        errorMessage = "Couldn't reach a \(AppModel.serverName) server at \(address). \(FriendlyError.message(for: lastError))"
     }
 
     public func signInWithPassword() async {

@@ -16,7 +16,7 @@ struct ShuffledShows: ScheduleStrategy {
 
     func programmes(from content: ChannelContent, startingAt position: Int, rng: SeededRandom) -> AnyIterator<MediaItem> {
         let order = ShowOrder(shows: content.series, seed: content.seed)
-        return programmes(startingAt: position, order.programme(at:))
+        return AnyIterator(startingAt: position, order.programme(at:))
     }
 }
 

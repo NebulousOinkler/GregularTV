@@ -16,6 +16,10 @@ import Observation
 /// they're fetched again (PLAN.md §3).
 @MainActor @Observable
 public final class AppModel {
+    /// What the screens call the kind of server, in text: the one place they
+    /// name it, so the rest of the screens don't depend on which it is.
+    nonisolated public static let serverName = "Jellyfin"
+
     public enum Phase {
         case launching
         /// The sign-in screen: the first server, or another from the main page.
@@ -445,7 +449,7 @@ public final class AppModel {
         case (0, _):
             "The \u{201C}\(name)\u{201D} library has no videos in it yet."
         case (let all, 0):
-            "The \u{201C}\(name)\u{201D} library has \(all) videos, but Jellyfin doesn't know their lengths yet. Scan the library in Jellyfin."
+            "The \u{201C}\(name)\u{201D} library has \(all) videos, but \(Self.serverName) doesn't know their lengths yet. Scan the library in \(Self.serverName)."
         case (let all, let usable) where usable < all:
             "\(usable) commercials from \u{201C}\(name)\u{201D}. \(all - usable) more are waiting for a library scan."
         case (_, let usable):
