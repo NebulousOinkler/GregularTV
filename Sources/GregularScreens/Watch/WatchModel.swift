@@ -16,9 +16,12 @@ import Observation
 ///
 /// **Breaks:** the banner comes and goes as for a programme. While a
 /// commercial plays, a small badge in the corner says it's a break and when
-/// the programme's back. The last commercial fades out into the "Up next"
-/// card, which fills the last 15 seconds of every break; then the screen
-/// fades to black and the programme fades in.
+/// the programme's back. The last commercial fades out into the *station
+/// card* ("You're watching" the channel, with what's up next, music and a
+/// little animation), which fills the last 15 seconds of a break with
+/// commercials; then the screen fades to black and the programme fades in.
+/// Other gaps (commercials off, a break past its 20 minutes of commercials,
+/// one too short for any) show the plain "Up next" card.
 @MainActor @Observable
 public final class WatchModel {
     /// An overlay over live TV.
@@ -47,6 +50,9 @@ public final class WatchModel {
 
     /// Goes up each time the viewer asks for the banner, to restart its timer.
     private var bannerRequests = 0
+    /// The last seconds of a commercial break: the station card is up (see
+    /// `runStationCard()`), in place of the plain Up next card.
+    public private(set) var stationCardShowing = false
     /// Settings was opened from the guide, so closing it goes back there.
     private var settingsReturnsToGuide = false
     /// When the guide or list last opened or closed, for ignoring too-quick clicks.
@@ -187,9 +193,10 @@ public final class WatchModel {
     // MARK: - The banner
 
     /// The banner is on screen: asked for, surfing, or saying something
-    /// (paused, buffering, tuning, between programmes).
+    /// (paused, buffering, tuning, between programmes). Not over the station
+    /// card unless asked for: the card says what's next itself.
     public var bannerIsShowing: Bool {
-        bannerVisible || surfer.preview != nil || player.status != .playing || player.isBuffering
+        bannerVisible || surfer.preview != nil || (player.status != .playing && !stationCardShowing) || player.isBuffering
     }
 
     /// When this changes, restart `runBannerTimer()`: a new programme (not
@@ -378,6 +385,46 @@ public final class WatchModel {
         return parts.isEmpty ? nil : parts.joined(separator: " ")
     }
 
+    // MARK: - The station card
+
+    /// How long the station card is up: the blank end of every break, before
+    /// the programme (`ChannelSchedule.upNextLead`). The music lasts as long.
+    public static let stationCardTime = TimeInterval(ChannelSchedule.upNextLead) / 1000
+
+    /// The station card's words, while it's up.
+    public var stationCard: StationCardContent? {
+        guard stationCardShowing, case .upNext(let heading, let title, let when)? = statusCard,
+              case .betweenProgrammes(let until) = player.status else { return nil }
+        let channel = player.schedule.channel
+        return StationCardContent(intro: "You're watching", channel: "\(channel.number) · \(channel.name)",
+                                  heading: heading, title: title, when: when, endsAt: until)
+    }
+
+    /// Puts the station card up for the last `stationCardTime` of a break
+    /// that had commercials, and takes it down otherwise. Run it whenever
+    /// `curtainTrigger` changes, cancelling the previous run, as for `runCurtain()`.
+    public func runStationCard() async {
+        guard case .betweenProgrammes(let until) = player.status, endsACommercialBreak(until) else {
+            stationCardShowing = false
+            return
+        }
+        let showAt = until.addingTimeInterval(-Self.stationCardTime)
+        if showAt > .now {
+            stationCardShowing = false
+            try? await Task.sleep(for: .seconds(showAt.timeIntervalSinceNow))
+        }
+        guard !Task.isCancelled, player.status == .betweenProgrammes(until: until) else { return }
+        stationCardShowing = true
+    }
+
+    /// A programme (or a film's next part) starts at `until`, after a break
+    /// that had commercials. With commercials off, or none in the library,
+    /// breaks have none, so they keep the plain card.
+    private func endsACommercialBreak(_ until: Date) -> Bool {
+        !player.schedule.tune(at: until).airing.isFiller
+            && player.schedule.commercialBreak(at: until.addingTimeInterval(-0.001)) != nil
+    }
+
     // MARK: - The curtain
 
     /// When this changes, restart `runCurtain()`.
@@ -494,6 +541,21 @@ public struct BannerContent: Sendable {
     public let hint: String
     /// With "Show playback diagnostics" on: the stream, and what the player's doing.
     public let diagnostics: [String]
+}
+
+/// The words on the station card, the last seconds of a commercial break.
+public struct StationCardContent: Sendable, Equatable {
+    /// "You're watching", above the channel's name.
+    public let intro: String
+    /// "3 · Drama".
+    public let channel: String
+    /// "Up next", or "Now playing" in a film's mid-roll.
+    public let heading: String
+    public let title: String?
+    /// "Starts at 9:30 PM", or "Back at 9:30 PM".
+    public let when: String
+    /// When the programme starts, and the card (and its music) ends.
+    public let endsAt: Date
 }
 
 /// The full-screen card over a gap or a failure.

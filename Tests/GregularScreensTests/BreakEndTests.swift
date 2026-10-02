@@ -7,11 +7,13 @@ import Testing
 /// next card shows (the curtain opens for it), and the programme follows.
 @MainActor @Suite(.serialized)
 struct BreakEndTests {
-    /// A 22-minute episode padded to 30 minutes, with 30-second clips.
-    private func channel(epoch: Date) throws -> ChannelSchedule {
+    /// A 22-minute episode padded to 30 minutes, with 30-second clips (or,
+    /// with commercials off, blank breaks).
+    private func channel(epoch: Date, playsCommercials: Bool = true) throws -> ChannelSchedule {
         let items = (1...3).map { MediaItem(id: "e\($0)", kind: .episode, name: "E\($0)", duration: 22 * 60, seriesName: "Show") }
         let ads = (0..<6).map { MediaItem(id: "ad\($0)", kind: .video, name: "Ad", duration: 30) }
-        return try #require(try ChannelSchedule.testing(epoch: epoch, padTo: 30, items: items, ads: ads).first)
+        return try #require(try ChannelSchedule.testing(epoch: epoch, padTo: 30, items: items, ads: ads,
+                                                        playsCommercials: playsCommercials).first)
     }
 
     /// Watching that channel, tuned in `seconds` before the first break's last
@@ -107,5 +109,46 @@ struct BreakEndTests {
         stale.cancel()
         card.cancel()
         player.stop()
+    }
+
+    /// The last 15 seconds of a break with commercials: the station card,
+    /// with the plain card's words, until the programme starts.
+    @Test func aBreakWithCommercialsEndsWithTheStationCard() async throws {
+        let model = try await watching(secondsBeforeTheLastClipEnds: 2)
+        let player = model.player
+        try await waitUntil(4) { player.status.isBetweenProgrammes }
+        guard case .betweenProgrammes(let until) = player.status, case .upNext(let heading, let title, let when)? = model.statusCard else {
+            Issue.record("Expected the Up next gap after the last clip, not \(player.status)")
+            return player.stop()
+        }
+        model.perform(.hideInfo)
+        #expect(model.bannerIsShowing, "Over the plain card, the banner says what's next")
+        let card = Task { await model.runStationCard() }
+        try await waitUntil(1) { model.stationCardShowing }
+        #expect(model.stationCard == StationCardContent(intro: "You're watching", channel: "1 · C1", heading: heading,
+                                                        title: title, when: when, endsAt: until))
+        #expect(!model.bannerIsShowing, "The station card says it itself: no banner unless asked for")
+        let trigger = model.bannerTrigger
+        model.perform(.showInfo)
+        #expect(model.bannerTrigger != trigger, "A touch still brings the banner up over it")
+        card.cancel()
+        player.stop()
+    }
+
+    /// With commercials off, a break is blank with the plain Up next card,
+    /// to the end: no station card, no music.
+    @Test func withCommercialsOffTheBreakKeepsThePlainCard() async throws {
+        // Ten seconds before the first episode's slot ends, in its blank break.
+        let schedule = try channel(epoch: Date.now.addingTimeInterval(-(30 * 60 - 10)), playsCommercials: false)
+        let surfer = ChannelSurfer(channels: [schedule], startingWith: schedule, streams: FakeStreams(),
+                                   preferences: AppPreferences.testing(), decks: FakeDeck.pair())
+        let model = WatchModel(surfer: surfer)
+        model.player.start()
+        try await waitUntil(2) { model.player.status.isBetweenProgrammes }
+        let card = Task { await model.runStationCard() }
+        try await Task.sleep(for: .milliseconds(200))
+        #expect(model.statusCard != nil && model.stationCard == nil && !model.stationCardShowing)
+        card.cancel()
+        model.player.stop()
     }
 }
