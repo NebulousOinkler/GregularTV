@@ -8,7 +8,7 @@ import Foundation
 public struct Confirmation: Sendable, Equatable {
     /// The action, as its button says it: "Sign Out".
     public let action: String
-    /// "Sign out of Jellyfin?"
+    /// "Sign out of Home Media?"
     public let question: String
     /// What happens, and how to undo it if that's possible at all.
     public let detail: String

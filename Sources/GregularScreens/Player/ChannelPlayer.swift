@@ -230,8 +230,8 @@ public final class ChannelPlayer {
         let cap: Int
         /// The server re-encodes it, so tuning in mid-programme gets a head start.
         let reencodes: Bool
-        /// The server's reasons for converting it, if it is (for diagnostics).
-        let transcodeReasons: String?
+        /// Why the server converts it, if it does (for diagnostics).
+        let conversionReasons: String?
     }
 
     /// - Parameter decks: two decks (see `PlayerDeck`). They start empty.
@@ -532,9 +532,7 @@ public final class ChannelPlayer {
         }
         let behindLive = secondsBehindLive(in: current.airing, at: now)
         if diagnosticsEnabled {
-            diagnostics = player.diagnostics(behindLive: behindLive,
-                                             conversionReasons: current.transcodeReasons,
-                                             preloaded: (nextIsOnStandby ? next : afterBreak)?.item)
+            diagnostics = diagnosticsLine(for: current, behindLive: behindLive)
         }
 
         // A long buffering stall left us well behind live, so jump back. The
@@ -698,7 +696,7 @@ public final class ChannelPlayer {
         let label = airing.isFiller ? "Commercial"
             : fixedProgramme.map({ $0.airing.isSameProgramme(as: airing) }) == true ? "This programme only"
             : quality == .auto ? "Auto" : quality.label
-        let reasons = source.conversionReasons.isEmpty ? nil : source.conversionReasons.joined(separator: ",")
+        let reasons = source.conversionReasons.isEmpty ? nil : source.conversionReasons.joined(separator: ", ")
         // Stop at the scheduled length, so programmes and commercials keep to
         // the schedule even when a file runs a little longer than the server says,
         // and a commercial still playing is cut off when the next programme starts.
@@ -712,7 +710,7 @@ public final class ChannelPlayer {
                             description: "\(label) · up to \(Self.mbps(cap)) · \(method)",
                             cap: cap,
                             reencodes: source.reencodes,
-                            transcodeReasons: reasons)
+                            conversionReasons: reasons)
     }
 
     /// Programmes use the viewer's quality setting, or the programme fix's cap.
@@ -787,6 +785,19 @@ public final class ChannelPlayer {
     private func cancelMeasurement() {
         measurementTask?.cancel()
         measurementTask = nil
+    }
+
+    /// One line for "Show playback diagnostics": what the deck is doing, how
+    /// far behind live, where it is, whether the server converts it and why,
+    /// and how much of the programme loading for after a break is buffered.
+    /// Only playback state: no server address, token, user or file details.
+    private func diagnosticsLine(for current: LoadedAiring, behindLive: TimeInterval) -> String {
+        let live = behindLive.formatted(.number.precision(.fractionLength(1)))
+        let at = Duration.seconds(player.position).formatted(.time(pattern: .hourMinuteSecond))
+        let work = current.conversionReasons.map { "transcoding: \($0)" } ?? "no transcoding"
+        let preloaded = (nextIsOnStandby ? next : afterBreak)?.item
+        let buffered = preloaded.map { " · next programme: \(Int($0.bufferedInAll)) s buffered" } ?? ""
+        return "\(player.activity) · \(live) s behind live · at \(at) · \(work)\(buffered)"
     }
 
     private static func mbps(_ bitsPerSecond: Int) -> String {

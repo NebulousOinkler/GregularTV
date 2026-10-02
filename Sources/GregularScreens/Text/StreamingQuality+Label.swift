@@ -1,7 +1,7 @@
 import GregularCore
 
 extension StreamingQuality {
-    /// How Settings names each option. The resolutions are what Jellyfin
+    /// How Settings names each option. The resolutions are what the server
     /// typically picks for a video at that bitrate, so they're approximate.
     /// (Kept out of Core: a radio app would name them its own way.)
     public var label: String {

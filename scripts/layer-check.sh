@@ -36,7 +36,8 @@ Sources/GregularScreens/App/AppModel.swift
 Sources/GregularScreens/App/LoginModel.swift
 Sources/GregularScreens/App/DemoCredentials.swift
 '
-#   AppModel.swift:         signs in and hands the client on as Core's interfaces.
+#   AppModel.swift:         signs in and hands the client on as Core's interfaces,
+#                           and names the server for text on screen (serverName).
 #   LoginModel.swift:       the Jellyfin sign-in steps (Quick Connect, password).
 #   DemoCredentials.swift:  a pretend sign-in for screenshots (Debug only).
 
@@ -58,10 +59,18 @@ violations=$(
     # Nor does the Xcode project link it into the app: it comes in only
     # through GregularScreens and GregularKeychain.
     grep -n 'GregularJellyfin' App/GregularTV.xcodeproj/project.pbxproj | sed 's|^|App/GregularTV.xcodeproj/project.pbxproj:|' || true
+    # Nor does text on screen name the server outside those files: it says
+    # `AppModel.serverName`. (Comments may.)
+    grep -rn '"[^"]*Jellyfin' Sources/GregularScreens App/GregularTV --include='*.swift' \
+        | grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' \
+        | while IFS= read -r line; do
+            file=${line%%:*}
+            echo "$SCREENS_JELLYFIN" | grep -qxF "$file" || echo "$line"
+          done
 )
 
 if [ -n "$violations" ]; then
-    echo "error: Layer check failed. These imports cross between the parts of the code (see Package.swift):" >&2
+    echo "error: Layer check failed. These imports (or names) cross between the parts of the code (see Package.swift):" >&2
     echo "$violations" | sed 's/^/error: /' >&2
     exit 1
 fi

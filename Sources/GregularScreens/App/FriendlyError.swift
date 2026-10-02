@@ -13,7 +13,7 @@ public enum FriendlyError {
         if let failure = error as? any MediaServiceFailure { return failure.localizedDescription }
         if let stall = error as? StallError { return stall.localizedDescription }
         if let url = error as? URLError { return message(for: url) }
-        if error is DecodingError { return "Your server sent a reply the app didn't understand. Is it a Jellyfin server?" }
+        if error is DecodingError { return "Your server sent a reply the app didn't understand. Is it a \(AppModel.serverName) server?" }
         // (A player's own errors, such as a format it can't show, come as
         // LocalizedErrors written for people: see each `PlayerDeck`.)
         return (error as? LocalizedError)?.errorDescription ?? "Something went wrong."
@@ -24,16 +24,16 @@ public enum FriendlyError {
         case .notConnectedToInternet, .networkConnectionLost:
             "This device isn't connected to the network."
         case .timedOut:
-            "Your Jellyfin server took too long to respond."
+            "Your \(AppModel.serverName) server took too long to respond."
         case .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed:
-            "Can't reach your Jellyfin server. Check that it's switched on and connected."
+            "Can't reach your \(AppModel.serverName) server. Check that it's switched on and connected."
         case .secureConnectionFailed, .serverCertificateUntrusted, .serverCertificateHasBadDate,
              .serverCertificateNotYetValid, .serverCertificateHasUnknownRoot, .clientCertificateRejected:
-            "Couldn't make a secure connection to your Jellyfin server."
+            "Couldn't make a secure connection to your \(AppModel.serverName) server."
         case .appTransportSecurityRequiresSecureConnection:
             "This server needs a secure (https) address."
         default:
-            "Couldn't talk to your Jellyfin server."
+            "Couldn't talk to your \(AppModel.serverName) server."
         }
     }
 }

@@ -62,7 +62,7 @@ extension [Credentials] {
     }
 }
 
-/// For tests and SwiftUI previews. Nothing is written anywhere.
+/// Sign-ins held in memory only, for tests: nothing is written anywhere.
 public final class InMemoryCredentialStore: CredentialStore, @unchecked Sendable {
     private let lock = NSLock()
     private var credentials: [Credentials]

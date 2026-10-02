@@ -41,7 +41,7 @@ struct SettingsView: View {
 
             if let programme = player.fixableProgramme?.item.displayTitle {
                 SettingsRows.section("Trouble with \u{201C}\(programme)\u{201D}?", footer: [
-                    "For this programme only: the next programme, or changing channel, goes back to standard. These help when Jellyfin has to convert the programme and can't keep up, since a lower quality is quicker to convert. A programme that plays as-is will be converted at the lower quality.",
+                    "For this programme only: the next programme, or changing channel, goes back to standard. These help when \(AppModel.serverName) has to convert the programme and can't keep up, since a lower quality is quicker to convert. A programme that plays as-is will be converted at the lower quality.",
                 ]) {
                     fixRow(.stepDown, "Step Down Quality",
                            detail: "Restarts it one step lower, and steps down again whenever it pauses to buffer.")
@@ -52,7 +52,7 @@ struct SettingsView: View {
 
             SettingsRows.section("Schedule code", footer: [
                 codeError,
-                "The code sets the running order on every channel. Anyone using the same code, with the same Jellyfin library and channels, sees the same programmes at the same time. Changing it reshuffles every channel.",
+                "The code sets the running order on every channel. Anyone using the same code, with the same \(AppModel.serverName) library and channels, sees the same programmes at the same time. Changing it reshuffles every channel.",
             ]) {
                 SettingsRows.info("Current code", app.scheduleCode.description)
                 TextField("Enter a code, like 7KQM2-X9PDA", text: $codeText)

@@ -43,8 +43,8 @@ public struct MediaStream: Sendable, Equatable {
     /// The server has to re-encode it (not just repackage it). That's the
     /// expensive kind of conversion: a slow server may not keep up.
     public let reencodes: Bool
-    /// Why the server is converting it, in its own words (for diagnostics).
-    /// Empty for the original file.
+    /// Why the server is converting it, in plain words such as "container
+    /// not supported" (for diagnostics). Empty for the original file.
     public let conversionReasons: [String]
     /// The server's handle on the work it's doing for this stream, for
     /// `StreamSource.release(_:)`. Nil when there's nothing to stop.
