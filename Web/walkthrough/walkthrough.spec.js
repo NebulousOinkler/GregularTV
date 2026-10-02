@@ -53,6 +53,25 @@ async function expectPlaying(page, streams = []) {
   }).toBe(true);
 }
 
+/** The main page is on top, not under live TV's dimming or anything else
+ *  of live TV's: what's at the middle of its heading is the heading. Live TV
+ *  ignores the pointer while covered, so hit-testing would pass through it;
+ *  for the test, it's made to catch the pointer again. */
+async function expectMainPageOnTop(page) {
+  const heading = page.getByRole("heading", { name: "Your servers" });
+  await expect(heading).toBeVisible();
+  const covering = await page.evaluate(() => {
+    for (const element of document.querySelectorAll(".live, .live *")) {
+      element.inert = false;
+      element.style.pointerEvents = "auto";
+    }
+    const box = document.querySelector(".page-title").getBoundingClientRect();
+    const top = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+    return top?.closest(".page-layer") ? null : (top?.className || top?.tagName || "nothing");
+  });
+  expect(covering).toBeNull();
+}
+
 test("signs in and plays live TV", async ({ page }) => {
   test.setTimeout(90_000);
   const problems = watchForProblems(page);
@@ -112,7 +131,15 @@ test("the keyboard works the remote's tables", async ({ page }) => {
   await page.keyboard.press("Escape");          // up to Live TV
   await expect(page.getByRole("button", { name: "Live TV" })).toBeFocused();
   await page.keyboard.press("Escape");          // up to the main page
-  await expect(page.getByRole("heading", { name: "Your servers" })).toBeVisible();
+  await expectMainPageOnTop(page);
+});
+
+test("the back arrow goes up to the main page, over live TV", async ({ page }) => {
+  await signIn(page);
+  await page.mouse.move(200, 200);              // the controls show
+  await page.getByRole("button", { name: "All servers" }).click();
+  await expectMainPageOnTop(page);
+  await expect(page.getByText("Now playing")).toBeVisible();
 });
 
 test("on a phone, every channel is under the picture", async ({ browser }) => {
@@ -123,6 +150,38 @@ test("on a phone, every channel is under the picture", async ({ browser }) => {
   await expect(lineup).toBeVisible();
   await lineup.getByRole("button", { name: /^Channel 10,/ }).click();
   await expect(page.locator(".now .channel-number")).toHaveText("10");
+  await context.close();
+});
+
+test("a long channel list keeps every row whole", async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true });
+  const page = await context.newPage();
+  await signIn(page);
+  await page.getByRole("button", { name: "Channel list" }).click();
+  await expect(page.getByRole("dialog", { name: "Channels" })).toBeVisible();
+  // The demo server has two channels; a real one has many more. Copies of
+  // the rows make the lists longer than the screen.
+  const squeezed = await page.evaluate(() => {
+    for (const list of document.querySelectorAll(".lineup, .channel-list .sheet-body")) {
+      const rows = [...list.querySelectorAll(".channel-row")];
+      for (let copy = 0; copy < 8; copy++) for (const row of rows) list.append(row.cloneNode(true));
+    }
+    return [...document.querySelectorAll(".channel-row")]
+      .filter((row) => row.scrollHeight > row.clientHeight + 1).length;
+  });
+  expect(squeezed).toBe(0);
+  await context.close();
+});
+
+test("times are in the viewer's time zone", async ({ browser }) => {
+  // Far from GMT and from wherever the tests run.
+  const context = await browser.newContext({ timezoneId: "Asia/Kolkata" });
+  const page = await context.newPage();
+  await signIn(page);
+  const clock = page.locator(".now .clock");
+  const local = () => page.evaluate(() =>
+    new Intl.DateTimeFormat("en-US", { hour: "numeric", minute: "2-digit" }).format(new Date()).match(/\d+:\d\d/)[0]);
+  await expect.poll(async () => (await clock.textContent()).match(/\d+:\d\d/)?.[0] === (await local())).toBe(true);
   await context.close();
 });
 

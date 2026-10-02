@@ -164,7 +164,11 @@ button:disabled { opacity: 0.45; cursor: default; transform: none; }
 /* App shell: an app bar and a scrolling page */
 
 #app { position: fixed; inset: 0; }
+/* Live TV and the page over it each stack their own layers, so nothing in
+   live TV (its dimming, its panels) can rise above the page. */
 .live, .page-layer { position: absolute; inset: 0; }
+.live { z-index: 0; }
+.page-layer { z-index: 1; }
 .page-layer:empty { display: none; }
 .page {
   position: absolute; inset: 0; overflow-y: auto; display: flex; flex-direction: column;
@@ -172,7 +176,7 @@ button:disabled { opacity: 0.45; cursor: default; transform: none; }
   padding-bottom: env(safe-area-inset-bottom);
 }
 .live:not(:empty) + .page-layer .page { background: var(--scrim); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); }
-.app-bar { position: sticky; top: 0; z-index: 2; display: flex; align-items: center; justify-content: space-between;
+.app-bar { position: sticky; top: 0; z-index: 2; flex: none; display: flex; align-items: center; justify-content: space-between;
   gap: var(--space-3); min-height: 3.5rem; padding: max(var(--space-3), env(safe-area-inset-top)) var(--gutter) var(--space-3); }
 .content > div:empty { display: none; }
 .content { width: 100%; max-width: 40rem; margin: 0 auto; padding: var(--space-5) var(--gutter) var(--space-7);
@@ -313,11 +317,13 @@ form .button.primary { width: 100%; }
 .diagnostics { font: var(--text-xs)/1.4 var(--font-mono); color: #ffb26b; word-break: break-word; }
 .diagnostics:empty { display: none; }
 
-/* Every channel's now and next: on a phone, under what's on. */
+/* Every channel's now and next: on a phone, under what's on. The rows (and
+   the bars above lists) are `flex: none`: in a scrolling column a long list
+   would otherwise squeeze each one to its min-height, over its text. */
 .lineup { flex: 1; min-height: 0; overflow-y: auto; padding: var(--space-4) var(--gutter) calc(var(--space-6) + env(safe-area-inset-bottom));
   display: flex; flex-direction: column; gap: var(--space-2); }
 .lineup .section-title { padding: 0 var(--space-1) var(--space-1); }
-.channel-row { display: flex; gap: var(--space-4); align-items: center; width: 100%; min-height: 4rem; padding: var(--space-3) var(--space-4);
+.channel-row { flex: none; display: flex; gap: var(--space-4); align-items: center; width: 100%; min-height: 4rem; padding: var(--space-3) var(--space-4);
   border: 1px solid transparent; border-radius: var(--radius); background: var(--surface); text-align: left; color: var(--text);
   transition: background var(--quick), border-color var(--quick); }
 .channel-row:hover { background: var(--surface-2); }
@@ -340,7 +346,7 @@ form .button.primary { width: 100%; }
 .sheet { position: absolute; inset: 0; display: flex; flex-direction: column; background: var(--surface);
   padding-top: env(safe-area-inset-top); animation: sheet-in var(--slow) var(--ease); }
 @keyframes sheet-in { from { transform: translateY(4%); opacity: 0; } }
-.sheet-bar { display: flex; align-items: center; gap: var(--space-3); min-height: 3.5rem; padding: var(--space-2) var(--space-2) var(--space-2) var(--gutter);
+.sheet-bar { flex: none; display: flex; align-items: center; gap: var(--space-3); min-height: 3.5rem; padding: var(--space-2) var(--space-2) var(--space-2) var(--gutter);
   border-bottom: 1px solid var(--border); }
 .sheet-bar h2 { flex: 1; font-size: var(--text-lg); font-weight: 700; }
 .sheet-body { flex: 1; min-height: 0; overflow-y: auto; padding: var(--space-4) var(--gutter) calc(var(--space-6) + env(safe-area-inset-bottom)); }
