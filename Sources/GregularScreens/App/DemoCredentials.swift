@@ -15,12 +15,12 @@ public struct DemoCredentials: CredentialStore {
         let arguments = ProcessInfo.processInfo.arguments
         guard let index = arguments.firstIndex(of: "-demoServer"), index + 1 < arguments.count,
               let url = URL(string: arguments[index + 1]) else { return nil }
-        return DemoCredentials(credentials: Credentials(serverURL: url, userID: "demo", accessToken: "demo"))
+        return DemoCredentials(credentials: Credentials(serverURL: url, userID: "demo", accessToken: "demo", deviceID: "demo"))
     }
 
     public func allCredentials() -> [Credentials] { [credentials] }
     public func saveCredentials(_ credentials: Credentials) throws {}
     public func deleteCredentials(_ credentials: Credentials) throws {}
-    public func deviceID() -> String { "demo" }
+    public func deleteAll() throws {}
 }
 #endif

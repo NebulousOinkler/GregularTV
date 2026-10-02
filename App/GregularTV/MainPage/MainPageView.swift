@@ -21,6 +21,10 @@ struct MainPageView: View {
         VStack(spacing: 64) {
             Spacer(minLength: 0)
             Masthead()
+            if let notice = app.notice {
+                Text(notice).foregroundStyle(.yellow).multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true).frame(maxWidth: 1300)
+            }
             serverCards
             Spacer(minLength: 0)
             Text(RemoteControls.mainPageHint).font(.caption).foregroundStyle(.tertiary)

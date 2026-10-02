@@ -1,18 +1,38 @@
 import Foundation
 import GregularCore
 
-/// What we keep so we can reconnect after a relaunch. This, the device ID and
-/// the last channel number are **all** the app persists (PLAN.md §3).
+/// What we keep so we can reconnect after a relaunch, one per sign-in.
+/// Never the password (PLAN.md §3).
 public struct Credentials: Codable, Sendable, Equatable {
     public let serverURL: URL
     /// Needed for Jellyfin's per-user item and playback queries.
     public let userID: String
     public let accessToken: String
+    /// The random device ID this sign-in was made with, which its token goes
+    /// with. Each sign-in has its own (`ClientIdentity.forSignIn`), so two
+    /// servers can't tell they're talking to the same device. Empty for one
+    /// saved before they had their own: its store fills it in.
+    public let deviceID: String
 
-    public init(serverURL: URL, userID: String, accessToken: String) {
+    public init(serverURL: URL, userID: String, accessToken: String, deviceID: String) {
         self.serverURL = serverURL
         self.userID = userID
         self.accessToken = accessToken
+        self.deviceID = deviceID
+    }
+
+    /// One saved before sign-ins had their own device IDs reads with none.
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        serverURL = try container.decode(URL.self, forKey: .serverURL)
+        userID = try container.decode(String.self, forKey: .userID)
+        accessToken = try container.decode(String.self, forKey: .accessToken)
+        deviceID = try container.decodeIfPresent(String.self, forKey: .deviceID) ?? ""
+    }
+
+    /// The same sign-in with `deviceID` in place of none.
+    public func withDeviceID(_ deviceID: String) -> Credentials {
+        Credentials(serverURL: serverURL, userID: userID, accessToken: accessToken, deviceID: deviceID)
     }
 }
 
@@ -28,8 +48,10 @@ extension Credentials {
 /// - keep them on this device only: never in a backup or synced storage;
 /// - keep them where other apps can't read them (the platform's secure
 ///   storage, not plain files or preferences);
-/// - hold nothing but `Credentials` and the device ID (never the password);
-/// - keep the device ID when sign-ins are deleted.
+/// - hold nothing but `Credentials` (never the password);
+/// - forget everything with `deleteAll()`, which the app calls on its first
+///   launch after installing, since secure storage can outlive the app (the
+///   Keychain does).
 /// `CredentialStoreTests` shows the checks every store must pass.
 public protocol CredentialStore: Sendable {
     /// Every sign-in, the most recently used first.
@@ -39,10 +61,8 @@ public protocol CredentialStore: Sendable {
     func saveCredentials(_ credentials: Credentials) throws
     /// Forgets one sign-in; the others stay.
     func deleteCredentials(_ credentials: Credentials) throws
-    /// A random ID for this install, created on first use. Jellyfin requires
-    /// one. It isn't cleared on sign-out, so signing back in doesn't add
-    /// another entry to the server's device list.
-    func deviceID() -> String
+    /// Forgets every sign-in, and anything else the store keeps.
+    func deleteAll() throws
 }
 
 extension CredentialStore {
@@ -66,7 +86,6 @@ extension [Credentials] {
 public final class InMemoryCredentialStore: CredentialStore, @unchecked Sendable {
     private let lock = NSLock()
     private var credentials: [Credentials]
-    private let id = UUID().uuidString
 
     public init(credentials: Credentials? = nil) {
         self.credentials = credentials.map { [$0] } ?? []
@@ -75,5 +94,5 @@ public final class InMemoryCredentialStore: CredentialStore, @unchecked Sendable
     public func allCredentials() -> [Credentials] { lock.withLock { credentials } }
     public func saveCredentials(_ credentials: Credentials) throws { lock.withLock { self.credentials = self.credentials.using(credentials) } }
     public func deleteCredentials(_ credentials: Credentials) throws { lock.withLock { self.credentials = self.credentials.removing(credentials) } }
-    public func deviceID() -> String { id }
+    public func deleteAll() throws { lock.withLock { credentials = [] } }
 }

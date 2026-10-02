@@ -30,7 +30,7 @@ struct EditingPageView: View {
                 }
                 if let page = server.page {
                     SettingsRows.section("Then enter this code", footer: [
-                        page.isLocked ? "Locked after \(EditingPage.mostWrongCodes) wrong codes. Close this screen and open it again for a new code." : nil,
+                        page.isLocked ? "Locked after \(EditingPage.mostWrongCodesInAll) wrong codes. Close this screen and open it again for a new code." : nil,
                         page.lastSaved.map { "Saved from the page at \($0.formatted(date: .omitted, time: .shortened)). Your channels have been rebuilt." },
                     ]) {
                         Text(page.isLocked ? "Locked" : page.code.chunked)
@@ -41,7 +41,7 @@ struct EditingPageView: View {
             }
 
             SettingsRows.section(nil, footer: [
-                "The page edits your channels and set times, the same ones as in Settings. It only works while this screen is open, and only from your home network. It never sees your \(AppModel.serverName) address, password or token. Turn \u{201C}Edit from a phone or computer\u{201D} off in Settings to hide this screen.",
+                "The page edits your channels and set times, the same ones as in Settings. It only works while this screen is open, and only from your home network. It never sees your \(AppModel.serverName) address, password or token. The page isn't encrypted, so others on the network could see the code and your library's names: use it on a network you trust. Turn \u{201C}Edit from a phone or computer\u{201D} off in Settings to hide this screen.",
             ]) {
                 SettingsRows.row("Done") { dismiss() }
             }

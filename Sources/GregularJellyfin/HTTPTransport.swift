@@ -40,7 +40,8 @@ public enum TransportRules {
     }
 }
 
-/// The app's only real network path.
+/// The app's own network path: every request it makes. (Video is fetched by
+/// the platform's player, from stream URLs that point back at the server.)
 ///
 /// It uses an ephemeral session with no URL cache and no cookies, so no
 /// responses from the server (library listings, artwork, anything else) are

@@ -7,8 +7,8 @@ import Observation
 /// Serves the editing page (`EditingPage`) on the home network while its
 /// screen is open: started when the screen appears, stopped when it closes.
 /// It only accepts connections from private, link-local or loopback
-/// addresses (`EditingPage.isLocal`), reads one request per connection,
-/// capped in size and time, and closes. (Network's own `acceptLocalOnly`
+/// addresses (`EditingPage.isLocal`), at most `mostConnections` at once,
+/// reads one request per connection, capped in size and time, and closes. (Network's own `acceptLocalOnly`
 /// isn't used: in the tvOS simulator it refused every connection, even
 /// from the same Mac.)
 @MainActor @Observable
@@ -29,6 +29,15 @@ final class EditingServer {
     static let preferredPort: NWEndpoint.Port = 8080
     /// How long a connection may take to send its request.
     nonisolated static let requestTimeout: TimeInterval = 10
+    /// The most connections open at once. More are refused, so a device on
+    /// the network can't fill the app's memory with half-sent requests.
+    nonisolated static let mostConnections = 8
+
+    /// Connections open now. Only touched on `queue`.
+    private final class OpenConnections: @unchecked Sendable {
+        var count = 0
+    }
+    @ObservationIgnored private let open = OpenConnections()
 
     func start(app: AppModel) {
         guard listener == nil else { return }
@@ -55,16 +64,21 @@ final class EditingServer {
         listener.stateUpdateHandler = { [weak self] state in
             Task { @MainActor in self?.update(state, app: app, triedPort: port) }
         }
-        let queue = queue
+        let queue = queue, open = open
         listener.newConnectionHandler = { [weak self] connection in
-            guard case .hostPort(let host, _) = connection.endpoint, EditingPage.isLocal(Self.text(of: host)) else {
+            guard case .hostPort(let host, _) = connection.endpoint, case let address = Self.text(of: host),
+                  EditingPage.isLocal(address), open.count < Self.mostConnections else {
                 return connection.cancel()
+            }
+            open.count += 1
+            connection.stateUpdateHandler = { state in
+                if case .cancelled = state { open.count -= 1 }
             }
             connection.start(queue: queue)
             queue.asyncAfter(deadline: .now() + Self.requestTimeout) { connection.cancel() }
             Task { @MainActor in
                 guard let page = self?.page else { return Self.send(.text(503, "The editing page isn't open."), on: connection) }
-                Self.receive(on: connection, page: page, buffer: Data())
+                Self.receive(on: connection, from: address, page: page, buffer: Data())
             }
         }
         listener.start(queue: queue)
@@ -95,19 +109,19 @@ final class EditingServer {
     }
 
     /// Reads until a whole request is in, then answers it and closes.
-    private nonisolated static func receive(on connection: NWConnection, page: EditingPage, buffer: Data) {
+    private nonisolated static func receive(on connection: NWConnection, from address: String, page: EditingPage, buffer: Data) {
         connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { data, _, isComplete, error in
             var buffer = buffer
             if let data { buffer.append(data) }
             switch HTTPRequest.parse(buffer) {
             case .incomplete:
                 if isComplete || error != nil { return connection.cancel() }
-                receive(on: connection, page: page, buffer: buffer)
+                receive(on: connection, from: address, page: page, buffer: buffer)
             case .invalid(let status):
                 Self.send(.text(status, "Bad request."), on: connection)
             case .complete(let request):
                 Task { @MainActor in
-                    Self.send(await page.handle(request), on: connection)
+                    Self.send(await page.handle(request, from: address), on: connection)
                 }
             }
         }

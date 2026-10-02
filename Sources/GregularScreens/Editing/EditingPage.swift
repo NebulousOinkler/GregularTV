@@ -11,8 +11,11 @@ import Observation
 /// **What it guards against.** Anything on the home network can reach the
 /// port while it's open, so:
 /// - every request for data needs the one-time `code` shown on the TV,
-///   compared in constant time, and after `mostWrongCodes` wrong ones the
-///   page locks until it's closed and opened again;
+///   compared in constant time. A device that gets it wrong
+///   `mostWrongCodes` times is refused, and after `mostWrongCodesInAll`
+///   wrong ones from anywhere the page locks until it's closed and opened
+///   again: one device can't lock everyone out, and guessing stays hopeless
+///   (20 tries at a million codes);
 /// - the `Host` header must be an address this Apple TV is being reached
 ///   at, and any `Origin` must match it, so another web page can't use the
 ///   browser to reach it (DNS rebinding, cross-site requests);
@@ -21,18 +24,25 @@ import Observation
 ///   what the Apple TV's own editors show: the library's genre, series, tag
 ///   and film names, never the server's address, token or user.
 ///
-/// It draws nothing itself: `handle(_:)` answers requests, and the Apple TV
-/// screen shows `code` and whether it's locked.
+/// It's plain http, so on a network you don't trust, others there could see
+/// the code and the names. The Apple TV screen says so.
+///
+/// It draws nothing itself: `handle(_:from:)` answers requests, and the
+/// Apple TV screen shows `code` and whether it's locked.
 @MainActor @Observable
 public final class EditingPage {
     /// Six digits, new each time the page opens.
     public let code: String
+    /// Wrong codes one device may send before it's refused, and from all
+    /// devices before the page locks.
     public static let mostWrongCodes = 5
+    public static let mostWrongCodesInAll = 20
     public private(set) var isLocked = false
     /// When the page last saved, for the TV screen to say so.
     public private(set) var lastSaved: Date?
 
-    private var wrongCodes = 0
+    /// Wrong codes so far, by the address they came from.
+    private var wrongCodes: [String: Int] = [:]
     private let app: AppModel
     /// The `Host` values a request may carry: this Apple TV's addresses, with the port.
     private let hosts: Set<String>
@@ -43,8 +53,8 @@ public final class EditingPage {
         self.code = code ?? String(format: "%06d", Int.random(in: 0..<1_000_000))
     }
 
-    /// The answer to one request.
-    public func handle(_ request: HTTPRequest) async -> HTTPResponse {
+    /// The answer to one request, from the device at `address`.
+    public func handle(_ request: HTTPRequest, from address: String) async -> HTTPResponse {
         guard let host = request.headers["host"], hosts.contains(host.lowercased()) else {
             return .text(403, "Open the address shown on the Apple TV.")
         }
@@ -57,18 +67,22 @@ public final class EditingPage {
         case (_, "/"):
             return .text(405, "Use GET.")
         case (let method, let path) where path.hasPrefix("/api/"):
-            if let refused = checkCode(request) { return refused }
+            if let refused = checkCode(request, from: address) { return refused }
             return await answer(method, path, request.body)
         default:
             return .text(404, "Not found.")
         }
     }
 
-    private func checkCode(_ request: HTTPRequest) -> HTTPResponse? {
-        guard !isLocked else { return .json(Failure("Too many wrong codes. Close the editing screen on the Apple TV and open it again."), status: 423) }
+    private func checkCode(_ request: HTTPRequest, from address: String) -> HTTPResponse? {
+        let tooMany = "Close the editing screen on the Apple TV and open it again for a new code."
+        guard !isLocked else { return .json(Failure("Too many wrong codes. \(tooMany)"), status: 423) }
+        guard wrongCodes[address, default: 0] < Self.mostWrongCodes else {
+            return .json(Failure("Too many wrong codes from this device. \(tooMany)"), status: 423)
+        }
         guard Self.same(request.headers["x-gregular-code"] ?? "", code) else {
-            wrongCodes += 1
-            if wrongCodes >= Self.mostWrongCodes { isLocked = true }
+            wrongCodes[address, default: 0] += 1
+            if wrongCodes.values.reduce(0, +) >= Self.mostWrongCodesInAll { isLocked = true }
             return .json(Failure("That isn't the code on the Apple TV."), status: 401)
         }
         return nil

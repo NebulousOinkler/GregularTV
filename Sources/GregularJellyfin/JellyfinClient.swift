@@ -5,7 +5,9 @@ import GregularCore
 /// server after login goes through here.
 ///
 /// **Privacy:** this type has no playback reporting (`/Sessions/Playing…`)
-/// and never marks items as played. That's deliberate, and
+/// and never marks items as played. It registers no capabilities either, and
+/// never opens the live connection Jellyfin sends remote control over, so
+/// other Jellyfin apps can't control the TV. That's deliberate, and
 /// `PrivacyTests` checks it. See PLAN.md §3.
 public struct JellyfinClient: Sendable {
     public let credentials: Credentials
@@ -15,12 +17,6 @@ public struct JellyfinClient: Sendable {
         self.credentials = credentials
         api = JellyfinAPI(server: credentials.serverURL, identity: identity,
                           token: credentials.accessToken, transport: transport)
-    }
-
-    /// Tells Jellyfin this device plays video but can't be remote-controlled,
-    /// so other clients can't push commands to the TV.
-    public func registerCapabilities() async throws {
-        try await api.call("POST", "/Sessions/Capabilities/Full", body: Capabilities())
     }
 
     /// Every playable episode and movie, held in memory by the caller.
@@ -89,12 +85,21 @@ public struct JellyfinClient: Sendable {
         ])
     }
 
+    /// Cancels the token on the server. False if the server couldn't be
+    /// reached, or refused: then the token may still work there.
+    @discardableResult
+    public func revoke() async -> Bool {
+        (try? await api.call("POST", "/Sessions/Logout")) != nil
+    }
+
     /// Revokes the token on the server, then deletes this sign-in from
     /// `store` (any other servers' stay). The local copy is deleted even if
-    /// the server can't be reached.
-    public func signOut(clearing store: any CredentialStore) async {
-        try? await api.call("POST", "/Sessions/Logout")
+    /// the server can't be reached. Returns whether the server revoked it.
+    @discardableResult
+    public func signOut(clearing store: any CredentialStore) async -> Bool {
+        let revoked = await revoke()
         try? store.deleteCredentials(credentials)
+        return revoked
     }
 
     // MARK: - URLs
@@ -153,8 +158,3 @@ extension JellyfinClient: StreamSource {
     }
 }
 
-private struct Capabilities: Encodable {
-    let playableMediaTypes = ["Video"]
-    let supportedCommands: [String] = []
-    let supportsMediaControl = false
-}

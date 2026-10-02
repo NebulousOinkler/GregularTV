@@ -12,29 +12,38 @@ public struct KeychainError: Error, Equatable {
 /// Keeps the sign-ins in the Keychain, on this device only. Items are marked
 /// `ThisDeviceOnly`, so they're excluded from backups and iCloud Keychain.
 /// The sign-ins are one item, a list with the most recently used first, so
-/// adding, using or removing one is a single write.
+/// adding, using or removing one is a single write, made in place: a failed
+/// write leaves what was there.
 public struct KeychainStore: CredentialStore {
     private enum Account {
         static let signIns = "sign-ins"
         /// Before several servers: one sign-in. Read once, then moved to `signIns`.
         static let credentials = "credentials"
-        static let deviceID = "device-id"
+        /// Before each sign-in had its own: one device ID for them all. The
+        /// sign-ins saved then keep it (their tokens go with it), and it's
+        /// deleted once they're saved with it.
+        static let sharedDeviceID = "device-id"
+        static let all = [signIns, credentials, sharedDeviceID]
     }
 
     private let service: String
 
-    /// Changing the service name loses the saved sign-in and the device ID,
-    /// so Jellyfin would see a new device: keep it fixed once the app ships.
+    /// Changing the service name loses the saved sign-ins: keep it fixed
+    /// once the app ships.
     public init(service: String = "GregularTV") {
         self.service = service
     }
 
     public func allCredentials() -> [Credentials] {
-        if let data = read(Account.signIns) {
-            return (try? JSONDecoder().decode([Credentials].self, from: data)) ?? []
+        let saved = if let data = read(Account.signIns) {
+            Self.decodeEach(data)
+        } else {
+            // The one sign-in an earlier version kept, if any.
+            read(Account.credentials).flatMap { try? JSONDecoder().decode(Credentials.self, from: $0) }.map { [$0] } ?? []
         }
-        // The one sign-in an earlier version kept, if any.
-        return read(Account.credentials).flatMap { try? JSONDecoder().decode(Credentials.self, from: $0) }.map { [$0] } ?? []
+        guard saved.contains(where: { $0.deviceID.isEmpty }) else { return saved }
+        let shared = sharedDeviceID()
+        return saved.map { $0.deviceID.isEmpty ? $0.withDeviceID(shared) : $0 }
     }
 
     public func saveCredentials(_ credentials: Credentials) throws {
@@ -45,19 +54,36 @@ public struct KeychainStore: CredentialStore {
         try save(allCredentials().removing(credentials))
     }
 
+    public func deleteAll() throws {
+        for account in Account.all { try delete(account: account) }
+    }
+
     private func save(_ list: [Credentials]) throws {
         if list.isEmpty {
             try delete(account: Account.signIns)
         } else {
             try write(JSONEncoder().encode(list), account: Account.signIns)
         }
-        try delete(account: Account.credentials)   // moved into the list
+        // Moved into the list, each sign-in with its device ID.
+        try delete(account: Account.credentials)
+        try delete(account: Account.sharedDeviceID)
     }
 
-    public func deviceID() -> String {
-        if let data = read(Account.deviceID), let id = String(data: data, encoding: .utf8) { return id }
+    /// Each sign-in in the list on its own, so one that can't be read
+    /// doesn't lose the rest.
+    private static func decodeEach(_ data: Data) -> [Credentials] {
+        struct Entry: Decodable {
+            let credentials: Credentials?
+            init(from decoder: any Decoder) throws { credentials = try? Credentials(from: decoder) }
+        }
+        return ((try? JSONDecoder().decode([Entry].self, from: data)) ?? []).compactMap(\.credentials)
+    }
+
+    /// The device ID sign-ins shared before each had its own.
+    private func sharedDeviceID() -> String {
+        if let data = read(Account.sharedDeviceID), let id = String(data: data, encoding: .utf8) { return id }
         let id = UUID().uuidString
-        try? write(Data(id.utf8), account: Account.deviceID)
+        try? write(Data(id.utf8), account: Account.sharedDeviceID)
         return id
     }
 
@@ -76,13 +102,16 @@ public struct KeychainStore: CredentialStore {
         return result as? Data
     }
 
+    /// Replaces the item in place, or adds it if there's none.
     private func write(_ data: Data, account: String) throws {
-        try delete(account: account)
-        var query = baseQuery(account)
-        query[kSecValueData] = data
-        query[kSecAttrAccessible] = kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly
-        let status = SecItemAdd(query as CFDictionary, nil)
-        guard status == errSecSuccess else { throw KeychainError(status: status) }
+        let values: [CFString: Any] = [kSecValueData: data, kSecAttrAccessible: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly]
+        let updated = SecItemUpdate(baseQuery(account) as CFDictionary, values as CFDictionary)
+        guard updated == errSecItemNotFound else {
+            guard updated == errSecSuccess else { throw KeychainError(status: updated) }
+            return
+        }
+        let added = SecItemAdd(baseQuery(account).merging(values) { $1 } as CFDictionary, nil)
+        guard added == errSecSuccess else { throw KeychainError(status: added) }
     }
 
     private func delete(account: String) throws {
