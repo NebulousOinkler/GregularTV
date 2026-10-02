@@ -46,8 +46,8 @@ struct LoginView: View {
 
     private var addressForm: some View {
         VStack(spacing: 32) {
-            Text("Enter your Jellyfin server address").font(.title3)
-            TextField("e.g. 192.168.1.10:8096", text: $model.address)
+            Text(LoginModel.addressPrompt).font(.title3)
+            TextField(LoginModel.addressExample, text: $model.address)
                 .keyboardType(.URL)
                 .textContentType(.URL)
                 .autocorrectionDisabled()
@@ -74,7 +74,7 @@ struct LoginView: View {
                     if let code = model.quickConnectCode {
                         Text(code)
                             .font(.system(size: 96, weight: .bold, design: .monospaced))
-                        Text("In another Jellyfin app, open your profile ▸ Quick Connect and enter this code.")
+                        Text(LoginModel.quickConnectHint)
                             .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
                             .fixedSize(horizontal: false, vertical: true)
                     } else if let note = model.quickConnectNote {

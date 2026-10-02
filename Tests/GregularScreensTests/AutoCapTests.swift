@@ -7,39 +7,15 @@ import Testing
 /// trouble, then a cap from a speed test made with nothing playing.
 @MainActor @Suite(.serialized)
 struct AutoCapTests {
-    /// A server whose speed test says `measured`, recording the cap each
-    /// stream was asked for.
-    final class MeasuredStreams: StreamSource, @unchecked Sendable {
-        private let lock = NSLock()
-        private let measured: Int
-        private var asked: [Int] = []
-        private var tests = 0
-
-        init(measured: Int) { self.measured = measured }
-
-        var caps: [Int] { lock.withLock { asked } }
-        var speedTests: Int { lock.withLock { tests } }
-
-        func stream(for itemID: String, maxBitrate: Int) async throws -> MediaStream {
-            lock.withLock { asked.append(maxBitrate) }
-            return MediaStream(url: URL(string: "https://tv.invalid/\(itemID)")!, delivery: .original)
-        }
-        func release(_ stream: MediaStream) async {}
-        func measureBandwidth() async throws -> Int {
-            lock.withLock { tests += 1 }
-            return measured
-        }
-    }
-
     /// Auto, 10 minutes into an hour-long film.
-    private func player(_ streams: MeasuredStreams) throws -> ChannelPlayer {
+    private func player(_ streams: FakeStreams) throws -> ChannelPlayer {
         let items = [MediaItem(id: "m", kind: .movie, name: "Film", duration: 3600)]
         let schedule = try #require(try ChannelSchedule.testing(epoch: Date.now.addingTimeInterval(-600), items: items).first)
         return ChannelPlayer(schedule: schedule, streams: streams, quality: .auto, decks: FakeDeck.pair())
     }
 
     @Test func autoAsksForTheOriginalWithNoSpeedTest() async throws {
-        let streams = MeasuredStreams(measured: 10_000_000)
+        let streams = FakeStreams(measured: 10_000_000)
         let player = try player(streams)
         player.start()
         try await Fixture.settle(player)
@@ -50,7 +26,7 @@ struct AutoCapTests {
     }
 
     @Test func fallingBehindLiveMeasuresThenCaps() async throws {
-        let streams = MeasuredStreams(measured: 10_000_000)
+        let streams = FakeStreams(measured: 10_000_000)
         let player = try player(streams)
         player.start()
         let deck = try await Fixture.playingDeck(player)

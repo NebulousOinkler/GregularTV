@@ -119,7 +119,7 @@ private struct ServerCard: View {
 private struct AddServerCard: View {
     var body: some View {
         Card(icon: "plus", title: "Add a Server") {
-            Text("Sign in to another Jellyfin server").foregroundStyle(.secondary)
+            Text("Sign in to another \(AppModel.serverName) server").foregroundStyle(.secondary)
         }
     }
 }

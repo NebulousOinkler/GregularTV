@@ -50,14 +50,17 @@ extension ScheduleStrategy {
     public static var mayReorderToFit: Bool { true }
 
     public func averageSlotLength(of content: ChannelContent, slotLength: (MediaItem) -> Int64) -> Double? { nil }
+}
 
-    /// The stream for a strategy that can say what airs at any position on
-    /// its own: `programme(at:)` for `position`, `position + 1`, and so on.
-    func programmes(startingAt position: Int, _ programme: @escaping (Int) -> MediaItem) -> AnyIterator<MediaItem> {
+extension AnyIterator {
+    /// An endless stream from something that can say what's at any position
+    /// on its own (a strategy's programmes, a filler's clips): `element(at:)`
+    /// for `position`, `position + 1`, and so on.
+    init(startingAt position: Int, _ element: @escaping (Int) -> Element) {
         var position = position
-        return AnyIterator {
+        self.init {
             defer { position += 1 }
-            return programme(position)
+            return element(position)
         }
     }
 }

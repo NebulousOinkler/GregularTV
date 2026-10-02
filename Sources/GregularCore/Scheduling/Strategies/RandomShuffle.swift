@@ -7,6 +7,6 @@ struct RandomShuffle: ScheduleStrategy {
 
     func programmes(from content: ChannelContent, startingAt position: Int, rng: SeededRandom) -> AnyIterator<MediaItem> {
         let order = ShuffledOrder.Passes(count: content.items.count, seed: content.seed)
-        return programmes(startingAt: position) { content.items[order.index(at: $0)] }
+        return AnyIterator(startingAt: position) { content.items[order.index(at: $0)] }
     }
 }

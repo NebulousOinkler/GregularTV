@@ -79,10 +79,6 @@ struct ShuffledCommercials: GapFiller {
     func clips(from pool: [MediaItem], for content: ChannelContent, startingAt position: Int) -> AnyIterator<MediaItem> {
         guard !pool.isEmpty else { return AnyIterator { nil } }
         let order = ShuffledOrder.Passes(count: pool.count, seed: content.seed ^ 0xC0_33E4)
-        var position = position
-        return AnyIterator {
-            defer { position += 1 }
-            return pool[order.index(at: position)]
-        }
+        return AnyIterator(startingAt: position) { pool[order.index(at: $0)] }
     }
 }

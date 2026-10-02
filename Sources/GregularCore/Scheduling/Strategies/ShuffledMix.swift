@@ -31,7 +31,7 @@ struct ShuffledMix: ScheduleStrategy {
         let slots = FilmSlots(share: share, seed: SeededRandom.mix(content.seed ^ 0x51_07))
         let filmOrder = ShowOrder(shows: films, seed: SeededRandom.mix(content.seed ^ 0xF1_17))
         let seriesOrder = ShowOrder(shows: series, seed: SeededRandom.mix(content.seed ^ 0x5E_71))
-        return programmes(startingAt: position) { position in
+        return AnyIterator(startingAt: position) { position in
             let filmsBefore = slots.films(before: position)
             return slots.isFilm(position)
                 ? filmOrder.programme(at: filmsBefore)

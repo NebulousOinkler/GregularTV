@@ -175,6 +175,15 @@ struct JellyfinPlaybackTests {
                 == "https://media.example.com/jellyfin/videos/abc/master.m3u8?MediaSourceId=src1&ApiKey=token-abc&VideoCodec=hevc,h264")
     }
 
+    /// Jellyfin's reasons reach the player in plain words; only a video
+    /// reason means a re-encode.
+    @Test func conversionReasonsArePlainWords() throws {
+        let url = try #require(URL(string: "https://tv.invalid/master.m3u8?TranscodeReasons=ContainerNotSupported,AudioCodecNotSupported"))
+        let stream = PlaybackSource(url: url, method: .hls, playSessionID: "p").mediaStream
+        #expect(stream.conversionReasons == ["container not supported", "audio codec not supported"])
+        #expect(!stream.reencodes && stream.delivery == .converted && stream.sessionID == "p")
+    }
+
     @Test func noSourcesIsAnError() async {
         mock.on("POST", "/Items/abc/PlaybackInfo", json: #"{ "MediaSources": [] }"#)
         await #expect(throws: JellyfinError.noPlayableSource(itemID: "abc")) {

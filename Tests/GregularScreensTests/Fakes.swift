@@ -14,6 +14,7 @@ import Testing
         var hasFailed = false
         var failure: (any Error)?
         var bufferedAhead: TimeInterval = 60
+        var bufferedInAll: TimeInterval = 60
         init(url: URL, start: TimeInterval, end: TimeInterval) {
             self.url = url
             self.start = start
@@ -50,18 +51,37 @@ import Testing
         seeks.append(seconds)
         position = seconds
     }
-    func diagnostics(behindLive: TimeInterval, conversionReasons: String?, preloaded: (any PlayerItem)?) -> String {
-        "fake"
+    var activity: String {
+        switch state {
+        case .playing: "Playing"
+        case .paused: "Paused"
+        case .waiting: "Buffering"
+        }
     }
 }
 
-/// A server that plays everything as the original file.
-struct FakeStreams: StreamSource {
+/// A server that plays everything as the original file, and whose speed
+/// test says `measured`. It records the cap each stream was asked for.
+final class FakeStreams: StreamSource, @unchecked Sendable {
+    private let lock = NSLock()
+    private let measured: Int
+    private var asked: [Int] = []
+    private var tests = 0
+
+    init(measured: Int = 50_000_000) { self.measured = measured }
+
+    var caps: [Int] { lock.withLock { asked } }
+    var speedTests: Int { lock.withLock { tests } }
+
     func stream(for itemID: String, maxBitrate: Int) async throws -> MediaStream {
-        MediaStream(url: URL(string: "https://tv.invalid/\(itemID)")!, delivery: .original)
+        lock.withLock { asked.append(maxBitrate) }
+        return MediaStream(url: URL(string: "https://tv.invalid/\(itemID)")!, delivery: .original)
     }
     func release(_ stream: MediaStream) async {}
-    func measureBandwidth() async throws -> Int { 50_000_000 }
+    func measureBandwidth() async throws -> Int {
+        lock.withLock { tests += 1 }
+        return measured
+    }
 }
 
 enum Fixture {

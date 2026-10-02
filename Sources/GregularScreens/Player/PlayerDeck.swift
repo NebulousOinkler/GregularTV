@@ -38,10 +38,9 @@ import Foundation
     /// Seconds into the current item.
     var position: TimeInterval { get }
 
-    /// One line for "Show playback diagnostics": what the deck is doing, how
-    /// far behind live, where it is, and how much of `preloaded` is buffered.
-    func diagnostics(behindLive: TimeInterval, conversionReasons: String?,
-                     preloaded: (any PlayerItem)?) -> String
+    /// What the deck is doing, in a word or two, for "Show playback
+    /// diagnostics": "Playing", or "Buffering" with why if the player says.
+    var activity: String { get }
 }
 
 /// What a deck is doing.
@@ -59,4 +58,7 @@ public enum PlayerDeckState: Sendable, Equatable {
     var failure: (any Error)? { get }
     /// Seconds buffered past its playhead.
     var bufferedAhead: TimeInterval { get }
+    /// Seconds of it loaded in all, wherever they are, even before it plays
+    /// (for diagnostics).
+    var bufferedInAll: TimeInterval { get }
 }
