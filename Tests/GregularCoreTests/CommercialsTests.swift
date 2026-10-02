@@ -64,15 +64,16 @@ struct CommercialsTests {
 
     @Test func aBreakRunsFromItsFirstClipToTheNextProgramme() throws {
         let schedule = try fiftyMinuteEpisodesWithAds()
-        let lastHour = schedule.airings(from: Channel.defaultEpoch.addingTimeInterval(23 * 3600),
-                                        to: Channel.defaultEpoch.addingTimeInterval(24 * 3600 - 1))
-        let clips = lastHour.filter(\.isFiller)
+        // The day's 40 minutes left over: a break just after the boundary.
+        let firstHour = schedule.airings(from: Channel.defaultEpoch, to: Channel.defaultEpoch.addingTimeInterval(3600 - 1))
+        let clips = firstHour.filter(\.isFiller)
         try #require(clips.count >= 2)
         let expected = DateInterval(start: clips[0].start, end: try #require(clips.last).slotEnd)
         // The same span from any clip in the break, not just that clip's end.
         for clip in clips {
             #expect(schedule.commercialBreak(at: clip.start.addingTimeInterval(1)) == expected)
         }
-        #expect(schedule.commercialBreak(at: lastHour[0].start.addingTimeInterval(60)) == nil, "Not during a programme")
+        let programme = try #require(firstHour.first { !$0.isFiller })
+        #expect(schedule.commercialBreak(at: programme.start.addingTimeInterval(60)) == nil, "Not during a programme")
     }
 }
