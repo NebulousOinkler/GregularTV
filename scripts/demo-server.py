@@ -5,7 +5,13 @@
     python3 scripts/demo-server.py               # serves http://localhost:8765
 
 Then launch a Debug build of the app with `-demoServer http://localhost:8765`
-(see App/GregularTV/DemoMode.swift), in a simulator on this Mac.
+(see App/GregularTV/DemoMode.swift), in a simulator on this Mac. For the web
+version, open http://localhost:8080/?demoServer=http://127.0.0.1:8765
+(scripts/serve-web.py). It answers any web page, as Jellyfin does (CORS).
+
+It also signs anyone in, by any name and password (never a real account's),
+so sign-in can be tried: the sign-in screen with the address
+http://127.0.0.1:8765.
 
 The library is public-domain films and made-up TV shows, so screenshots show
 nothing anyone else owns and nothing from a real library. Every item plays the
@@ -22,6 +28,7 @@ from urllib.parse import parse_qs, urlparse
 PORT = 8765
 VIDEO = os.path.join(os.path.dirname(__file__), "..", ".build", "demo", "background.mp4")
 TICKS_PER_MINUTE = 60 * 10_000_000
+CHUNK = 1024 * 1024  # the most sent for an open-ended range
 
 # Public-domain films (US): title, year, minutes, genres.
 FILMS = [
@@ -114,6 +121,19 @@ SERIES, PLAYABLE, COMMERCIAL_ITEMS = build_library()
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
 
+    def end_headers(self):
+        # Any web page may ask, as Jellyfin allows by default.
+        self.send_header("Access-Control-Allow-Origin", "*")
+        super().end_headers()
+
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type, Accept")
+        self.send_header("Access-Control-Max-Age", "600")
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
     def log_message(self, format, *args):
         pass  # quiet
 
@@ -150,6 +170,10 @@ class Handler(BaseHTTPRequestHandler):
                                    "TotalRecordCount": 1})
         if url.path == "/Items":
             return self.send_json(self.items_page(query))
+        if url.path == "/System/Info/Public":
+            return self.send_json({"ServerName": "Demo Library", "Version": "10.10.0", "Id": "demo"})
+        if url.path == "/QuickConnect/Enabled":
+            return self.send_json(False)
         if url.path == "/Playback/BitrateTest":
             size = int(query.get("size", ["64000"])[0])
             self.send_response(200)
@@ -170,6 +194,9 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         self.rfile.read(int(self.headers.get("Content-Length", "0") or 0))
         path = urlparse(self.path).path
+        if path == "/Users/AuthenticateByName":
+            return self.send_json({"AccessToken": "demo", "ServerId": "demo",
+                                   "User": {"Id": "demo", "Name": "demo", "Policy": {"IsAdministrator": False}}})
         if path.endswith("/PlaybackInfo"):
             return self.send_json({"MediaSources": [{"Id": "source", "SupportsDirectPlay": True, "Container": "mp4"}],
                                    "PlaySessionId": "demo"})
@@ -185,7 +212,10 @@ class Handler(BaseHTTPRequestHandler):
         if match:
             if match.group(1):
                 start = int(match.group(1))
-                end = int(match.group(2)) if match.group(2) else end
+                # An open-ended range gets at most a chunk, as media servers
+                # send it: the player asks for more as it needs it, and never
+                # holds a connection open on a reply it has stopped reading.
+                end = int(match.group(2)) if match.group(2) else start + CHUNK - 1
             else:  # suffix range: the last N bytes
                 start = max(0, size - int(match.group(2)))
         end = min(end, size - 1)

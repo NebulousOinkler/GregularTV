@@ -1,0 +1,41 @@
+<main>
+  <h1>Gregular TV</h1>
+  <p class="dim" id="intro">Your channels and set times, edited from here and saved on the Apple TV. This page only works while the editing screen is open on the TV.</p>
+
+  <form id="connect" class="card">
+    <h2>Code</h2>
+    <div class="row">
+      <input id="code" inputmode="numeric" autocomplete="off" placeholder="The 6-digit code on the TV" maxlength="6">
+      <button class="primary">Connect</button>
+    </div>
+  </form>
+
+  <div id="message"></div>
+
+  <section id="editor" hidden>
+    <div class="tabs" role="tablist">
+      <button type="button" data-tab="channels" aria-selected="true">Channels</button>
+      <button type="button" data-tab="settimes" aria-selected="false">Set times</button>
+      <button type="button" data-tab="json" aria-selected="false">JSON</button>
+    </div>
+    <div id="tab-channels"></div>
+    <div id="tab-settimes" hidden></div>
+    <div id="tab-json" hidden>
+      <div class="card">
+        <h2>As JSON</h2>
+        <p class="dim">Copy this to keep or share your channels; paste a document in and choose Use This JSON, then Save.</p>
+        <textarea id="json" spellcheck="false"></textarea>
+        <div class="row"><button type="button" id="use-json">Use This JSON</button></div>
+      </div>
+    </div>
+    <div class="bar">
+      <button type="button" class="primary" id="save">Save to Apple TV</button>
+      <span class="dim" id="dirty"></span>
+    </div>
+  </section>
+
+  <datalist id="list-genre"></datalist>
+  <datalist id="list-series"></datalist>
+  <datalist id="list-tag"></datalist>
+  <datalist id="list-film"></datalist>
+</main>

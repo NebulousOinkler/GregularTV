@@ -102,7 +102,8 @@ enum Fixture {
     @MainActor static func app(store: InMemoryCredentialStore = InMemoryCredentialStore(), firstLaunch: Bool = false) -> AppModel {
         let preferences = AppPreferences.testing()
         if !firstLaunch { preferences.scheduleCode = .standard }
-        return AppModel(deviceName: "Test Device", store: store, preferences: preferences, makeDecks: FakeDeck.pair)
+        return AppModel(deviceName: "Test Device", formats: .appleTV, transport: NoServer(), store: store,
+                        preferences: preferences, makeDecks: FakeDeck.pair)
     }
 
     @MainActor static func settle(_ player: ChannelPlayer) async throws {
@@ -113,5 +114,15 @@ enum Fixture {
     @MainActor static func playingDeck(_ player: ChannelPlayer) async throws -> FakeDeck {
         try await settle(player)
         return try #require(player.decks[player.activeIndex] as? FakeDeck)
+    }
+}
+
+/// The network, with no server on it: every request fails at once, so app
+/// tests never reach a real network (and run the same on every platform).
+struct NoServer: HTTPTransport {
+    struct Unreachable: Error {}
+
+    func send(_ request: ServerRequest) async throws -> ServerReply {
+        throw Unreachable()
     }
 }

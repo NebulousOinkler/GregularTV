@@ -157,8 +157,10 @@ public struct ChannelSchedule: Sendable {
         // gap, over the run, divided by the average clip. Only used to guess
         // where each run's commercial stream starts.
         let averageLength = Double(eligible.reduce(0) { $0 + Self.milliseconds(of: $1.duration) }) / Double(eligible.count)
-        let averageClip = pool.isEmpty ? 1 : Double(pool.reduce(0) { $0 + Self.milliseconds(of: $1.duration) }) / Double(pool.count)
-        self.clipsPerRun = Double(runLength) * max(0, 1 - averageLength / averageSlotLength) / averageClip
+        // None without commercials (it isn't used then, and dividing by a
+        // stand-in length would make it huge: too big for a 32-bit Int, as on WebAssembly).
+        let averageClip = Double(pool.reduce(0) { $0 + Self.milliseconds(of: $1.duration) }) / Double(max(1, pool.count))
+        self.clipsPerRun = pool.isEmpty ? 0 : Double(runLength) * max(0, 1 - averageLength / averageSlotLength) / averageClip
     }
 
     /// The run of the shared schedule containing `date`: from one day boundary

@@ -1,6 +1,17 @@
 import Foundation
 
-/// The app's only use of `UserDefaults`. It holds client preferences (last
+/// Where preferences are kept: `UserDefaults` on Apple platforms, the
+/// browser's local storage on the web. Values are an `Int`, `Bool`,
+/// `String` or `[String]`, and nil removes one.
+public protocol PreferenceStorage: AnyObject {
+    func object(forKey key: String) -> Any?
+    func set(_ value: Any?, forKey key: String)
+}
+
+extension UserDefaults: PreferenceStorage {}
+
+/// The app's only use of `UserDefaults` (or the platform's
+/// `PreferenceStorage`). It holds client preferences (last
 /// channel, streaming quality, schedule code, the diagnostics, commercials
 /// and editing-page switches, and the viewer's custom channels and set times) and **never**
 /// anything fetched from the server (PLAN.md §3). Custom channels and set
@@ -18,10 +29,14 @@ public struct AppPreferences: @unchecked Sendable {
         static let allowsEditingPage = "allowsEditingPage"
     }
 
-    private let defaults: UserDefaults
+    private let defaults: any PreferenceStorage
+
+    public init(storage: any PreferenceStorage) {
+        defaults = storage
+    }
 
     public init(defaults: UserDefaults = .standard) {
-        self.defaults = defaults
+        self.init(storage: defaults)
     }
 
     /// The channel to open on launch.
@@ -31,13 +46,13 @@ public struct AppPreferences: @unchecked Sendable {
     }
 
     public var streamingQuality: StreamingQuality {
-        get { defaults.string(forKey: Key.streamingQuality).flatMap(StreamingQuality.init(rawValue:)) ?? .auto }
+        get { (defaults.object(forKey: Key.streamingQuality) as? String).flatMap(StreamingQuality.init(rawValue:)) ?? .auto }
         nonmutating set { defaults.set(newValue.rawValue, forKey: Key.streamingQuality) }
     }
 
     /// "Show playback diagnostics" in Settings. Off by default.
     public var showsDiagnostics: Bool {
-        get { defaults.bool(forKey: Key.showsDiagnostics) }
+        get { defaults.object(forKey: Key.showsDiagnostics) as? Bool ?? false }
         nonmutating set { defaults.set(newValue, forKey: Key.showsDiagnostics) }
     }
 
@@ -49,26 +64,26 @@ public struct AppPreferences: @unchecked Sendable {
 
     /// Channels made in Settings, stored as their channel codes.
     public var customChannels: [CustomChannel] {
-        get { (defaults.stringArray(forKey: Key.customChannels) ?? []).compactMap(CustomChannel.init(code:)) }
+        get { (defaults.object(forKey: Key.customChannels) as? [String] ?? []).compactMap(CustomChannel.init(code:)) }
         nonmutating set { defaults.set(newValue.map(\.code), forKey: Key.customChannels) }
     }
 
     /// Set times made in Settings, stored as their codes.
     public var setTimes: [SetTimes] {
-        get { (defaults.stringArray(forKey: Key.setTimes) ?? []).compactMap(SetTimes.init(code:)) }
+        get { (defaults.object(forKey: Key.setTimes) as? [String] ?? []).compactMap(SetTimes.init(code:)) }
         nonmutating set { defaults.set(newValue.map(\.code), forKey: Key.setTimes) }
     }
 
     /// "Edit from a phone or computer" in Settings: whether Settings offers
     /// the editing page on the home network. Off by default.
     public var allowsEditingPage: Bool {
-        get { defaults.bool(forKey: Key.allowsEditingPage) }
+        get { defaults.object(forKey: Key.allowsEditingPage) as? Bool ?? false }
         nonmutating set { defaults.set(newValue, forKey: Key.allowsEditingPage) }
     }
 
     /// The shared schedule code. Nil until first launch picks one.
     public var scheduleCode: ScheduleCode? {
-        get { defaults.string(forKey: Key.scheduleCode).flatMap(ScheduleCode.init) }
+        get { (defaults.object(forKey: Key.scheduleCode) as? String).flatMap(ScheduleCode.init) }
         nonmutating set { defaults.set(newValue?.description, forKey: Key.scheduleCode) }
     }
 }

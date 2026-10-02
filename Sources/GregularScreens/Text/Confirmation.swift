@@ -13,3 +13,22 @@ public struct Confirmation: Sendable, Equatable {
     /// What happens, and how to undo it if that's possible at all.
     public let detail: String
 }
+
+extension Confirmation {
+    /// Closing the channel editor with changes that aren't saved.
+    public static let discardEdits = Confirmation(
+        action: "Close Without Saving",
+        question: "Close without saving?",
+        detail: "Your changes to your channels and set times will be lost.")
+
+    /// Signing out of every server, then forgetting everything the app
+    /// keeps `here` (such as "in this browser"): your channels, set times
+    /// and settings.
+    public static func forgetEverything(_ here: String) -> Confirmation {
+        Confirmation(
+            action: "Forget Everything",
+            question: "Forget everything \(here)?",
+            detail: "Signs out of every server, then deletes your channels, set times and settings kept \(here), "
+                + "and the app starts again. This can't be undone.")
+    }
+}

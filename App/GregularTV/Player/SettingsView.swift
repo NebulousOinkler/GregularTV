@@ -22,15 +22,15 @@ struct SettingsView: View {
 
     var body: some View {
         SettingsRows.page {
-            Text("Settings").font(.largeTitle).bold()
+            Text(SettingsText.title).font(.largeTitle).bold()
 
-            SettingsRows.section("Streaming quality", footer: [
-                app.showsDiagnostics ? player.streamDescription.map { "Now playing: \($0)" } : nil,
-                "Lower quality saves bandwidth but makes the server transcode, which takes more of its processing power. If your server is short on CPU rather than bandwidth, Maximum may work best.",
+            SettingsRows.section(SettingsText.quality, footer: [
+                app.showsDiagnostics ? player.streamDescription.map(SettingsText.nowPlaying) : nil,
+                SettingsText.qualityNote,
             ]) {
                 ForEach(StreamingQuality.allCases) { quality in
                     SettingsRows.row(quality.label,
-                                     detail: quality == .auto ? "Measures how fast your server can stream right now, and backs off when it's busy." : nil,
+                                     detail: quality == .auto ? SettingsText.autoDetail : nil,
                                      checked: quality == player.quality) {
                         app.setStreamingQuality(quality)
                         dismiss()
@@ -40,26 +40,18 @@ struct SettingsView: View {
             }
 
             if let programme = player.fixableProgramme?.item.displayTitle {
-                SettingsRows.section("Trouble with \u{201C}\(programme)\u{201D}?", footer: [
-                    "For this programme only: the next programme, or changing channel, goes back to standard. These help when \(AppModel.serverName) has to convert the programme and can't keep up, since a lower quality is quicker to convert. A programme that plays as-is will be converted at the lower quality.",
-                ]) {
-                    fixRow(.stepDown, "Step Down Quality",
-                           detail: "Restarts it one step lower, and steps down again whenever it pauses to buffer.")
-                    fixRow(.hd720, "Play at 720p", detail: "Restarts it at 720p (4 Mbps).")
-                    fixRow(.standard, "Standard", detail: "Back to your streaming quality setting.")
+                SettingsRows.section(SettingsText.trouble(with: programme), footer: [SettingsText.troubleNote]) {
+                    ForEach(SettingsText.fixes, id: \.title) { fixRow($0.fix, $0.title, detail: $0.detail) }
                 }
             }
 
-            SettingsRows.section("Schedule code", footer: [
-                codeError,
-                "The code sets the running order on every channel. Anyone using the same code, with the same \(AppModel.serverName) library and channels, sees the same programmes at the same time. Changing it reshuffles every channel.",
-            ]) {
-                SettingsRows.info("Current code", app.scheduleCode.description)
-                TextField("Enter a code, like 7KQM2-X9PDA", text: $codeText)
+            SettingsRows.section(SettingsText.scheduleCode, footer: [codeError, SettingsText.scheduleCodeNote]) {
+                SettingsRows.info(SettingsText.currentCode, app.scheduleCode.description)
+                TextField(SettingsText.codePlaceholder, text: $codeText)
                     .textInputAutocapitalization(.characters)
                     .autocorrectionDisabled()
                     .onSubmit(applyTypedCode)
-                SettingsRows.row("Use a New Random Code") {
+                SettingsRows.row(SettingsText.newRandomCode) {
                     app.setScheduleCode(.random())
                     dismiss()
                 }
@@ -67,30 +59,26 @@ struct SettingsView: View {
 
             yourChannels
 
-            SettingsRows.section("Commercials", footer: [
-                "When off, breaks between programmes are blank, with the Up Next card showing what's on next and when. Programmes still start at the same times, so you stay in step with everyone using the same schedule code.",
-            ]) {
-                SettingsRows.row("Play commercials", value: app.playsCommercials ? "On" : "Off") {
+            SettingsRows.section(SettingsText.commercials, footer: [SettingsText.commercialsNote]) {
+                SettingsRows.row(SettingsText.playCommercials, value: SettingsText.onOff(app.playsCommercials)) {
                     app.setPlaysCommercials(!app.playsCommercials)
                 }
             }
 
-            SettingsRows.section("Diagnostics", footer: [
-                app.showsDiagnostics ? commercialsStatus.map { "Commercials: \($0)" } : nil,
-                "Adds a technical line to the info banner: quality, whether the server is transcoding and why, buffering, and how far behind live playback is. Useful when something isn't playing well.",
+            SettingsRows.section(SettingsText.diagnostics, footer: [
+                app.showsDiagnostics ? commercialsStatus.map(SettingsText.commercialsStatus) : nil,
+                SettingsText.diagnosticsNote,
             ]) {
-                SettingsRows.row("Show playback diagnostics", value: app.showsDiagnostics ? "On" : "Off") {
+                SettingsRows.row(SettingsText.showDiagnostics, value: SettingsText.onOff(app.showsDiagnostics)) {
                     app.setShowsDiagnostics(!app.showsDiagnostics)
                 }
             }
 
-            SettingsRows.section("Server", footer: [
-                "All Servers goes to the main page, to watch another server or add one. Menu from the guide's top row goes there too; the channel plays on behind it.",
-            ]) {
+            SettingsRows.section(SettingsText.server, footer: [SettingsText.serverNote(back: RemoteButton.menu.symbol)]) {
                 if let server = app.currentServer {
-                    SettingsRows.row("Watching", detail: server.name == nil ? nil : server.address, value: server.title) {}
+                    SettingsRows.row(SettingsText.watching, detail: server.name == nil ? nil : server.address, value: server.title) {}
                 }
-                SettingsRows.row("All Servers") {
+                SettingsRows.row(SettingsText.allServers) {
                     dismiss()
                     app.showMainPage()
                 }
@@ -102,8 +90,8 @@ struct SettingsView: View {
                 }
             }
 
-            SettingsRows.section(nil, footer: [RemoteControls.hint(for: RemoteControls.settings, onScreen: [.close: "Done"])]) {
-                SettingsRows.row("Done") { dismiss() }
+            SettingsRows.section(nil, footer: [RemoteControls.hint(for: RemoteControls.settings, onScreen: [.close: SettingsText.done])]) {
+                SettingsRows.row(SettingsText.done) { dismiss() }
             }
         }
         .defaultFocus($focusedQuality, player.quality)
@@ -130,9 +118,9 @@ struct SettingsView: View {
         let howToEdit = app.allowsEditingPage
             ? "Make and change them on the editing page: Open the Editing Page, below, and follow the steps on a phone or computer."
             : "Make and change them from a phone or computer: turn on the editing page, below."
-        SettingsRows.section("Your channels", footer: [
-            app.customChannels.isEmpty ? "None yet." : nil,
-            "Your own channels join the guide like any other. They're saved on this Apple TV: the name, number and the genres, series, tags and years in each one's rule. Nothing else from your library is kept.",
+        SettingsRows.section(SettingsText.yourChannels, footer: [
+            app.customChannels.isEmpty ? SettingsText.noneYet : nil,
+            SettingsText.yourChannelsNote(kept: "on this Apple TV"),
             howToEdit,
         ]) {
             ForEach(app.customChannels, id: \.self) { channel in
@@ -140,9 +128,9 @@ struct SettingsView: View {
             }
         }
 
-        SettingsRows.section("Set times", footer: [
-            app.setTimes.isEmpty ? "None yet." : nil,
-            "A series or film at fixed times on a channel. At every other time the channel stays the same as for everyone with your schedule code. They're saved on this Apple TV: the channel, the names you picked and the times.",
+        SettingsRows.section(SettingsText.setTimes, footer: [
+            app.setTimes.isEmpty ? SettingsText.noneYet : nil,
+            SettingsText.setTimesNote(kept: "on this Apple TV"),
             howToEdit,
         ]) {
             ForEach(app.setTimesChannels) { channel in
@@ -153,7 +141,7 @@ struct SettingsView: View {
         SettingsRows.section("Edit from a phone or computer", footer: [
             "When on, you can make and change your channels and set times in a web browser on a phone or computer on your home network, with a keyboard and search, while the editing screen is open here. Off, they can't be changed. Nothing is kept or sent anywhere else either way.",
         ]) {
-            SettingsRows.row("Editing page", value: app.allowsEditingPage ? "On" : "Off") {
+            SettingsRows.row("Editing page", value: SettingsText.onOff(app.allowsEditingPage)) {
                 app.setAllowsEditingPage(!app.allowsEditingPage)
             }
             if app.allowsEditingPage {
@@ -171,7 +159,7 @@ struct SettingsView: View {
 
     private func applyTypedCode() {
         guard let code = ScheduleCode(codeText) else {
-            codeError = "A code is 10 letters and digits, like 7KQM2-X9PDA."
+            codeError = SettingsText.badCode
             return
         }
         app.setScheduleCode(code)

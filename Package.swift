@@ -45,9 +45,14 @@ let package = Package(
         .library(name: "GregularKeychain", targets: ["GregularKeychain"]),
     ],
     targets: [
-        .target(name: "GregularCore", resources: [.process("Resources")], swiftSettings: strictImports),
+        // channels.json is compiled in (not a bundle file), so it's there on every platform, a browser included.
+        .target(name: "GregularCore", resources: [.embedInCode("Resources/channels.json")], swiftSettings: strictImports),
         .target(name: "GregularJellyfin", dependencies: ["GregularCore"], swiftSettings: strictImports),
-        .target(name: "GregularScreens", dependencies: ["GregularCore", "GregularJellyfin"], swiftSettings: strictImports),
+        // The editing page's files are compiled in for the Apple TV to serve; the web version copies them.
+        .target(name: "GregularScreens", dependencies: ["GregularCore", "GregularJellyfin"],
+                resources: [.embedInCode("Editing/Page/editor.css"), .embedInCode("Editing/Page/editor-body.html"),
+                            .embedInCode("Editing/Page/editor.js")],
+                swiftSettings: strictImports),
         .target(name: "GregularKeychain", dependencies: ["GregularJellyfin"], swiftSettings: strictImports),
         .testTarget(name: "GregularCoreTests", dependencies: ["GregularCore"], swiftSettings: strictImports),
         .testTarget(name: "GregularJellyfinTests", dependencies: ["GregularJellyfin", "GregularCore"], swiftSettings: strictImports),

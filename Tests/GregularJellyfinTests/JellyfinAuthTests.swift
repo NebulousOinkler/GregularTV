@@ -85,7 +85,7 @@ struct JellyfinAuthTests {
         mock.on("GET", "/System/Info/Public", json: #"{ "ServerName": "Den", "Version": "10.10.3", "Id": "x" }"#)
         #expect(try await server.publicInfo() == .init(serverName: "Den", version: "10.10.3"))
         let request = try #require(mock.requests.first)
-        #expect(request.value(forHTTPHeaderField: "Authorization") == nil, "A server only probed learns nothing about this device")
+        #expect(request.header("Authorization") == nil, "A server only probed learns nothing about this device")
     }
 
     @Test func passwordSignInSendsCredentialsOnceAndReturnsToken() async throws {
@@ -97,7 +97,7 @@ struct JellyfinAuthTests {
         let request = try #require(mock.requests.first)
         #expect(request.jsonBody["Username"] as? String == "sam")
         #expect(request.jsonBody["Pw"] as? String == "hunter2")
-        #expect(request.value(forHTTPHeaderField: "Authorization")?.contains("Token=") == false)
+        #expect(request.header("Authorization")?.contains("Token=") == false)
     }
 
     @Test func anAdministratorSaysSo() async throws {

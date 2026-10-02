@@ -3,8 +3,10 @@
 //
 //     swift scripts/make-demo-video.swift
 //
-// Four hours long, so any programme can be joined mid-way, but only a few
-// frames of a soft dusk gradient, so the file is tiny. Output goes to
+// Four hours long, so any programme can be joined mid-way, of one still
+// picture, a soft dusk gradient, so the file stays small. A frame every two
+// seconds, and a keyframe every ten: browsers (the web version) stall when
+// joining between frames many minutes apart, as Apple TV doesn't. Output goes to
 // .build/demo/background.mp4 (not committed).
 
 import AVFoundation
@@ -47,14 +49,15 @@ func frame() -> CVPixelBuffer {
 let writer = try AVAssetWriter(outputURL: output, fileType: .mp4)
 let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
     AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: width, AVVideoHeightKey: height,
+    AVVideoCompressionPropertiesKey: [AVVideoMaxKeyFrameIntervalDurationKey: 10, AVVideoExpectedSourceFrameRateKey: 1],
 ])
 let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: input, sourcePixelBufferAttributes: nil)
 writer.add(input)
 writer.startWriting()
 writer.startSession(atSourceTime: .zero)
 let image = frame()
-// A frame every ten minutes, so seeking anywhere lands near one.
-for second in stride(from: 0, through: length, by: 600) {
+// A frame every two seconds, so joining anywhere lands on one at once.
+for second in stride(from: 0, through: length, by: 2) {
     while !input.isReadyForMoreMediaData { usleep(1000) }
     adaptor.append(image, withPresentationTime: CMTime(seconds: Double(second), preferredTimescale: 600))
 }

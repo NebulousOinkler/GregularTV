@@ -1,7 +1,7 @@
 import Foundation
 import GregularCore
 
-/// A URL that AVPlayer can play for one item.
+/// A URL the platform's player can play for one item.
 ///
 /// The player always seeks to the live offset itself. Jellyfin's HLS
 /// transcoder restarts at whichever segment the player asks for, so seeking
@@ -60,8 +60,8 @@ public struct PlaybackSource: Sendable, Equatable {
     }
 }
 
-/// What Apple TV can play natively. Jellyfin uses this to decide between
-/// direct play and transcoding.
+/// What this device can play (`PlayableFormats`), as Jellyfin asks for it.
+/// Jellyfin uses this to decide between direct play and transcoding.
 struct DeviceProfile: Encodable {
     struct DirectPlayProfile: Encodable {
         let container: String
@@ -73,14 +73,13 @@ struct DeviceProfile: Encodable {
     struct TranscodingProfile: Encodable {
         let container = "mp4"           // fMP4 HLS, which carries HEVC as well as H.264
         let type = "Video"
-        /// Either is copied as it is. When the video has to be re-encoded,
-        /// Jellyfin makes the first: H.264, far less work for a small server
-        /// (a Raspberry Pi can't make HEVC in real time).
-        let videoCodec = "h264,hevc"
-        let audioCodec = "aac,ac3,eac3"
+        /// Copied as it is when the video already is one of these; made as
+        /// the first when it has to be re-encoded.
+        let videoCodec: String
+        let audioCodec: String
         let `protocol` = "hls"
         let context = "Streaming"
-        let maxAudioChannels = "6"
+        let maxAudioChannels: String
         let minSegments = 2
         let breakOnNonKeyFrames = true
     }
@@ -90,13 +89,11 @@ struct DeviceProfile: Encodable {
         let method = "External"
     }
 
-    let name = "Gregular TV (tvOS)"
+    let name: String
     let maxStreamingBitrate: Int
     let maxStaticBitrate: Int
-    let directPlayProfiles = [
-        DirectPlayProfile(container: "mp4,m4v,mov", videoCodec: "hevc,h264", audioCodec: "aac,ac3,eac3,alac,mp3"),
-    ]
-    let transcodingProfiles = [TranscodingProfile()]
+    let directPlayProfiles: [DirectPlayProfile]
+    let transcodingProfiles: [TranscodingProfile]
     /// Every subtitle format is declared as "External", meaning the client
     /// fetches it separately. The app never does, so no subtitles show, and
     /// Jellyfin has no reason to *burn* them into the video. Burning in
@@ -111,9 +108,17 @@ struct DeviceProfile: Encodable {
 
     /// `maxBitrate` is the quality cap. A file over it can't be played
     /// directly, and transcodes are limited to it.
-    init(maxBitrate: Int) {
+    /// - Parameter secure: the server is on https.
+    init(formats: PlayableFormats, maxBitrate: Int, secure: Bool) {
+        name = "\(ClientIdentity.clientName) (\(formats.name))"
         maxStreamingBitrate = maxBitrate
         maxStaticBitrate = maxBitrate
+        directPlayProfiles = formats.playsFilesOnlyOverHTTPS && !secure ? [] : [DirectPlayProfile(container: formats.containers.joined(separator: ","),
+                                                videoCodec: formats.videoCodecs.joined(separator: ","),
+                                                audioCodec: formats.audioCodecs.joined(separator: ","))]
+        transcodingProfiles = [TranscodingProfile(videoCodec: formats.convertedVideoCodecs.joined(separator: ","),
+                                                  audioCodec: formats.convertedAudioCodecs.joined(separator: ","),
+                                                  maxAudioChannels: String(formats.mostAudioChannels))]
     }
 }
 
@@ -138,10 +143,10 @@ struct PlaybackInfoRequest: Encodable {
     /// such as a Raspberry Pi can't sustain.
     let subtitleStreamIndex = -1
 
-    init(itemID: String, userId: String, maxBitrate: Int) {
+    init(itemID: String, userId: String, formats: PlayableFormats, maxBitrate: Int, secure: Bool) {
         mediaSourceId = itemID
         self.userId = userId
-        deviceProfile = DeviceProfile(maxBitrate: maxBitrate)
+        deviceProfile = DeviceProfile(formats: formats, maxBitrate: maxBitrate, secure: secure)
         maxStreamingBitrate = maxBitrate
     }
 }

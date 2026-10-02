@@ -3,14 +3,12 @@ import Foundation
 /// The full set of configured channels, loaded from `channels.json`.
 public struct ChannelLineup: Sendable {
     public enum LoadError: Error, Equatable, CustomStringConvertible {
-        case missingBundledFile
         case duplicateChannelNumber(Int)
         /// A `ChannelRule` found a problem.
         case invalidChannel(String)
 
         public var description: String {
             switch self {
-            case .missingBundledFile: "channels.json is missing from the app bundle"
             case .duplicateChannelNumber(let n): "channels.json defines channel \(n) more than once"
             case .invalidChannel(let problem): problem
             }
@@ -70,12 +68,9 @@ public struct ChannelLineup: Sendable {
         return try ChannelLineup(channels: withSetTimes, commercialsLibrary: commercialsLibrary)
     }
 
-    /// The line-up that ships with the app (`Resources/channels.json`).
+    /// The line-up that ships with the app (`Resources/channels.json`, compiled in).
     public static func bundled() throws -> ChannelLineup {
-        guard let url = Bundle.module.url(forResource: "channels", withExtension: "json") else {
-            throw LoadError.missingBundledFile
-        }
-        return try load(from: Data(contentsOf: url))
+        try load(from: Data(PackageResources.channels_json))
     }
 
     /// Builds a schedule for every channel that has content. Channels that

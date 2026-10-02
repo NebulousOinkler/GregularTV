@@ -1,0 +1,17 @@
+# Response headers for every file on gregular.tv (Cloudflare reads this
+# file; scripts/serve-web.py applies it locally too).
+#
+# Content-Security-Policy: scripts, styles and fonts only from this site;
+# WebAssembly allowed; connections and video to any https server, and to
+# plain http (Chrome then lets only the home network through, after asking);
+# the channel editor framed only by this site; nothing else at all.
+# Trusted Types: script URLs only through the policy in js/main.js, which
+# allows only this page's own blob: workers (hls.js's).
+/*
+  Content-Security-Policy: default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self'; font-src 'self'; media-src 'self' https: http: blob:; connect-src 'self' https: http:; worker-src 'self' blob:; frame-src 'self'; frame-ancestors 'self'; base-uri 'none'; form-action 'none'; manifest-src 'self'; require-trusted-types-for 'script'; trusted-types default
+  Referrer-Policy: no-referrer
+  X-Content-Type-Options: nosniff
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Resource-Policy: same-origin
+  Permissions-Policy: camera=(), microphone=(), geolocation=(), payment=(), usb=(), serial=(), bluetooth=(), hid=(), midi=(), browsing-topics=(), fullscreen=(self), autoplay=(self), screen-wake-lock=(self), picture-in-picture=(self)
+  Cache-Control: no-cache

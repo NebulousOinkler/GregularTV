@@ -2,7 +2,7 @@
 
 *We now return to your Gregular programming.*
 
-A Jellyfin client for Apple TV that plays your library as always-on TV channels. See [PLAN.md](PLAN.md) for the design.
+A Jellyfin client for Apple TV, and for web browsers at [gregular.tv](https://gregular.tv), that plays your library as always-on TV channels. See [PLAN.md](PLAN.md) for the design, and [WEB_PLAN.md](WEB_PLAN.md) for the web version's.
 
 ## IMPORTANT NOTE: 
 This is mostly AI coded. Why does this exist? I wanted a better shuffle algorithm than what I found in existing applications and I didn't want to make the rest of the bones just to watch videos from a Jellyfin server. I wrote the shuffle algorithm myself in python and had it translated to Swift by the LLM. It's mostly for personal use, but it's open source regardless. Have fun!
@@ -12,6 +12,8 @@ This is mostly AI coded. Why does this exist? I wanted a better shuffle algorith
 Version 1.2. All seven milestones in [PLAN.md](PLAN.md) are done. The core package handles scheduling, the Jellyfin client and privacy, and the tvOS app has a main page of your servers (several at once), sign-in, live channels, surfing, a six-hour guide, quality settings, commercial breaks (including mid-roll breaks in films) from a Jellyfin library named `Commercials` (see PLAN.md §9a), your own channels, and programmes at set times, made on the editing page.
 
 Open `App/GregularTV.xcodeproj` in Xcode and run the **GregularTV** scheme on an Apple TV simulator or device. Requires tvOS 17 or later and Jellyfin 10.9 or later.
+
+The web version (`Web/`) runs the same schedule, sign-in and screen logic, compiled to WebAssembly, in Chrome, Edge, Safari and Firefox, on phones first and up to TVs: see *The web version*, below.
 
 ## Install on an Apple TV
 
@@ -40,6 +42,63 @@ xcodebuild test -project App/GregularTV.xcodeproj -scheme GregularTV -destinatio
 ```
 
 Run app tests on a dedicated simulator ("GregularTV Tests"), not the one you're watching. A test run reboots its simulator, which freezes any live view attached to it.
+
+## The web version
+
+The same app in a web browser: the shared Swift code (`Sources/`) compiled to WebAssembly, with web pages for its screens, `<video>` for playback and the browser's network and storage (`Web/`, its own package). Everything happens in the browser: the site only serves the app's files, and the browser talks to your Jellyfin server directly. Phones come first (the picture at the top, what's on and the controls under it, every channel's now and next below), then landscape, tablets, desktops and TVs.
+
+**Which servers it can reach.** A web page on https can't talk to a plain http server, so:
+
+| Your server | Chrome, Edge | Safari, Firefox |
+|---|---|---|
+| `https://…` | ✅ | ✅ |
+| `http://` on your home network (`192.168.x.x`, `name.local`, `nas:8096`) | ✅ after allowing "local network" access | ❌ |
+
+From an http server the browser asks for every programme as HLS (usually just a change of container, which is cheap for the server), since it can't play a file over http.
+
+**Controls.** Touch: tap the picture for the controls, swipe across it to change channel. Keyboard (the same tables as the Siri Remote, `KeyboardControls`): ← → channels, I info, L channel list, S Settings, Space pause or jump to live, Esc steps back (banner, guide, servers), digits type a channel number. Everything works with a screen reader, at any text size, and with reduced motion.
+
+**Build and run it locally.** Needs the swift.org toolchain 6.4.0 and its WebAssembly SDK (Xcode's Swift can't build for the browser), and `wasm-opt` (`brew install binaryen`) to shrink release builds:
+
+```bash
+swiftly install 6.4.0
+```
+
+```bash
+~/Library/Developer/Toolchains/swift-6.4.0-RELEASE.xctoolchain/usr/bin/swift sdk install https://download.swift.org/swift-6.4.0-release/wasm-sdk/swift-6.4.0-RELEASE/swift-6.4.0-RELEASE_wasm.artifactbundle.tar.gz --checksum f07b7be3c586d92d7a07051fc6d303b87ebea67eadc40640ba59d5a8b79aa86d
+```
+
+```bash
+scripts/build-web.sh debug
+```
+
+```bash
+python3 scripts/serve-web.py
+```
+
+Then open http://localhost:8080. With `python3 scripts/demo-server.py` running too, sign in to `127.0.0.1:8765` with any name, or (Debug builds) open http://localhost:8080/?demoServer=http://127.0.0.1:8765. `scripts/serve-web.py` sends the same security headers as gregular.tv (`Web/public/_headers`).
+
+**Test it.** The walkthrough drives the app in Chromium, WebKit and Firefox with Playwright, against the demo server; the unit run builds the package's own tests for WebAssembly (a 32-bit platform, unlike the Mac) and runs them in WasmKit, which takes about 20 minutes:
+
+```bash
+cd Web && npm install && npx playwright install chromium webkit firefox
+```
+
+```bash
+scripts/test-web.sh walkthrough
+```
+
+```bash
+scripts/test-web.sh unit
+```
+
+The browser layer's own tests (`Web/Tests`) run in Node:
+
+```bash
+scripts/test-web.sh browser
+```
+
+**Deploying** is automatic: `.github/workflows/web.yml` builds, checks and tests every push, deploys main to gregular.tv on Cloudflare, and gives each pull request a preview address. Setting up the domain and Cloudflare is in [WEB_PLAN.md](WEB_PLAN.md), *Hosting at gregular.tv*.
 
 ## Schedule code
 
@@ -188,7 +247,10 @@ TEST_RUNNER_SHOTS_DIR=/path/to/shots scripts/test-app.sh walkthrough
 |---|---|
 | Understand how the code is split | Four parts: the logic (`Sources/GregularCore`), the Jellyfin connection (`Sources/GregularJellyfin`), what the screens do (`Sources/GregularScreens`) and Apple TV itself (`App/`); see `Package.swift` and PLAN.md §4 |
 | Change what the screens do or say (banner, cards, overlays, fades) | `WatchModel` in `Sources/GregularScreens/Watch/WatchModel.swift`; the Apple TV views in `App/GregularTV` only draw it |
-| Play video some other way (for a web version) | Implement `PlayerDeck` (`Sources/GregularScreens/Player/PlayerDeck.swift`), as `AVPlayerDeck` does for Apple TV |
+| Play video some other way | Implement `PlayerDeck` (`Sources/GregularScreens/Player/PlayerDeck.swift`), as `AVPlayerDeck` does for Apple TV and `VideoDeck` (`Web/Sources/GregularWeb/Player`) for the web |
+| Change the web version's look | `Web/public/app.css` (its design tokens are at the top; phones first, larger screens in the media queries at the end) |
+| Change what the web version's screens show | `Web/Sources/GregularWeb` (pages in `Pages/`, live TV in `Watch/`); the words come from GregularScreens, as on Apple TV |
+| Change the keys on the web | `KeyboardControls` in `Sources/GregularScreens/Remote/KeyboardControls.swift` (which remote button each key presses) |
 | Connect a different media server | Implement `MediaLibrary` and `StreamSource` (`Sources/GregularCore/Services/MediaServices.swift`), and use it in `AppModel` |
 | Change the channel line-up | `Sources/GregularCore/Resources/channels.json`, then run `swift test` to validate it |
 | Change how much variety a themed channel needs, or how a mix gives way | `ChannelVariety.seriesDays` and `filmDays` in `Sources/GregularCore/Scheduling/ChannelVariety.swift`; a mixed channel's `"films"` share in `channels.json` |
@@ -259,6 +321,12 @@ Gregular TV is built to know as little as possible about your Jellyfin server, a
 - **Privacy manifest:** `PrivacyInfo.xcprivacy` declares the same to Apple: no tracking, no data collected.
 - **Artwork:** the app icon and Top Shelf image are drawn by [`scripts/make-artwork.swift`](scripts/make-artwork.swift), never taken from your server.
 
+**In the web version,** the same holds, in the browser's terms:
+- **Nothing goes to gregular.tv** but requests for the app's own files: no analytics, no logs of yours, nothing from your server. The browser talks to your server directly, and video comes straight from it.
+- **Your sign-ins** are kept in the browser's IndexedDB, encrypted with a key the browser makes for this site and won't let even the page read out. Your preferences, channels and set times are in its local storage, as on Apple TV. Settings › *Forget Everything* signs out of every server and deletes both.
+- **Enforced:** every request goes through `fetch()` with no cookies, no cache and no referrer, and no redirect is followed at all. The privacy check covers the web code too (local storage only in `BrowserPreferences.swift`, IndexedDB only in `vault.js`, no console logging), and the Playwright walkthrough checks that local storage holds no sign-in and the vault holds nothing readable.
+- **What your server sees** is as for the Apple TV app, with the device named "Web Browser", plus what every browser sends (its user agent, and that the request came from gregular.tv).
+
 ## Security
 
 The app treats what reaches it as untrusted: the server's replies, codes typed in from anywhere, and whatever the editing page is sent.
@@ -269,4 +337,5 @@ The app treats what reaches it as untrusted: the server's replies, codes typed i
 - **What the editing page saves can't do more than change your own schedule.** It carries only names, numbers and times, and it's checked like the app's own settings before it's used: numbers from 20 to 99 and not taken, at most 20 conditions on a channel, times within a day, real dates, and at most 24 set times on a channel, listing 48 times in all.
 - **The editing page is closed by default and short-lived.** It runs only while its screen is open, after you've turned it on. It refuses connections from outside your home network (anything but private, link-local and loopback addresses), requests for any address but the one shown (so another website can't reach it through your browser), and requests without the six-digit code, which is new each time. Five wrong tries shut a device out, and 20 from anywhere lock the page, so one device can't lock you out and guessing stays hopeless. At most 8 connections at once, each one request, capped at 512 KB and 10 seconds. It's plain http (a browser can't trust a certificate from a TV), so the TV says to use it on a network you trust. The page runs only its own script, shows library names as plain text, and fetches nothing from anywhere else.
 - **Sign Out and Delete ask first**, so one stray click, or a button pressed by anything paired with the Apple TV, can't undo your setup.
+- **The web version** runs only its own code: its Content Security Policy (`Web/public/_headers`) allows scripts only from gregular.tv, connections only to servers (https, or http that Chrome confines to your home network), no frames but its own channel editor, and, with Trusted Types, no script URLs but hls.js's own workers. Library names are only ever put on the page as text. Every library it uses is served from gregular.tv, never a CDN: hls.js and the WASI shim are in `Web/public/vendor`, unchanged, with their licences.
 - **Quick Connect:** approve a code only when your own TV is showing it. Another device can ask Jellyfin for a code while calling itself "Apple TV", and approving its code would sign that device in as you.

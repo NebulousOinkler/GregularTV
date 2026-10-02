@@ -26,10 +26,19 @@ extension ChannelSchedule {
 }
 
 extension AppPreferences {
-    /// Preferences of their own, so tests never share them (or touch the app's).
+    /// Preferences of their own, in memory, so tests never share them (or
+    /// touch the app's), and run the same on every platform.
     static func testing() -> AppPreferences {
-        AppPreferences(defaults: UserDefaults(suiteName: "GregularTests-\(UUID())")!)
+        AppPreferences(storage: MemoryPreferences())
     }
+}
+
+/// Preferences held in memory only, for tests.
+final class MemoryPreferences: PreferenceStorage, @unchecked Sendable {
+    private var values: [String: Any] = [:]
+
+    func object(forKey key: String) -> Any? { values[key] }
+    func set(_ value: Any?, forKey key: String) { values[key] = value }
 }
 
 extension ChannelPlayer.Status {

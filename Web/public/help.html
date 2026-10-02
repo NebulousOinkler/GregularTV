@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<meta name="color-scheme" content="dark">
+<title>Help · Gregular TV</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<main class="page">
+  <header class="app-bar">
+    <a class="brand" href="/" aria-label="Gregular TV">
+      <span class="wordmark">Gregular TV</span>
+      <span class="bars" aria-hidden="true"><span class="bar bar-0"></span><span class="bar bar-1"></span><span class="bar bar-2"></span><span class="bar bar-3"></span><span class="bar bar-4"></span><span class="bar bar-5"></span><span class="bar bar-6"></span></span>
+    </a>
+    <a class="button primary" href="/">Open Gregular TV</a>
+  </header>
+  <article class="content prose">
+    <h1 class="page-title">Help</h1>
+    <p class="page-lede">Gregular TV turns your Jellyfin library into always-on channels: shows and films on a schedule, with commercial breaks, a guide and channel surfing.</p>
+
+    <h2>Connecting to your server</h2>
+    <p>Enter your Jellyfin server's address, then sign in with a password or Quick Connect. Which addresses a browser can use:</p>
+    <ul>
+      <li><strong>https://</strong> addresses work in every browser.</li>
+      <li><strong>http://</strong> addresses work only on your home network (such as <code>192.168.1.5:8096</code> or <code>nas.local:8096</code>), and only in Chrome or Edge, which ask to "look for devices on your local network". Allow it. Safari and Firefox don't allow it at all: use an https address there, for example through a reverse proxy or Tailscale.</li>
+    </ul>
+    <p>Jellyfin lets any website connect by default. If your server, or a reverse proxy in front of it, limits which websites may connect (CORS), allow <code>https://gregular.tv</code>.</p>
+
+    <h2>Watching</h2>
+    <ul>
+      <li><strong>On a phone or tablet:</strong> tap the picture for the controls, and swipe across it to change channel. Every channel's now and next is under the picture.</li>
+      <li><strong>With a keyboard:</strong> ← and → change channel, I shows what's on, L opens the channel list, S opens Settings, Space pauses (and again jumps back to live), Esc steps back to the guide and then your servers, and digits type a channel number.</li>
+      <li><strong>Sound:</strong> browsers start videos silently until you've tapped or pressed a key. Tap "Tap for sound" if you see it.</li>
+    </ul>
+
+    <h2>If a programme won't play</h2>
+    <p>Open Settings while it's on: "Trouble with…" offers a lower quality for that programme, which is quicker for your server to convert. Turning on "Show playback diagnostics" shows what the server is doing.</p>
+
+    <h2>Your privacy</h2>
+    <p>Nothing you watch, and nothing about your server, goes anywhere but your own browser and server. See <a href="privacy.html">Privacy</a>.</p>
+  </article>
+</main>
+</body>
+</html>

@@ -11,10 +11,13 @@ import GregularCore
 /// `PrivacyTests` checks it. See PLAN.md §3.
 public struct JellyfinClient: Sendable {
     public let credentials: Credentials
+    /// What this device can play, for Jellyfin to choose between the file as it is and a conversion.
+    public let formats: PlayableFormats
     private let api: JellyfinAPI
 
-    public init(credentials: Credentials, identity: ClientIdentity, transport: any HTTPTransport = URLSessionTransport.shared) {
+    public init(credentials: Credentials, identity: ClientIdentity, formats: PlayableFormats, transport: any HTTPTransport) {
         self.credentials = credentials
+        self.formats = formats
         api = JellyfinAPI(server: credentials.serverURL, identity: identity,
                           token: credentials.accessToken, transport: transport)
     }
@@ -34,7 +37,7 @@ public struct JellyfinClient: Sendable {
         return try await LibraryQuery(api: api, userID: credentials.userID).fetchAll(inLibrary: library.id)
     }
 
-    /// Asks Jellyfin how to play an item on Apple TV, and returns the URL.
+    /// Asks Jellyfin how to play an item on this device, and returns the URL.
     /// - Parameter maxBitrate: the quality cap in bits per second (see `StreamingQuality`).
     public func playbackSource(
         for itemID: String, maxBitrate: Int = StreamingQuality.maximumBitrate
@@ -47,7 +50,8 @@ public struct JellyfinClient: Sendable {
                 URLQueryItem(name: "mediaSourceId", value: itemID),
                 URLQueryItem(name: "subtitleStreamIndex", value: "-1"),
             ],
-            body: PlaybackInfoRequest(itemID: itemID, userId: credentials.userID, maxBitrate: maxBitrate))
+            body: PlaybackInfoRequest(itemID: itemID, userId: credentials.userID, formats: formats, maxBitrate: maxBitrate,
+                                      secure: credentials.serverURL.scheme?.lowercased() == "https"))
 
         guard let source = info.mediaSources.first else { throw JellyfinError.noPlayableSource(itemID: itemID) }
 
@@ -61,6 +65,9 @@ public struct JellyfinClient: Sendable {
         throw JellyfinError.noPlayableSource(itemID: itemID)
     }
 
+    /// The fastest a measurement reports: 2 Gbps, far beyond any stream.
+    static let fastestMeasured = 2_000_000_000
+
     /// Measures how fast the server can send data right now, in bits per
     /// second, by downloading `bytes` of test data from Jellyfin's bitrate
     /// test endpoint. It reflects both the network and how busy the server is.
@@ -73,7 +80,9 @@ public struct JellyfinClient: Sendable {
         let start = ContinuousClock.now
         try await api.call("GET", "/Playback/BitrateTest", query: [URLQueryItem(name: "size", value: String(bytes))])
         let seconds = max(0.001, (ContinuousClock.now - start) / .seconds(1))
-        return Int(Double(bytes * 8) / seconds)
+        // Capped: a server on the same machine can measure faster than a
+        // 32-bit Int holds (WebAssembly's), far beyond any stream's need.
+        return Int(min(Double(bytes * 8) / seconds, Double(Self.fastestMeasured)))
     }
 
     /// Stops the server's transcode for a play session. Call it when changing

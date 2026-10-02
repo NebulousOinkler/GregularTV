@@ -76,8 +76,13 @@ public final class WatchModel {
     /// The picture's fade out and back in when changing channel.
     public static let channelChangeFade: TimeInterval = 0.4
 
-    public init(surfer: ChannelSurfer) {
+    /// How the banner's hint names the buttons: the Siri Remote's, or a
+    /// keyboard's on the web (`KeyboardControls.names`).
+    @ObservationIgnored public let buttonNames: RemoteControls.ButtonNames
+
+    public init(surfer: ChannelSurfer, buttonNames: RemoteControls.ButtonNames = .siriRemote) {
         self.surfer = surfer
+        self.buttonNames = buttonNames
     }
 
     // MARK: - The screen appearing and going
@@ -242,7 +247,7 @@ public final class WatchModel {
         // from its start to its end, not just the part playing.
         let playing = player.airing.map { $0.isFiller ? $0 : schedule.programme(at: $0.start) }
         let airing = surfer.preview.map { $0.programme(at: date) } ?? playing
-        let hint = RemoteControls.hint(for: RemoteControls.watching, paused: player.status.isPaused)
+        let hint = RemoteControls.hint(for: RemoteControls.watching, paused: player.status.isPaused, names: buttonNames)
         let diagnostics = player.diagnosticsEnabled && surfer.preview == nil
             ? [player.streamDescription, player.diagnostics].compactMap { $0 } : []
         guard let airing else {

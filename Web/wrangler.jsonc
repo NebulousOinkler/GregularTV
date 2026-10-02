@@ -1,0 +1,19 @@
+// gregular.tv on Cloudflare Workers, as static files only: no server code
+// runs, and nothing but these files is served (WEB_PLAN.md, *Hosting*).
+// Deployed by .github/workflows/web.yml from Web/dist (scripts/build-web.sh).
+{
+  "$schema": "https://unpkg.com/wrangler@4/config-schema.json",
+  "name": "gregular-tv",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./dist",
+    // The app is one page: an unknown address shows it rather than an error.
+    "not_found_handling": "single-page-application",
+    "html_handling": "auto-trailing-slash"
+  },
+  // No request logs or traces are kept by the Worker.
+  "observability": { "enabled": false },
+  // Also at gregular-tv.<account>.workers.dev, to check a deploy before the domain is set up.
+  "workers_dev": true,
+  "preview_urls": true
+}

@@ -9,27 +9,6 @@ import Testing
 /// (below), so even a transport that gets them wrong can't pass one on.
 @Suite(.serialized)
 struct TransportConformanceTests {
-    /// Every URLSession-based transport, made with the stand-in servers.
-    static let transports: [String: @Sendable (URLSessionConfiguration) -> any HTTPTransport] = [
-        "URLSessionTransport": { URLSessionTransport(configuration: $0) },
-    ]
-    static let names = Array(transports.keys)
-
-    private func transport(_ name: String) -> any HTTPTransport {
-        let configuration = URLSessionTransport.makeConfiguration()
-        configuration.protocolClasses = [StandInServer.self]
-        return Self.transports[name]!(configuration)
-    }
-
-    private func send(_ name: String, _ url: String, body: Data? = nil) async throws -> (Data, HTTPURLResponse) {
-        var request = URLRequest(url: URL(string: url)!)
-        if let body {
-            request.httpMethod = "POST"
-            request.httpBody = body
-        }
-        return try await transport(name).send(request)
-    }
-
     // MARK: Redirects
 
     @Test(arguments: [
@@ -46,26 +25,76 @@ struct TransportConformanceTests {
         #expect(TransportRules.allowsRedirect(from: URL(string: from)!, to: URL(string: to)!) == allowed)
     }
 
+    // MARK: JellyfinAPI checks every reply too
+
+    /// A transport that breaks the rules: it hands back whatever it's told to.
+    private struct CarelessTransport: HTTPTransport {
+        let answeredFrom: URL?
+        let size: Int
+
+        func send(_ request: ServerRequest) async throws -> ServerReply {
+            ServerReply(url: answeredFrom ?? request.url, status: 200, body: Data(repeating: 0x20, count: size))
+        }
+    }
+
+    private func publicInfo(through transport: CarelessTransport) async throws {
+        _ = try await JellyfinServer(url: URL(string: "https://tv.example")!, identity: JellyfinFixtures.identity,
+                                     transport: transport).publicInfo()
+    }
+
+    @Test func aReplyFromAnotherServerIsNeverUsed() async {
+        await #expect(throws: JellyfinError.invalidResponse) {
+            try await publicInfo(through: CarelessTransport(answeredFrom: URL(string: "https://elsewhere.example/System/Info/Public"), size: 2))
+        }
+    }
+
+    @Test func aReplyTooLargeIsNeverUsed() async {
+        await #expect(throws: JellyfinError.responseTooLarge) {
+            try await publicInfo(through: CarelessTransport(answeredFrom: nil, size: TransportRules.largestResponse + 1))
+        }
+    }
+}
+
+#if canImport(Darwin)
+// URLSession's transport, on Apple platforms (other platforms' transports
+// are checked where they're built: `FetchTransport` in Web/).
+extension TransportConformanceTests {
+    /// Every URLSession-based transport, made with the stand-in servers.
+    static let transports: [String: @Sendable (URLSessionConfiguration) -> any HTTPTransport] = [
+        "URLSessionTransport": { URLSessionTransport(configuration: $0) },
+    ]
+    static let names = Array(transports.keys)
+
+    private func transport(_ name: String) -> any HTTPTransport {
+        let configuration = URLSessionTransport.makeConfiguration()
+        configuration.protocolClasses = [StandInServer.self]
+        return Self.transports[name]!(configuration)
+    }
+
+    private func send(_ name: String, _ url: String, body: Data? = nil) async throws -> ServerReply {
+        try await transport(name).send(ServerRequest(method: body == nil ? "GET" : "POST", url: URL(string: url)!, body: body))
+    }
+
     @Test(arguments: names)
     func aSignInRedirectedElsewhereIsNotSentOn(transport: String) async throws {
         StandInServer.reset()
-        let (_, response) = try await send(transport, "https://tv.example/elsewhere", body: Data(#"{"Pw":"secret"}"#.utf8))
-        #expect(response.statusCode == 307, "Stopped at the redirect")
+        let reply = try await send(transport, "https://tv.example/elsewhere", body: Data(#"{"Pw":"secret"}"#.utf8))
+        #expect(reply.status == 307, "Stopped at the redirect")
         #expect(StandInServer.hosts == ["tv.example"], "Nothing reached the other host")
     }
 
     @Test(arguments: names)
     func aRedirectOnTheSameServerIsFollowed(transport: String) async throws {
-        let (data, response) = try await send(transport, "https://tv.example/moved")
-        #expect(response.statusCode == 200 && response.url?.path() == "/small" && data.count == 300_000)
+        let reply = try await send(transport, "https://tv.example/moved")
+        #expect(reply.status == 200 && reply.url.path() == "/small" && reply.body.count == 300_000)
     }
 
     // MARK: Reply size
 
     @Test(arguments: names)
     func anOrdinaryReplyArrivesWhole(transport: String) async throws {
-        let (data, response) = try await send(transport, "https://tv.example/small")
-        #expect(response.statusCode == 200 && data == Data(repeating: 7, count: 300_000))
+        let reply = try await send(transport, "https://tv.example/small")
+        #expect(reply.status == 200 && reply.body == Data(repeating: 7, count: 300_000))
     }
 
     @Test(arguments: names)
@@ -92,36 +121,6 @@ struct TransportConformanceTests {
         #expect(config.httpShouldSetCookies == false)
         #expect(config.urlCredentialStorage == nil)
         #expect(config.requestCachePolicy == .reloadIgnoringLocalCacheData)
-    }
-
-    // MARK: JellyfinAPI checks every reply too
-
-    /// A transport that breaks the rules: it hands back whatever it's told to.
-    private struct CarelessTransport: HTTPTransport {
-        let answeredFrom: URL?
-        let size: Int
-
-        func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
-            let response = HTTPURLResponse(url: answeredFrom ?? request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!
-            return (Data(repeating: 0x20, count: size), response)
-        }
-    }
-
-    private func publicInfo(through transport: CarelessTransport) async throws {
-        _ = try await JellyfinServer(url: URL(string: "https://tv.example")!, identity: JellyfinFixtures.identity,
-                                     transport: transport).publicInfo()
-    }
-
-    @Test func aReplyFromAnotherServerIsNeverUsed() async {
-        await #expect(throws: JellyfinError.invalidResponse) {
-            try await publicInfo(through: CarelessTransport(answeredFrom: URL(string: "https://elsewhere.example/System/Info/Public"), size: 2))
-        }
-    }
-
-    @Test func aReplyTooLargeIsNeverUsed() async {
-        await #expect(throws: JellyfinError.responseTooLarge) {
-            try await publicInfo(through: CarelessTransport(answeredFrom: nil, size: TransportRules.largestResponse + 1))
-        }
     }
 }
 
@@ -202,3 +201,4 @@ final class StandInServer: URLProtocol, @unchecked Sendable {
         Self.lock.withLock { Self.wasStopped = true }
     }
 }
+#endif

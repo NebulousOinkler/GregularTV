@@ -320,7 +320,9 @@ final class WalkthroughTests: XCTestCase {
         waitForWatching()
         openSettings()
         choose("Sign Out")
-        XCTAssertTrue(text("Sign out of localhost:8765?").waitForExistence(timeout: 3), "Signing out didn't ask first")
+        // The server's name once the main page has asked for it (the demo server's), its address until then.
+        let asked = text("Sign out of Demo Library?").waitForExistence(timeout: 3) || text("Sign out of localhost:8765?").exists
+        XCTAssertTrue(asked, "Signing out didn't ask first")
         capture("sign-out-asks")
         answerDialog("Cancel")
         XCTAssertTrue(text("Streaming quality").exists || button("Sign Out").exists, "Cancel didn't stay in Settings")

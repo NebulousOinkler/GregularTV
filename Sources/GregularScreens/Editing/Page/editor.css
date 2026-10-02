@@ -1,0 +1,28 @@
+:root { --bg: #111; --card: #1c1c1e; --line: #333; --text: #eee; --dim: #999; --accent: #4da3ff; --bad: #ff6b6b; --good: #5fd068; }
+@media (prefers-color-scheme: light) { :root { --bg: #f4f4f6; --card: #fff; --line: #ddd; --text: #111; --dim: #666; --accent: #0a64d8; } }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.4 -apple-system, system-ui, sans-serif; }
+main { max-width: 900px; margin: 0 auto; padding: 16px; }
+h1 { font-size: 1.5rem; margin: 8px 0 4px; }
+h2 { font-size: 1.15rem; margin: 0 0 8px; }
+p.dim, .dim { color: var(--dim); font-size: 0.9rem; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px; margin: 12px 0; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 6px 0; }
+label { display: inline-flex; gap: 6px; align-items: center; }
+input, select, textarea, button { font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
+input[type=text], input:not([type]) { min-width: 0; flex: 1 1 180px; }
+input[type=number] { width: 7em; }
+textarea { width: 100%; min-height: 360px; font-family: ui-monospace, Menlo, monospace; font-size: 13px; }
+button { cursor: pointer; background: var(--card); }
+button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+button.danger { color: var(--bad); }
+.chip { display: inline-flex; gap: 6px; align-items: center; border: 1px solid var(--line); border-radius: 999px; padding: 2px 4px 2px 10px; }
+.chip button { border: none; padding: 0 6px; background: none; }
+.tabs { display: flex; gap: 4px; margin: 12px 0; }
+.tabs button[aria-selected=true] { background: var(--accent); color: #fff; border-color: var(--accent); }
+.message { padding: 8px 12px; border-radius: 6px; margin: 8px 0; }
+.message.bad { background: color-mix(in srgb, var(--bad) 20%, transparent); }
+.message.good { background: color-mix(in srgb, var(--good) 20%, transparent); }
+.bar { position: sticky; bottom: 0; background: var(--bg); padding: 10px 0; border-top: 1px solid var(--line); display: flex; gap: 8px; align-items: center; }
+ul.preview { margin: 6px 0 0; padding-left: 18px; }
+[hidden] { display: none !important; }

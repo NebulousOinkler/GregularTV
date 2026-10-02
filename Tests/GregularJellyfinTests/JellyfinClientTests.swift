@@ -32,7 +32,7 @@ struct JellyfinLibraryTests {
                     #"{ "Id": "m2", "Name": "No runtime", "Type": "Movie" }"#,
                 ], total: 4))
             default:
-                Issue.record("Unexpected query \(request.url!)")
+                Issue.record("Unexpected query \(request.url)")
                 return (500, "")
             }
         }
@@ -175,6 +175,40 @@ struct JellyfinPlaybackTests {
         }
         #expect(try await JellyfinFixtures.client(mock).measureBandwidth(bytes: 1000) > 0)
         #expect(mock.requests.map { $0.queryValue("size") } == ["64000", "1000"])
+    }
+
+    /// A server on the same machine answers faster than a 32-bit Int
+    /// (WebAssembly's) can count: the measurement is capped, not a crash.
+    @Test func aBlindinglyFastServerIsCappedNotOverflowing() async throws {
+        mock.on("GET", "/Playback/BitrateTest") { request in
+            (200, String(repeating: "x", count: Int(request.queryValue("size")!)!))
+        }
+        let measured = try await JellyfinFixtures.client(mock).measureBandwidth(bytes: 3_000_000)
+        #expect(measured > 0 && measured <= JellyfinClient.fastestMeasured)
+    }
+
+    /// A browser plays H.264 and AAC in MP4, and from a plain http server
+    /// nothing as a file at all: an https page can't load one (mixed content).
+    @Test(arguments: [("https://tv.example", true), ("http://tv.local:8096", false)])
+    func aBrowserAsksForWhatItCanPlay(server: String, playsFiles: Bool) async throws {
+        mock.on("POST", "/Items/abc/PlaybackInfo") { request in
+            let profile = request.jsonBody["DeviceProfile"] as? [String: Any]
+            let direct = profile?["DirectPlayProfiles"] as? [[String: Any]] ?? []
+            #expect(direct.isEmpty == !playsFiles)
+            if playsFiles {
+                #expect(direct.first?["VideoCodec"] as? String == "h264")
+                #expect(direct.first?["AudioCodec"] as? String == "aac,mp3")
+            }
+            let transcoding = profile?["TranscodingProfiles"] as? [[String: Any]]
+            #expect(transcoding?.first?["VideoCodec"] as? String == "h264")
+            #expect(transcoding?.first?["AudioCodec"] as? String == "aac")
+            #expect(transcoding?.first?["MaxAudioChannels"] as? String == "2")
+            return (200, #"{ "MediaSources": [{ "Id": "s", "SupportsDirectPlay": true }] }"#)
+        }
+        let client = JellyfinClient(credentials: Credentials(serverURL: URL(string: server)!, userID: "user-1", accessToken: "t",
+                                                             deviceID: "d"),
+                                    identity: JellyfinFixtures.identity, formats: .browser(playsHEVC: false), transport: mock)
+        _ = try await client.playbackSource(for: "abc")
     }
 
     @Test func hlsUsesTranscodingURLUnderReverseProxyPath() async throws {

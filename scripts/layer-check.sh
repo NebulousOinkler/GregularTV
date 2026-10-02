@@ -17,6 +17,13 @@
 #                              Never imports (or links) GregularJellyfin: it
 #                              gets everything through GregularScreens (and
 #                              its sign-in storage from GregularKeychain).
+#   Web/Sources/GregularBrowser  the browser's side of GregularJellyfin and
+#                              GregularCore: fetch(), the sign-in vault, local
+#                              storage. Foundation, GregularCore,
+#                              GregularJellyfin and JavaScriptKit only.
+#   Web/Sources/GregularWeb    the web app: pages, <video>, the keyboard.
+#                              Like the Apple TV app, never imports
+#                              GregularJellyfin, and no SwiftUI or UIKit.
 #
 # Imports hold file by file: Package.swift and the Xcode project turn on
 # MemberImportVisibility, so a file can't use another module's extension
@@ -35,11 +42,13 @@ SCREENS_JELLYFIN='
 Sources/GregularScreens/App/AppModel.swift
 Sources/GregularScreens/App/LoginModel.swift
 Sources/GregularScreens/App/DemoCredentials.swift
+Sources/GregularScreens/App/ServerAccess.swift
 '
 #   AppModel.swift:         signs in and hands the client on as Core's interfaces,
 #                           and names the server for text on screen (serverName).
 #   LoginModel.swift:       the Jellyfin sign-in steps (Quick Connect, password).
 #   DemoCredentials.swift:  a pretend sign-in for screenshots (Debug only).
+#   ServerAccess.swift:     makes every server and client, with the platform's transport and formats.
 
 violations=$(
     grep -rn '^import ' Sources/GregularCore --include='*.swift' \
@@ -56,12 +65,16 @@ violations=$(
             echo "$SCREENS_JELLYFIN" | grep -qxF "$file" || echo "$line"
           done
     grep -rn '^import GregularJellyfin' App/GregularTV --include='*.swift' || true
+    grep -rn '^import ' Web/Sources/GregularBrowser --include='*.swift' \
+        | grep -vE ':import (Foundation|GregularCore|GregularJellyfin|JavaScriptKit|JavaScriptEventLoop|JavaScriptFoundationCompat)$' || true
+    grep -rn '^import ' Web/Sources/GregularWeb --include='*.swift' \
+        | grep -vE ':import (Foundation|Observation|GregularCore|GregularScreens|GregularBrowser|JavaScriptKit|JavaScriptEventLoop)$' || true
     # Nor does the Xcode project link it into the app: it comes in only
     # through GregularScreens and GregularKeychain.
     grep -n 'GregularJellyfin' App/GregularTV.xcodeproj/project.pbxproj | sed 's|^|App/GregularTV.xcodeproj/project.pbxproj:|' || true
     # Nor does text on screen name the server outside those files: it says
     # `AppModel.serverName`. (Comments may.)
-    grep -rn '"[^"]*Jellyfin' Sources/GregularScreens App/GregularTV --include='*.swift' \
+    grep -rn '"[^"]*Jellyfin' Sources/GregularScreens App/GregularTV Web/Sources/GregularWeb --include='*.swift' \
         | grep -vE '^[^:]+:[0-9]+:[[:space:]]*//' \
         | while IFS= read -r line; do
             file=${line%%:*}

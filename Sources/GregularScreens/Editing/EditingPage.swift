@@ -19,10 +19,9 @@ import Observation
 /// - the `Host` header must be an address this Apple TV is being reached
 ///   at, and any `Origin` must match it, so another web page can't use the
 ///   browser to reach it (DNS rebinding, cross-site requests);
-/// - what's sent in is checked exactly as a channel or set-times code is
-///   (`EditingDocument`, `ChannelLineup.adding`), and the page is told only
-///   what the Apple TV's own editors show: the library's genre, series, tag
-///   and film names, never the server's address, token or user.
+/// - only then is it answered, by `EditingAPI`, which checks what's sent
+///   in and tells the page only the library's genre, series, tag and film
+///   names, never the server's address, token or user.
 ///
 /// It's plain http, so on a network you don't trust, others there could see
 /// the code and the names. The Apple TV screen says so.
@@ -43,12 +42,12 @@ public final class EditingPage {
 
     /// Wrong codes so far, by the address they came from.
     private var wrongCodes: [String: Int] = [:]
-    private let app: AppModel
+    private let api: EditingAPI
     /// The `Host` values a request may carry: this Apple TV's addresses, with the port.
     private let hosts: Set<String>
 
     public init(app: AppModel, hosts: Set<String>, code: String? = nil) {
-        self.app = app
+        api = EditingAPI(app: app)
         self.hosts = hosts
         self.code = code ?? String(format: "%06d", Int.random(in: 0..<1_000_000))
     }
@@ -68,7 +67,9 @@ public final class EditingPage {
             return .text(405, "Use GET.")
         case (let method, let path) where path.hasPrefix("/api/"):
             if let refused = checkCode(request, from: address) { return refused }
-            return await answer(method, path, request.body)
+            let response = await api.answer(method, path, request.body)
+            if path == EditingAPI.savePath, response.status == 200 { lastSaved = .now }
+            return response
         default:
             return .text(404, "Not found.")
         }
@@ -76,59 +77,16 @@ public final class EditingPage {
 
     private func checkCode(_ request: HTTPRequest, from address: String) -> HTTPResponse? {
         let tooMany = "Close the editing screen on the Apple TV and open it again for a new code."
-        guard !isLocked else { return .json(Failure("Too many wrong codes. \(tooMany)"), status: 423) }
+        guard !isLocked else { return .json(EditingAPI.Failure("Too many wrong codes. \(tooMany)"), status: 423) }
         guard wrongCodes[address, default: 0] < Self.mostWrongCodes else {
-            return .json(Failure("Too many wrong codes from this device. \(tooMany)"), status: 423)
+            return .json(EditingAPI.Failure("Too many wrong codes from this device. \(tooMany)"), status: 423)
         }
         guard Self.same(request.headers["x-gregular-code"] ?? "", code) else {
             wrongCodes[address, default: 0] += 1
             if wrongCodes.values.reduce(0, +) >= Self.mostWrongCodesInAll { isLocked = true }
-            return .json(Failure("That isn't the code on the Apple TV."), status: 401)
+            return .json(EditingAPI.Failure("That isn't the code on the Apple TV."), status: 401)
         }
         return nil
-    }
-
-    private func answer(_ method: String, _ path: String, _ body: Data) async -> HTTPResponse {
-        switch (method, path) {
-        case ("GET", "/api/state"):
-            return state()
-        case ("POST", "/api/preview"):
-            do {
-                let entry = try JSONDecoder().decode(EditingDocument.ChannelEntry.self, from: body)
-                let channel = try entry.channel()
-                let (matching, upcoming) = await app.preview(channel)
-                return .json(Preview(matching: matching, upcoming: upcoming.map { Preview.Line(when: $0.when, title: $0.title) }))
-            } catch let problem as EditingDocument.Problem {
-                return .json(Failure(problem.description), status: 422)
-            } catch {
-                return .json(Failure("That isn't a channel: \(EditingDocument.describe(error))"), status: 422)
-            }
-        case ("POST", "/api/save"):
-            do {
-                let document = try EditingDocument.read(body)
-                if let problem = app.replaceUserChannels(with: document) { return .json(Failure(problem), status: 422) }
-                lastSaved = .now
-                return state()
-            } catch {
-                return .json(Failure("\(error)"), status: 422)
-            }
-        case (_, "/api/state"), (_, "/api/preview"), (_, "/api/save"):
-            return .text(405, "Wrong method.")
-        default:
-            return .text(404, "Not found.")
-        }
-    }
-
-    private func state() -> HTTPResponse {
-        let choices = app.libraryChoices
-        return .json(State(
-            document: app.userChannels,
-            library: .init(genres: choices.genres, series: choices.seriesNames, tags: choices.tags, films: choices.movieNames,
-                           firstYear: choices.years?.lowerBound, lastYear: choices.years?.upperBound),
-            channels: app.lineupChannels.map { .init(number: $0.number, name: $0.name) },
-            customNumbers: .init(from: CustomChannel.numbers.lowerBound, to: CustomChannel.numbers.upperBound),
-            timeZone: TimeZone.current.identifier,
-            mostConditions: CustomChannel.Rule.mostConditions))
     }
 
     /// Whether a connection from `address` (as text, IPv4 or IPv6) comes from
@@ -157,6 +115,67 @@ public final class EditingPage {
         let x = Array(a.utf8), y = Array(b.utf8)
         guard x.count == y.count else { return false }
         return zip(x, y).reduce(UInt8(0)) { $0 | ($1.0 ^ $1.1) } == 0
+    }
+}
+
+/// What the editing page asks (`/api/state`, `/api/preview`, `/api/save`),
+/// answered. `EditingPage` answers through it once a request from the home
+/// network has passed its checks; the web version, which opens the same
+/// page inside itself, answers through it directly.
+///
+/// What's sent in is checked exactly as a channel or set-times code is
+/// (`EditingDocument`, `ChannelLineup.adding`), and the page is told only
+/// what the app's own editors show: the library's genre, series, tag and
+/// film names, never the server's address, token or user.
+@MainActor public final class EditingAPI {
+    /// Saving replaces your channels and set times.
+    public static let savePath = "/api/save"
+    private let app: AppModel
+
+    public init(app: AppModel) {
+        self.app = app
+    }
+
+    public func answer(_ method: String, _ path: String, _ body: Data) async -> HTTPResponse {
+        switch (method, path) {
+        case ("GET", "/api/state"):
+            return state()
+        case ("POST", "/api/preview"):
+            do {
+                let entry = try JSONDecoder().decode(EditingDocument.ChannelEntry.self, from: body)
+                let channel = try entry.channel()
+                let (matching, upcoming) = await app.preview(channel)
+                return .json(Preview(matching: matching, upcoming: upcoming.map { Preview.Line(when: $0.when, title: $0.title) }))
+            } catch let problem as EditingDocument.Problem {
+                return .json(Failure(problem.description), status: 422)
+            } catch {
+                return .json(Failure("That isn't a channel: \(EditingDocument.describe(error))"), status: 422)
+            }
+        case ("POST", Self.savePath):
+            do {
+                let document = try EditingDocument.read(body)
+                if let problem = app.replaceUserChannels(with: document) { return .json(Failure(problem), status: 422) }
+                return state()
+            } catch {
+                return .json(Failure("\(error)"), status: 422)
+            }
+        case (_, "/api/state"), (_, "/api/preview"), (_, "/api/save"):
+            return .text(405, "Wrong method.")
+        default:
+            return .text(404, "Not found.")
+        }
+    }
+
+    private func state() -> HTTPResponse {
+        let choices = app.libraryChoices
+        return .json(State(
+            document: app.userChannels,
+            library: .init(genres: choices.genres, series: choices.seriesNames, tags: choices.tags, films: choices.movieNames,
+                           firstYear: choices.years?.lowerBound, lastYear: choices.years?.upperBound),
+            channels: app.lineupChannels.map { .init(number: $0.number, name: $0.name) },
+            customNumbers: .init(from: CustomChannel.numbers.lowerBound, to: CustomChannel.numbers.upperBound),
+            timeZone: TimeZone.current.identifier,
+            mostConditions: CustomChannel.Rule.mostConditions))
     }
 
     // MARK: - What it sends
