@@ -232,7 +232,7 @@ extension ScheduleAudit {
         let lineup = try ChannelLineup.bundled()
         let code = ScheduleCode("7KQM2-X9PDA")!
         let start = Date(timeIntervalSince1970: 1_790_000_000)
-        let f = DateFormatter(); f.dateFormat = "EEE HH:mm"; f.timeZone = ChannelSchedule.dayTimeZone
+        let f = DateFormatter(); f.dateFormat = "EEE HH:mm"; f.timeZone = DayBoundary.standard.timeZone
         for schedule in lineup.schedules(for: library, fillerPool: clips, code: code)
         where [1, 10, 14].contains(schedule.channel.number) {
             let programmes = schedule.programmes(from: start, to: start.addingTimeInterval(4 * 86_400)).filter { $0.start >= start }
@@ -242,7 +242,7 @@ extension ScheduleAudit {
                 let gap = p.slotEnd.timeIntervalSince(p.start) - p.item.duration
                 let again = seen[p.item.id].map { String(format: " SAME ITEM %.1f h ago", p.start.timeIntervalSince($0) / 3600) } ?? ""
                 // Long breaks, repeats, and the evening before each run boundary.
-                let hour = Calendar(identifier: .gregorian).dateComponents(in: ChannelSchedule.dayTimeZone, from: p.start).hour!
+                let hour = Calendar(identifier: .gregorian).dateComponents(in: DayBoundary.standard.timeZone, from: p.start).hour!
                 if gap > 30 * 60 || !again.isEmpty || hour >= 21 {
                     Self.line(String(format: "%@ %@ (%.0f min) break %.0f min%@", f.string(from: p.start), p.item.name, p.item.duration / 60, gap / 60, again))
                 }
@@ -278,5 +278,42 @@ extension ScheduleAudit {
                                  sameItem.map { String(format: "%+.1f", $0) }.joined(separator: " ")))
             }
         }
+    }
+}
+
+extension ScheduleAudit {
+    /// Breaks far longer than padding to the half hour gives: how many, and
+    /// where in the day they fall.
+    @Test func longBreaks() throws {
+        let (library, clips) = Self.realisticLibrary()
+        let lineup = try ChannelLineup.bundled()
+        let start = Date(timeIntervalSince1970: 1_790_000_000)
+        var slots = 0, long = 0, inTheDay = 0, pastTheBoundary = 0, endsOnTheBoundary = 0
+        var byChannel: [Int: Int] = [:]
+        var examples: [String] = []
+        for code in Self.codes(3, salt: 9) {
+            for schedule in lineup.schedules(for: library, fillerPool: clips, code: code) {
+                let programmes = schedule.programmes(from: start, to: start.addingTimeInterval(20 * 86_400)).filter { $0.start >= start }
+                for p in programmes {
+                    slots += 1
+                    let gap = p.slotEnd.timeIntervalSince(p.end)
+                    let run = schedule.run(containing: p.start)
+                    if p.slotEnd >= run.end, p.end > run.end.addingTimeInterval(-30 * 60) { endsOnTheBoundary += 1 }
+                    guard gap > 45 * 60 else { continue }
+                    long += 1
+                    byChannel[schedule.channel.number, default: 0] += 1
+                    if p.slotEnd > run.end { pastTheBoundary += 1 } else { inTheDay += 1 }
+                    if examples.count < 8 {
+                        examples.append(String(format: "ch%d %@ %@ (%.0f min) break %.0f min, %.1f h into the run",
+                                               schedule.channel.number, p.item.kind == .movie ? "film" : "episode", p.item.name,
+                                               p.item.duration / 60, gap / 60, p.start.timeIntervalSince(run.start) / 3600))
+                    }
+                }
+            }
+        }
+        Self.line("long breaks (> 45 min): \(long) of \(slots) slots; \(inTheDay) within a day, \(pastTheBoundary) after a day's last programme, past the boundary")
+        Self.line("days whose last programme ends within 30 min of the boundary: \(endsOnTheBoundary)")
+        Self.line("  by channel: " + byChannel.sorted { $0.key < $1.key }.map { "ch\($0.key) \($0.value)" }.joined(separator: ", "))
+        examples.forEach { Self.line("  " + $0) }
     }
 }
