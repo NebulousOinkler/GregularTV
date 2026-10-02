@@ -22,14 +22,14 @@ extension FixedProgramme {
     }
 
     /// "Mon" for 2, in the viewer's language (1 = Sunday … 7 = Saturday).
-    public static func weekdayName(_ weekday: Int) -> String {
+    private static func weekdayName(_ weekday: Int) -> String {
         Calendar.current.shortWeekdaySymbols[weekday - 1]
     }
 }
 
 extension FixedProgramme {
     /// 1110 → "6:30 PM", or "18:30", as every screen shows times.
-    public static func clockText(forMinutes minutes: Int, locale: Locale = .autoupdatingCurrent) -> String {
+    static func clockText(forMinutes minutes: Int, locale: Locale = .autoupdatingCurrent) -> String {
         let style = Date.FormatStyle(date: .omitted, time: .shortened, locale: locale, timeZone: .gmt)
         return Date(timeIntervalSinceReferenceDate: TimeInterval(minutes * 60)).formatted(style)
     }

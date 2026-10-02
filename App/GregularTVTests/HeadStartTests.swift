@@ -9,26 +9,11 @@ import Testing
 /// live, so the transcode can get ahead before playback reaches it.
 @MainActor @Suite(.serialized)
 struct HeadStartTests {
-    /// Answers PlaybackInfo with `reply`.
-    struct Server: HTTPTransport {
-        let reply: String
-
-        func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
-            let body = request.url!.path.hasSuffix("/PlaybackInfo") ? Data(reply.utf8) : Data()
-            return (body, HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
-        }
-    }
-
-    nonisolated static let directPlay = #"{ "MediaSources": [{ "Id": "s", "SupportsDirectPlay": true }], "PlaySessionId": "p" }"#
-    nonisolated static func hls(reasons: String) -> String {
-        #"{ "MediaSources": [{ "Id": "s", "SupportsDirectPlay": false, "TranscodingUrl": "/videos/ep/master.m3u8?TranscodeReasons=\#(reasons)" }], "PlaySessionId": "p" }"#
-    }
-
     /// A player `elapsed` seconds into an hour-long programme.
     private func player(reply: String, elapsed: TimeInterval = 600) throws -> ChannelPlayer {
         let items = [MediaItem(id: "ep", kind: .episode, name: "E", duration: 3600)]
         let schedule = try #require(try ChannelSchedule.testing(epoch: Date.now.addingTimeInterval(-elapsed), items: items).first)
-        let client = JellyfinClient.testing(Server(reply: reply))
+        let client = JellyfinClient.testing(FakeServer(reply: reply))
         return ChannelPlayer(schedule: schedule, streams: client, quality: .hd10)
     }
 
@@ -38,7 +23,7 @@ struct HeadStartTests {
     }
 
     @Test func aReencodedProgrammeStartsAheadOfLive() async throws {
-        let player = try player(reply: Self.hls(reasons: "VideoCodecNotSupported"))
+        let player = try player(reply: FakeServer.hls(reasons: "VideoCodecNotSupported"))
         player.tune()
         guard case .startingSoon(let at) = try await settledStatus(player) else {
             Issue.record("Expected a head start, not \(player.status)")
@@ -48,7 +33,7 @@ struct HeadStartTests {
         player.stop()
     }
 
-    @Test(arguments: [directPlay, hls(reasons: "ContainerNotSupported,AudioCodecNotSupported")])
+    @Test(arguments: [FakeServer.directPlay, FakeServer.hls(reasons: "ContainerNotSupported,AudioCodecNotSupported")])
     func aFileThatIsntReencodedStartsAtOnce(reply: String) async throws {
         let player = try player(reply: reply)
         player.tune()
@@ -57,7 +42,7 @@ struct HeadStartTests {
     }
 
     @Test func aReencodedProgrammeWithTooLittleLeftIsntStarted() async throws {
-        let player = try player(reply: Self.hls(reasons: "VideoCodecNotSupported"), elapsed: 3600 - 120)
+        let player = try player(reply: FakeServer.hls(reasons: "VideoCodecNotSupported"), elapsed: 3600 - 120)
         player.tune()
         guard case .betweenProgrammes(let until) = try await settledStatus(player) else {
             Issue.record("Expected Up next, not \(player.status)")
@@ -68,7 +53,7 @@ struct HeadStartTests {
     }
 
     @Test func aRemuxedProgrammeWithLittleLeftStillPlays() async throws {
-        let player = try player(reply: Self.hls(reasons: "ContainerNotSupported"), elapsed: 3600 - 120)
+        let player = try player(reply: FakeServer.hls(reasons: "ContainerNotSupported"), elapsed: 3600 - 120)
         player.tune()
         #expect(try await settledStatus(player) == .playing)
         player.stop()

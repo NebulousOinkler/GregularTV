@@ -29,6 +29,12 @@ import PackageDescription
 // A web version would reuse the first three and bring its own views,
 // PlayerDeck, HTTPTransport and CredentialStore. A radio app could reuse
 // GregularCore and GregularJellyfin.
+// Each file sees only what it imports, members of extensions included (by
+// default Swift lets one file's import leak extension members into every
+// file of the module). So the layers in scripts/layer-check.sh hold file by
+// file, checked by the compiler.
+let strictImports: [SwiftSetting] = [.enableUpcomingFeature("MemberImportVisibility")]
+
 let package = Package(
     name: "Gregular",
     platforms: [.tvOS(.v17), .macOS(.v14)],
@@ -39,12 +45,15 @@ let package = Package(
         .library(name: "GregularKeychain", targets: ["GregularKeychain"]),
     ],
     targets: [
-        .target(name: "GregularCore", resources: [.process("Resources")]),
-        .target(name: "GregularJellyfin", dependencies: ["GregularCore"]),
-        .target(name: "GregularScreens", dependencies: ["GregularCore", "GregularJellyfin"]),
-        .target(name: "GregularKeychain", dependencies: ["GregularJellyfin"]),
-        .testTarget(name: "GregularCoreTests", dependencies: ["GregularCore"]),
-        .testTarget(name: "GregularJellyfinTests", dependencies: ["GregularJellyfin", "GregularCore"]),
-        .testTarget(name: "GregularScreensTests", dependencies: ["GregularScreens", "GregularCore", "GregularJellyfin"]),
+        .target(name: "GregularCore", resources: [.process("Resources")], swiftSettings: strictImports),
+        .target(name: "GregularJellyfin", dependencies: ["GregularCore"], swiftSettings: strictImports),
+        .target(name: "GregularScreens", dependencies: ["GregularCore", "GregularJellyfin"], swiftSettings: strictImports),
+        .target(name: "GregularKeychain", dependencies: ["GregularJellyfin"], swiftSettings: strictImports),
+        .testTarget(name: "GregularCoreTests", dependencies: ["GregularCore"], swiftSettings: strictImports),
+        .testTarget(name: "GregularJellyfinTests", dependencies: ["GregularJellyfin", "GregularCore"], swiftSettings: strictImports),
+        // Tests/Shared is compiled into the app's tests too (the Xcode project).
+        .testTarget(name: "GregularScreensTests", dependencies: ["GregularScreens", "GregularCore", "GregularJellyfin"],
+                    path: "Tests", exclude: ["GregularCoreTests", "GregularJellyfinTests"],
+                    sources: ["GregularScreensTests", "Shared"], swiftSettings: strictImports),
     ]
 )

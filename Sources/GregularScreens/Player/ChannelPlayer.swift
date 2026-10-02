@@ -89,8 +89,6 @@ public final class ChannelPlayer {
         case failed(message: String, retryAt: Date)
 
         public var isPaused: Bool { if case .paused = self { true } else { false } }
-        public var isFailed: Bool { if case .failed = self { true } else { false } }
-        public var isBetweenProgrammes: Bool { if case .betweenProgrammes = self { true } else { false } }
     }
 
     /// A viewer's choice, from Settings, for just the programme on now.

@@ -111,7 +111,7 @@ struct GuideView: View {
                 // Scroll the current channel's row into existence, at the start
                 // of the window, then focus what's on now there.
                 proxy.scrollTo(currentNumber, anchor: .leading)
-                try? await Task.sleep(for: .milliseconds(100))
+                await FocusSettling.wait()
                 focusedID = startFocus
             }
         }

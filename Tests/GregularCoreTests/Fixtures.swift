@@ -56,3 +56,36 @@ enum Fixtures {
                 strategyID: strategy, seed: seed, padToMinutes: padTo)
     }
 }
+
+extension ChannelSchedule {
+    /// The programmes at set times from `start` to `end`, each as its window:
+    /// from its set time to the end of its slot. (For checking set times; the
+    /// app only ever asks for the schedule as it airs.)
+    func setTimeAirings(from start: Date, to end: Date) -> [Airing] {
+        setTimeWindows(from: milliseconds(since: channel.epoch, to: start), to: milliseconds(since: channel.epoch, to: end))
+            .map { window in
+                Airing(item: window.item, start: date(atMilliseconds: window.start),
+                       end: date(atMilliseconds: window.start + Self.milliseconds(of: window.item.duration)),
+                       slotEnd: date(atMilliseconds: window.end), isFiller: false)
+            }
+    }
+}
+
+#if os(macOS)
+extension Fixtures {
+    /// Runs one of the repository's `scripts/`, for the checks the app build
+    /// also runs. Its exit status, and everything it printed.
+    static func runScript(_ name: String) throws -> (status: Int32, log: String) {
+        let repo = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent().deletingLastPathComponent().deletingLastPathComponent()
+        let process = Process()
+        process.executableURL = repo.appendingPathComponent("scripts/\(name)")
+        let output = Pipe()
+        process.standardOutput = output
+        process.standardError = output
+        try process.run()
+        process.waitUntilExit()
+        return (process.terminationStatus, String(decoding: output.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self))
+    }
+}
+#endif

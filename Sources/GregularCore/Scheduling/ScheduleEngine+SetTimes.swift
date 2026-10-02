@@ -58,17 +58,6 @@ extension ChannelSchedule {
         return windows.filter { $0.end > start && $0.start < end }
     }
 
-    /// The programmes at set times from `start` to `end`, each as its window:
-    /// from its set time to the end of its slot.
-    public func setTimeAirings(from start: Date, to end: Date) -> [Airing] {
-        setTimeWindows(from: milliseconds(since: channel.epoch, to: start), to: milliseconds(since: channel.epoch, to: end))
-            .map { window in
-                Airing(item: window.item, start: date(atMilliseconds: window.start),
-                       end: date(atMilliseconds: window.start + Self.milliseconds(of: window.item.duration)),
-                       slotEnd: date(atMilliseconds: window.end), isFiller: false)
-            }
-    }
-
     /// Whether a household's set times cover this slot of the shared schedule:
     /// a `CoverRule` says so, or it's the last programme before a set time
     /// (or still on after one) that the rules don't allow next to it.

@@ -27,34 +27,62 @@ extension JellyfinClient {
     }
 }
 
-extension AppPreferences {
-    /// Preferences of their own, so tests never share them (or touch the app's).
-    static func testing() -> AppPreferences {
-        AppPreferences(defaults: UserDefaults(suiteName: "GregularTVTests-\(UUID())")!)
-    }
-}
+/// A pretend Jellyfin server for the player's tests. PlaybackInfo answers
+/// with `reply`, a speed test with 1000 bytes after `speedTestDelay`, and
+/// anything else with nothing. Every request is kept, to check what was asked.
+final class FakeServer: HTTPTransport, @unchecked Sendable {
+    /// PlaybackInfo for a file the Apple TV plays as it is.
+    static let directPlay = #"{ "MediaSources": [{ "Id": "s", "SupportsDirectPlay": true }], "PlaySessionId": "p" }"#
 
-extension ChannelSchedule {
-    /// Test channels numbered `numbers` (each seeded with its number), all
-    /// playing `items`, with `ads` as commercials if there are any.
-    static func testing(_ numbers: [Int] = [1], strategy: String = "shuffled-shows", epoch: Date? = nil,
-                        padTo: Int? = nil, items: [MediaItem], ads: [MediaItem] = [],
-                        playsCommercials: Bool = true) throws -> [ChannelSchedule] {
-        let channels = numbers.map { n in
-            var fields = [#""number": \#(n)"#, #""name": "C\#(n)""#, #""source": { "type": "all" }"#,
-                          #""strategy": "\#(strategy)""#, #""seed": \#(n)"#]
-            if let padTo { fields.append(#""padTo": \#(padTo)"#) }
-            if !ads.isEmpty { fields.append(#""filler": "shuffle""#) }
-            if let epoch { fields.append(#""epoch": "\#(ISO8601DateFormatter().string(from: epoch))""#) }
-            return "{ " + fields.joined(separator: ", ") + " }"
+    /// PlaybackInfo for a file Jellyfin would convert, for `reasons`.
+    static func hls(reasons: String) -> String {
+        #"{ "MediaSources": [{ "Id": "s", "SupportsDirectPlay": false, "TranscodingUrl": "/videos/s/master.m3u8?TranscodeReasons=\#(reasons)" }], "PlaySessionId": "p" }"#
+    }
+
+    let reply: String
+    let speedTestDelay: Duration
+    private let lock = NSLock()
+    private var log: [URLRequest] = []
+
+    init(reply: String = directPlay, speedTestDelay: Duration = .zero) {
+        self.reply = reply
+        self.speedTestDelay = speedTestDelay
+    }
+
+    var requests: [URLRequest] { lock.withLock { log } }
+    var playbackInfos: [URLRequest] { requests.filter { $0.url!.path.hasSuffix("/PlaybackInfo") } }
+    var speedTests: Int { requests.filter { $0.url!.path.hasSuffix("/Playback/BitrateTest") }.count }
+    /// The bitrate cap each PlaybackInfo asked for (0 if none), in order.
+    var requestedCaps: [Int] {
+        playbackInfos.map { request in
+            URLComponents(url: request.url!, resolvingAgainstBaseURL: false)?
+                .queryItems?.first { $0.name == "maxStreamingBitrate" }?.value.flatMap { Int($0) } ?? 0
         }
-        return try ChannelLineup.load(from: Data("[\(channels.joined(separator: ","))]".utf8))
-            .schedules(for: items, fillerPool: ads, playsCommercials: playsCommercials)
+    }
+
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        lock.withLock { log.append(request) }
+        var body = Data()
+        if request.url!.path.hasSuffix("/Playback/BitrateTest") {
+            try await Task.sleep(for: speedTestDelay)
+            body = Data(count: 1000)
+        } else if request.url!.path.hasSuffix("/PlaybackInfo") {
+            body = Data(reply.utf8)
+        }
+        return (body, HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil)!)
     }
 }
 
-/// Waits, checking every 10 ms, until `condition` holds or `seconds` pass.
-@MainActor func waitUntil(_ seconds: TimeInterval, _ condition: () -> Bool) async throws {
-    let deadline = Date.now.addingTimeInterval(seconds)
-    while !condition(), Date.now < deadline { try await Task.sleep(for: .milliseconds(10)) }
+/// A server that can't be reached.
+struct OfflineTransport: HTTPTransport {
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        throw URLError(.notConnectedToInternet)
+    }
+}
+
+/// A server that no longer accepts the sign-in.
+struct RevokedTransport: HTTPTransport {
+    func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+        (Data(), HTTPURLResponse(url: request.url!, statusCode: 401, httpVersion: nil, headerFields: nil)!)
+    }
 }
