@@ -39,12 +39,14 @@ struct GuideWindowTests {
     }
 
     @Test func firstCellIsClippedWhenAProgrammeIsAlreadyRunning() throws {
-        // One 22-minute episode repeated: at 00:40 it's 18 minutes in.
+        // One 22-minute episode repeated: 65 fill a day, leaving 10 minutes,
+        // which come first. So it airs at 00:10, 00:32…: the window opens at
+        // 00:30, during the one from 00:10.
         let schedule = try #require(ChannelSchedule(channel: Fixtures.channel(),
                                                     items: [Fixtures.episode("Show", s: 1, e: 1)]))
         let cells = GuideWindow(containing: epoch.addingTimeInterval(40 * 60), calendar: utc).cells(for: schedule)
         #expect(cells[0].startsBeforeWindow)
-        #expect(cells[0].programme.start == epoch.addingTimeInterval(22 * 60))
+        #expect(cells[0].programme.start == epoch.addingTimeInterval(10 * 60))
         #expect(!cells[1].startsBeforeWindow)
     }
 
