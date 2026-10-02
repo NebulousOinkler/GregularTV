@@ -17,15 +17,13 @@ public enum StreamingQuality: String, CaseIterable, Codable, Sendable, Identifia
     case sd
 
     public static let maximumBitrate = 120_000_000
-    /// Used in Auto if measuring the connection fails.
-    public static let fallbackAutoBitrate = 8_000_000
     /// The lowest option's cap (480p).
     public static let lowestBitrate = 1_500_000
 
     public var id: String { rawValue }
 
-    /// The fixed cap in bits per second, or nil for Auto, which measures the
-    /// connection instead.
+    /// The fixed cap in bits per second, or nil for Auto, which sends the
+    /// original until playback has trouble, then measures the connection.
     public var fixedBitrate: Int? {
         switch self {
         case .auto: nil

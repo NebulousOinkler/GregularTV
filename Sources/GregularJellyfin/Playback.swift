@@ -65,7 +65,10 @@ struct DeviceProfile: Encodable {
     struct TranscodingProfile: Encodable {
         let container = "mp4"           // fMP4 HLS, which carries HEVC as well as H.264
         let type = "Video"
-        let videoCodec = "hevc,h264"
+        /// Either is copied as it is. When the video has to be re-encoded,
+        /// Jellyfin makes the first: H.264, far less work for a small server
+        /// (a Raspberry Pi can't make HEVC in real time).
+        let videoCodec = "h264,hevc"
         let audioCodec = "aac,ac3,eac3"
         let `protocol` = "hls"
         let context = "Streaming"
@@ -88,10 +91,11 @@ struct DeviceProfile: Encodable {
     let transcodingProfiles = [TranscodingProfile()]
     /// Every subtitle format is declared as "External", meaning the client
     /// fetches it separately. The app never does, so no subtitles show, and
-    /// Jellyfin never has a reason to *burn* them into the video. Burning in
+    /// Jellyfin has no reason to *burn* them into the video. Burning in
     /// forces a full video transcode ("SubtitleCodecNotSupported"), which a
-    /// Raspberry Pi can't do in real time. Jellyfin 10.11 ignored
-    /// `SubtitleStreamIndex=-1` on its own; this makes it reliable.
+    /// Raspberry Pi can't do in real time. A second line of defence behind
+    /// `PlaybackInfoRequest.subtitleStreamIndex`: a format missing from this
+    /// list would still be burned in if a subtitle track were chosen.
     let subtitleProfiles = [
         "srt", "subrip", "ass", "ssa", "vtt", "webvtt", "sub", "smi", "ttml", "mov_text",
         "pgs", "pgssub", "dvdsub", "dvbsub", "vobsub", "idx",
@@ -117,12 +121,17 @@ struct PlaybackInfoRequest: Encodable {
     let allowVideoStreamCopy = true
     let allowAudioStreamCopy = true
     let autoOpenLiveStream = false
-    /// -1 means "no subtitles". Otherwise Jellyfin picks the file's default
-    /// subtitle track and burns it into the video. That forces a full video
-    /// transcode, which low-power servers such as a Raspberry Pi can't sustain.
+    /// The item's own media source, which has the item's ID. Jellyfin only
+    /// honours `subtitleStreamIndex` for a request that names its media source.
+    let mediaSourceId: String
+    /// -1 means "no subtitles". Without it (or without `mediaSourceId`),
+    /// Jellyfin picks the file's default subtitle track and may burn it into
+    /// the video. That forces a full video transcode, which low-power servers
+    /// such as a Raspberry Pi can't sustain.
     let subtitleStreamIndex = -1
 
-    init(userId: String, maxBitrate: Int) {
+    init(itemID: String, userId: String, maxBitrate: Int) {
+        mediaSourceId = itemID
         self.userId = userId
         deviceProfile = DeviceProfile(maxBitrate: maxBitrate)
         maxStreamingBitrate = maxBitrate

@@ -48,9 +48,10 @@ public struct JellyfinClient: Sendable {
             query: [
                 URLQueryItem(name: "userId", value: credentials.userID),
                 URLQueryItem(name: "maxStreamingBitrate", value: String(maxBitrate)),
+                URLQueryItem(name: "mediaSourceId", value: itemID),
                 URLQueryItem(name: "subtitleStreamIndex", value: "-1"),
             ],
-            body: PlaybackInfoRequest(userId: credentials.userID, maxBitrate: maxBitrate))
+            body: PlaybackInfoRequest(itemID: itemID, userId: credentials.userID, maxBitrate: maxBitrate))
 
         guard let source = info.mediaSources.first else { throw JellyfinError.noPlayableSource(itemID: itemID) }
 
