@@ -16,6 +16,10 @@ http://127.0.0.1:8765.
 The library is public-domain films and made-up TV shows, so screenshots show
 nothing anyone else owns and nothing from a real library. Every item plays the
 same plain background video. Only the endpoints the app calls are answered.
+
+It also has two libraries of made-up songs, "Karaoke" (sound files, with
+made-up lyrics timed to the music) and "Karaoke Videos". The songs play the
+app's own station-card music (Web/public/station-card.m4a), 15 seconds long.
 """
 
 import json
@@ -27,6 +31,7 @@ from urllib.parse import parse_qs, urlparse
 
 PORT = 8765
 VIDEO = os.path.join(os.path.dirname(__file__), "..", ".build", "demo", "background.mp4")
+SONG = os.path.join(os.path.dirname(__file__), "..", "Web", "public", "station-card.m4a")
 TICKS_PER_MINUTE = 60 * 10_000_000
 CHUNK = 1024 * 1024  # the most sent for an open-ended range
 
@@ -92,6 +97,35 @@ COMMERCIALS = [
 ]
 
 
+# Made-up songs: id, title, artists, album, lyrics (lines of (seconds, text)),
+# and whether each word is timed too. None for no lyrics.
+SONGS = [
+    ("song0", "Saturday Satellite", ["The Tin Canaries"], "Neon Nights", [
+        (1.0, "Spin me round the satellite"), (4.5, "Dancing on a Saturday night"),
+        (8.0, "Turn the stars up, hold on tight"), (11.5, "Sing it out till morning light")], True),
+    ("song1", "Moonlight Microphone", ["The Tin Canaries"], "Neon Nights", [
+        (2.0, "Moonlight on the microphone"), (6.0, "Every note to take me home"), (10.0, "La la la, we sing along")], False),
+    ("song2", "Hum Along", ["Velvet Comet", "Duet Partner"], None, None, False),
+]
+MUSIC_VIDEOS = [("mv0", "Splash Dance", ["The Disco Dolphins"], "Ocean Floor Disco")]
+SONG_SECONDS = 15
+
+
+def lyrics(lines, words):
+    """Jellyfin's lyrics for a song: each line, and each word's timing too if `words`."""
+    result = []
+    for index, (start, text) in enumerate(lines):
+        end = lines[index + 1][0] if index + 1 < len(lines) else SONG_SECONDS
+        line = {"Text": text, "Start": int(start * 10_000_000)}
+        if words:
+            spans = [match.span() for match in re.finditer(r"\S+", text)]
+            step = (end - start - 0.5) / len(spans)
+            line["Cues"] = [{"Position": a, "EndPosition": b, "Start": int((start + i * step) * 10_000_000)}
+                            for i, (a, b) in enumerate(spans)]
+        result.append(line)
+    return {"Metadata": {}, "Lyrics": result}
+
+
 def item(id, name, type, minutes, **extra):
     return {"Id": id, "Name": name, "Type": type, "RunTimeTicks": int(minutes * TICKS_PER_MINUTE), **extra}
 
@@ -116,6 +150,11 @@ def build_library():
 
 
 SERIES, PLAYABLE, COMMERCIAL_ITEMS = build_library()
+SONG_ITEMS = [item(id, title, "Audio", SONG_SECONDS / 60, Artists=artists, Album=album, HasLyrics=lines is not None,
+                   Container="m4a", ParentId="karaoke") for id, title, artists, album, lines, _ in SONGS]
+VIDEO_ITEMS = [item(id, title, "MusicVideo", 3, Artists=artists, Album=album, Container="mp4", ParentId="karaokevideos")
+               for id, title, artists, album in MUSIC_VIDEOS]
+LIBRARIES = [("commercials", "Commercials"), ("karaoke", "Karaoke"), ("karaokevideos", "Karaoke Videos")]
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -152,8 +191,11 @@ class Handler(BaseHTTPRequestHandler):
 
     def items_page(self, query):
         types = query.get("IncludeItemTypes", [""])[0].split(",")
-        if query.get("ParentId", [""])[0] == "commercials":
+        parent = query.get("ParentId", [""])[0]
+        if parent == "commercials":
             items = COMMERCIAL_ITEMS
+        elif parent in ("karaoke", "karaokevideos"):
+            items = [i for i in SONG_ITEMS + VIDEO_ITEMS if i["Type"] in types and i["ParentId"] == parent]
         elif types == ["Series"]:
             items = SERIES
         else:
@@ -166,8 +208,8 @@ class Handler(BaseHTTPRequestHandler):
         url = urlparse(self.path)
         query = parse_qs(url.query)
         if url.path == "/UserViews":
-            return self.send_json({"Items": [{"Id": "commercials", "Name": "Commercials", "Type": "CollectionFolder"}],
-                                   "TotalRecordCount": 1})
+            return self.send_json({"Items": [{"Id": id, "Name": name, "Type": "CollectionFolder"} for id, name in LIBRARIES],
+                                   "TotalRecordCount": len(LIBRARIES)})
         if url.path == "/Items":
             return self.send_json(self.items_page(query))
         if url.path == "/System/Info/Public":
@@ -182,14 +224,24 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(b"\0" * size)
             return
-        if re.fullmatch(r"/Videos/[^/]+/stream(\.\w+)?", url.path):
-            return self.send_video()
-        self.send_empty(404)
+        lyrics_for = re.fullmatch(r"/Audio/([^/]+)/Lyrics", url.path)
+        if lyrics_for:
+            song = next((s for s in SONGS if s[0] == lyrics_for.group(1) and s[4]), None)
+            return self.send_json(lyrics(song[4], song[5])) if song else self.send_empty(404)
+        return self.send_media(url.path) or self.send_empty(404)
 
     def do_HEAD(self):
-        if re.fullmatch(r"/Videos/[^/]+/stream(\.\w+)?", urlparse(self.path).path):
-            return self.send_video(head=True)
-        self.send_empty(404)
+        self.send_media(urlparse(self.path).path, head=True) or self.send_empty(404)
+
+    def send_media(self, path, head=False):
+        """A video or a song's file, if `path` asks for one. False if not."""
+        if re.fullmatch(r"/Videos/[^/]+/stream(\.\w+)?", path):
+            self.send_file(VIDEO, "video/mp4", head)
+        elif re.fullmatch(r"/Audio/[^/]+/stream(\.\w+)?", path):
+            self.send_file(SONG, "audio/mp4", head)
+        else:
+            return False
+        return True
 
     def do_POST(self):
         self.rfile.read(int(self.headers.get("Content-Length", "0") or 0))
@@ -198,15 +250,17 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_json({"AccessToken": "demo", "ServerId": "demo",
                                    "User": {"Id": "demo", "Name": "demo", "Policy": {"IsAdministrator": False}}})
         if path.endswith("/PlaybackInfo"):
-            return self.send_json({"MediaSources": [{"Id": "source", "SupportsDirectPlay": True, "Container": "mp4"}],
+            is_song = any(path == f"/Items/{song['Id']}/PlaybackInfo" for song in SONG_ITEMS)
+            return self.send_json({"MediaSources": [{"Id": "source", "SupportsDirectPlay": True,
+                                                     "Container": "m4a" if is_song else "mp4"}],
                                    "PlaySessionId": "demo"})
         self.send_empty()  # capabilities, logout
 
     def do_DELETE(self):
         self.send_empty()  # stop transcoding: nothing to stop
 
-    def send_video(self, head=False):
-        size = os.path.getsize(VIDEO)
+    def send_file(self, file_path, content_type, head=False):
+        size = os.path.getsize(file_path)
         start, end = 0, size - 1
         match = re.match(r"bytes=(\d*)-(\d*)", self.headers.get("Range", ""))
         if match:
@@ -220,7 +274,7 @@ class Handler(BaseHTTPRequestHandler):
                 start = max(0, size - int(match.group(2)))
         end = min(end, size - 1)
         self.send_response(206 if match else 200)
-        self.send_header("Content-Type", "video/mp4")
+        self.send_header("Content-Type", content_type)
         self.send_header("Accept-Ranges", "bytes")
         self.send_header("Content-Length", str(end - start + 1))
         if match:
@@ -228,7 +282,7 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         if head:
             return
-        with open(VIDEO, "rb") as file:
+        with open(file_path, "rb") as file:
             file.seek(start)
             self.wfile.write(file.read(end - start + 1))
 

@@ -27,6 +27,20 @@ public struct FetchTransport: HTTPTransport {
     }
 
     @MainActor private static func fetch(_ request: ServerRequest) async throws -> ServerReply {
+        let (response, controller) = try await start(request, largest: TransportRules.largestResponse)
+        let status = Int(response.status.number ?? 0)
+        var body = Data()
+        try await read(response, largest: TransportRules.largestResponse, abortingWith: controller) { chunk in
+            body.append(Data.construct(from: chunk.jsValue) ?? Data())
+        }
+        // Not followed, so a reply always comes from where it was sent.
+        return ServerReply(url: request.url, status: status, body: body)
+    }
+
+    /// Sends `request` and waits for the reply to start. A reply announced
+    /// as larger than `largest` is turned down before anything arrives.
+    /// - Returns: the response, and the controller that aborts it.
+    @MainActor static func start(_ request: ServerRequest, largest: Int) async throws -> (response: JSObject, controller: JSObject) {
         let controller = JSObject.global.AbortController.function!.new()
         let options = Self.options(for: request)
         options["signal"] = controller.signal
@@ -44,16 +58,11 @@ public struct FetchTransport: HTTPTransport {
         } catch {
             throw Self.failure(error)
         }
-        let status = Int(response.status.number ?? 0)
-        // A size the server announces up front is turned down before anything arrives.
-        if let length = response.headers.object?.get!("content-length").string.flatMap(Int.init),
-           length > TransportRules.largestResponse {
+        if let length = response.headers.object?.get!("content-length").string.flatMap(Int.init), length > largest {
             _ = controller.abort!()
             throw JellyfinError.responseTooLarge
         }
-        let body = try await Self.read(response, abortingWith: controller)
-        // Not followed, so a reply always comes from where it was sent.
-        return ServerReply(url: request.url, status: status, body: body)
+        return (response, controller)
     }
 
     /// `fetch()`'s options for `request`.
@@ -72,25 +81,35 @@ public struct FetchTransport: HTTPTransport {
         return options
     }
 
-    /// The reply's body, a chunk at a time, stopped once it's over the limit.
-    @MainActor private static func read(_ response: JSObject, abortingWith controller: JSObject) async throws -> Data {
-        guard let stream = response.body.object else { return Data() }
+    /// The reply's body, a chunk (a `Uint8Array`) at a time, stopped once
+    /// it's over `largest` bytes, or when the task is cancelled.
+    @MainActor static func read(_ response: JSObject, largest: Int, abortingWith controller: JSObject,
+                                _ each: (JSObject) -> Void) async throws {
+        guard let stream = response.body.object else { return }
         let reader = stream.getReader!().object!
-        var data = Data()
-        while true {
-            let chunk: JSObject
-            do {
-                chunk = try await reader.read!().promised().object!
-            } catch {
-                throw Self.failure(error)
+        let abort = Promised(value: controller.jsValue)
+        var bytes = 0
+        try await withTaskCancellationHandler {
+            while true {
+                let chunk: JSObject
+                do {
+                    chunk = try await reader.read!().promised().object!
+                } catch {
+                    throw Self.failure(error)
+                }
+                if Task.isCancelled { throw CancellationError() }
+                if chunk.done.boolean == true { return }
+                guard let value = chunk.value.object else { continue }
+                bytes += Int(value.byteLength.number ?? 0)
+                if bytes > largest {
+                    _ = reader.cancel!()
+                    _ = controller.abort!()
+                    throw JellyfinError.responseTooLarge
+                }
+                each(value)
             }
-            if chunk.done.boolean == true { return data }
-            data.append(Data.construct(from: chunk.value) ?? Data())
-            if data.count > TransportRules.largestResponse {
-                _ = reader.cancel!()
-                _ = controller.abort!()
-                throw JellyfinError.responseTooLarge
-            }
+        } onCancel: {
+            Task { @MainActor in _ = abort.value.abort() }
         }
     }
 

@@ -7,7 +7,7 @@ import JavaScriptKit
 @MainActor enum Icon: String {
     case play, pause, previous, next, guide, list, info, settings, servers
     case fullScreen, exitFullScreen, close, back, plus, server, tv, warning, check
-    case signOut, chevronRight, sound, lock
+    case signOut, chevronRight, chevronUp, chevronDown, sound, lock
 
     /// The drawing: SVG path data, stroked.
     private var paths: [String] {
@@ -34,6 +34,8 @@ import JavaScriptKit
         case .check: ["M20 6L9 17l-5-5"]
         case .signOut: ["M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4", "M16 17l5-5-5-5", "M21 12H9"]
         case .chevronRight: ["M9 18l6-6-6-6"]
+        case .chevronUp: ["M18 15l-6-6-6 6"]
+        case .chevronDown: ["M6 9l6 6 6-6"]
         case .sound: ["M11 5L6 9H2v6h4l5 4z", "M15.5 8.5a5 5 0 0 1 0 7", "M19 5a10 10 0 0 1 0 14"]
         case .lock: ["M5 11h14v10H5z", "M8 11V7a4 4 0 0 1 8 0v4"]
         }

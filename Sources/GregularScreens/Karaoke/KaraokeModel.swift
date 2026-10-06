@@ -2,6 +2,11 @@ import Foundation
 import GregularCore
 import Observation
 
+extension SpecialMode.ID {
+    /// Karaoke's id in special-modes.jsonc, for the front ends' tables of screens.
+    public static let karaoke: Self = "karaoke"
+}
+
 /// Karaoke, the special mode: what its screens do, for each front end to
 /// draw in its own theme.
 ///
@@ -30,6 +35,21 @@ public final class KaraokeModel {
         case songs
         case search
         case queue
+
+        /// Its heading.
+        public var title: String {
+            switch self {
+            case .themes: KaraokeText.pickATheme
+            case .home: KaraokeText.karaoke
+            case .artists: HomeItem.artists.title
+            case .artist(let name): name
+            case .albums: HomeItem.albums.title
+            case .album(let album): album.title ?? KaraokeText.otherSongs
+            case .songs: HomeItem.songs.title
+            case .search: HomeItem.search.title
+            case .queue: HomeItem.queue.title
+            }
+        }
     }
 
     /// The home menu's items, in order.
@@ -87,6 +107,16 @@ public final class KaraokeModel {
     public var isOnStage: Bool { places.isEmpty && stage.state != .idle }
     /// Nothing queued, and no menus: the attract screen.
     public var isAttract: Bool { places.isEmpty && stage.state == .idle }
+    /// Whether `back()` goes anywhere: not from the theme boxes before a
+    /// theme is chosen, nor from the home menu with nothing on stage.
+    public var canGoBack: Bool {
+        switch place {
+        case .themes: hasChosenTheme
+        case .home: stage.state != .idle
+        default: true
+        }
+    }
+
     /// The look on screen: the highlighted theme box's, or the chosen theme's.
     public var shownTheme: KaraokeTheme { previewedTheme ?? theme }
 

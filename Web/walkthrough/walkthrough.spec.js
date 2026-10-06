@@ -194,3 +194,104 @@ test("Settings' switches say whether they're on", async ({ page }) => {
   await expect(diagnostics).toHaveAttribute("aria-checked", "true");
   await expect(page.getByRole("radio", { name: /Auto/ })).toHaveAttribute("aria-checked", "true");
 });
+
+/** Types `code` where a schedule code goes, in Settings. */
+async function enterCode(page, code) {
+  await page.keyboard.press("s");
+  const field = page.getByLabel("Enter a code, like 7KQM2-X9PDA");
+  await field.fill(code);
+  await field.press("Enter");
+}
+
+test("a keyword opens karaoke, which sings and goes back to live TV", async ({ page }) => {
+  test.setTimeout(90_000);
+  const problems = watchForProblems(page);
+  const songs = [];
+  page.on("request", (r) => { if (r.url().includes("/Audio/")) songs.push(new URL(r.url()).pathname); });
+  await signIn(page);
+  await enterCode(page, "Sweet Caroline");
+  await expect(page.getByRole("heading", { name: "Pick a Theme" })).toBeVisible();
+
+  // A highlighted box samples its theme across the page; choosing it goes on.
+  const karaoke = page.locator("main.karaoke");
+  await page.keyboard.press("ArrowRight");
+  await expect(karaoke).toHaveAttribute("data-theme", "karaokeBar");
+  await page.keyboard.press("Enter");
+  await expect(page.getByRole("heading", { name: "Karaoke" })).toBeVisible();
+
+  await page.getByRole("button", { name: "All Songs" }).click();
+  await expect(page.locator(".k-song, .k-list .k-item")).toHaveCount(4);
+  await expect(page.locator(".k-item", { hasText: "Splash Dance" }).locator(".k-badge")).toHaveText("Video");
+  await expect(page.locator(".k-item", { hasText: "Hum Along" }).locator(".k-badge")).toHaveText("No lyrics");
+  await page.locator(".k-item", { hasText: "Saturday Satellite" }).click();
+
+  // Loaded whole, from memory, then held on its title card for Play.
+  await expect(page.getByRole("button", { name: "Press Play to sing" })).toBeVisible();
+  expect(await page.locator("video.song-video").evaluate((video) => video.currentSrc)).toMatch(/^blob:/);
+  expect(songs.filter((path) => path.includes("/stream"))).toEqual(["/Audio/song0/stream.m4a"]);
+  await page.keyboard.press(" ");
+  const current = page.locator(".k-line-current");
+  await expect(current).toHaveText("Spin me round the satellite", { timeout: 10_000 });
+  // The words light up as they're sung, and the ball bounces over them.
+  await expect.poll(() => current.locator(".k-word").first().evaluate((word) => Number(word.style.getPropertyValue("--fill"))))
+    .toBeGreaterThan(0);
+  await expect(page.locator(".k-ball")).toBeVisible();
+
+  // Escape: karaoke's menu, over the song. Only Leave Karaoke leaves.
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("button", { name: "Back to the Song" })).toBeVisible();
+  await page.getByRole("button", { name: "Leave Karaoke" }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "Leave Karaoke" }).click();
+  await expect(page.locator(".now .channel-number")).not.toBeEmpty();
+  await expect(karaoke).toHaveCount(0);
+  expect(problems).toEqual([]);
+});
+
+test("karaoke's queue: the next song loads while one plays, and the queue runs out to the attract screen", async ({ page }) => {
+  test.setTimeout(90_000);
+  await signIn(page);
+  await enterCode(page, "SWEETCAROLINE");
+  await page.locator(".k-theme-box").first().click();
+  await page.getByRole("button", { name: "All Songs" }).click();
+  await page.locator(".k-item", { hasText: "Moonlight Microphone" }).click();
+  await expect(page.getByRole("button", { name: "Press Play to sing" })).toBeVisible();
+  await page.keyboard.press(" ");
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "All Songs" }).click();
+  await page.locator(".k-item", { hasText: "Splash Dance" }).click();
+  await expect(page.locator(".k-notice")).toHaveText(/Splash Dance.*is next/);
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: /Queue/ }).click();
+  await expect(page.locator(".k-queue-item")).toHaveText([/Splash Dance/]);
+  await page.getByRole("button", { name: "Remove Splash Dance" }).click();
+  await expect(page.getByText("No songs in the queue yet.")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await page.getByRole("button", { name: "Skip This Song" }).click();
+  // Nothing left: the attract screen, which any key leaves for the menu.
+  await expect(page.getByText("Pick a song!")).toBeVisible();
+  await page.keyboard.press("ArrowDown");
+  await expect(page.getByRole("button", { name: "Artists" })).toBeVisible();
+});
+
+// Clicked rather than tapped, as in the other phone tests: WebKit on a
+// computer doesn't make a tap into a click, as a phone's does.
+test("karaoke fits a phone", async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true });
+  const page = await context.newPage();
+  await signIn(page);
+  await enterCode(page, "sweet caroline");
+  const boxes = page.locator(".k-theme-box");
+  await expect(boxes).toHaveCount(4);
+  const [first, second] = [await boxes.nth(0).boundingBox(), await boxes.nth(1).boundingBox()];
+  expect(second.y).toBeGreaterThan(first.y + first.height - 1);   // one above another
+  await boxes.nth(2).click();
+  await expect(page.locator("main.karaoke")).toHaveAttribute("data-theme", "bubblegumPop");
+  await page.getByRole("button", { name: "Artists" }).click();
+  await page.locator(".k-item", { hasText: "The Tin Canaries" }).click();
+  await expect(page.getByRole("heading", { name: "The Tin Canaries" })).toBeVisible();
+  const overflow = await page.evaluate(() => document.scrollingElement.scrollWidth - innerWidth);
+  expect(overflow).toBeLessThanOrEqual(0);
+  await page.getByRole("button", { name: "Back" }).click();
+  await expect(page.getByRole("heading", { name: "Artists" })).toBeVisible();
+  await context.close();
+});

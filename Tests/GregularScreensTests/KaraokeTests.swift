@@ -323,6 +323,7 @@ struct KaraokeModelTests {
     @Test func itOpensOnTheThemesAndAThemeMustBeChosen() {
         let karaoke = model()
         #expect(karaoke.places == [.themes])
+        #expect(!karaoke.canGoBack && karaoke.place?.title == KaraokeText.pickATheme)
         karaoke.back()
         #expect(karaoke.places == [.themes], "Nothing behind it yet")
         karaoke.preview(.vegasLounge)
@@ -342,6 +343,7 @@ struct KaraokeModelTests {
         karaoke.back()
         karaoke.back()
         #expect(karaoke.places == [.home])
+        #expect(!karaoke.canGoBack)
         karaoke.back()
         #expect(karaoke.places == [.home], "Only Leave Karaoke leaves")
     }

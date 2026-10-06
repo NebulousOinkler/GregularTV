@@ -3,6 +3,7 @@ import GregularCore
 /// Karaoke's words, shared by every version of the app. Plain text, like
 /// all of GregularScreens' (a web front end escapes it).
 public enum KaraokeText {
+    public static let karaoke = "Karaoke"
     public static let pickATheme = "Pick a Theme"
     public static let pickASong = "Pick a song!"
     public static let anyButton = "Press any button"

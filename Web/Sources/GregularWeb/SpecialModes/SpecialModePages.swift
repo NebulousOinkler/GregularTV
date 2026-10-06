@@ -4,5 +4,7 @@ import GregularScreens
 /// (see `SpecialModeRegistry`). The web version only accepts the keywords
 /// of the modes listed here.
 @MainActor enum SpecialModePages {
-    static let all = SpecialModeScreens<any Page>([:])   // ← add each mode's page: ["its-id": { session in … }]
+    static let all = SpecialModeScreens<any Page>([
+        .karaoke: { KaraokePage(session: $0) },
+    ])
 }
