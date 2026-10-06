@@ -14,9 +14,11 @@ extension AppModel {
     static func forLaunch() -> AppModel {
         #if DEBUG
         if let demo = DemoCredentials.fromLaunchArguments() {
-            return AppModel(deviceName: deviceName, formats: .appleTV, store: demo, makeDecks: AVPlayerDeck.pair)
+            return AppModel(deviceName: deviceName, formats: .appleTV, store: demo, makeDecks: AVPlayerDeck.pair,
+                            specialModes: SpecialModeViews.all.registry)
         }
         #endif
-        return AppModel(deviceName: deviceName, formats: .appleTV, store: KeychainStore(), makeDecks: AVPlayerDeck.pair)
+        return AppModel(deviceName: deviceName, formats: .appleTV, store: KeychainStore(), makeDecks: AVPlayerDeck.pair,
+                        specialModes: SpecialModeViews.all.registry)
     }
 }

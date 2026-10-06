@@ -162,14 +162,12 @@ import JavaScriptKit
         form.attribute("novalidate", "")
         form.on("submit") { [weak self, app] event in
             _ = event.preventDefault!()
-            guard let self else { return }
-            guard let code = ScheduleCode(field.object.value.string ?? "") else {
-                self.codeError = SettingsText.badCode
-                self.draw()
-                return
+            let text = field.object.value.string ?? ""
+            Task {
+                guard let error = await app.enterCode(text) else { self?.dismiss(); return }
+                self?.codeError = error
+                self?.draw()
             }
-            app.setScheduleCode(code)
-            self.dismiss()
         }
         return form
     }

@@ -24,6 +24,8 @@
 #   Web/Sources/GregularWeb    the web app: pages, <video>, the keyboard.
 #                              Like the Apple TV app, never imports
 #                              GregularJellyfin, and no SwiftUI or UIKit.
+#   Tools/KeywordHash          a tool, not part of the app (keyword-hash).
+#                              Foundation and GregularCore only.
 #
 # Imports hold file by file: Package.swift and the Xcode project turn on
 # MemberImportVisibility, so a file can't use another module's extension
@@ -67,6 +69,8 @@ violations=$(
     grep -rn '^import GregularJellyfin' App/GregularTV --include='*.swift' || true
     grep -rn '^import ' Web/Sources/GregularBrowser --include='*.swift' \
         | grep -vE ':import (Foundation|GregularCore|GregularJellyfin|JavaScriptKit|JavaScriptEventLoop|JavaScriptFoundationCompat)$' || true
+    grep -rn '^import ' Tools/KeywordHash --include='*.swift' \
+        | grep -vE ':import (Foundation|GregularCore)$' || true
     grep -rn '^import ' Web/Sources/GregularWeb --include='*.swift' \
         | grep -vE ':import (Foundation|Observation|GregularCore|GregularScreens|GregularBrowser|JavaScriptKit|JavaScriptEventLoop)$' || true
     # Nor does the Xcode project link it into the app: it comes in only

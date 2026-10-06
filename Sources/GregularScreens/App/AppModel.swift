@@ -30,6 +30,8 @@ public final class AppModel {
         case mainPage(over: ChannelSurfer?)
         case loading
         case watching(ChannelSurfer)
+        /// A special mode, opened by its keyword in Settings, in place of live TV.
+        case special(SpecialModeSession)
         case failed(String)
     }
 
@@ -87,6 +89,8 @@ public final class AppModel {
     private let store: any CredentialStore
     private let preferences: AppPreferences
     private let makeDecks: @MainActor () -> [any PlayerDeck]
+    /// The special modes this front end can open (`SpecialModeScreens.registry`).
+    private let specialModes: SpecialModeRegistry
     private var client: JellyfinClient?
     /// The library, in memory only, so a new schedule code can rebuild the
     /// channels without fetching it again.
@@ -105,10 +109,13 @@ public final class AppModel {
     ///   - transport: the platform's network path (`HTTPTransport`).
     ///   - makeDecks: the two video decks for each channel player
     ///     (see `PlayerDeck`): AVFoundation on Apple TV.
+    ///   - specialModes: the special modes the front end has screens for; none unless given.
     public init(deviceName: String, formats: PlayableFormats, transport: any HTTPTransport, store: any CredentialStore,
-                preferences: AppPreferences, makeDecks: @escaping @MainActor () -> [any PlayerDeck]) {
+                preferences: AppPreferences, makeDecks: @escaping @MainActor () -> [any PlayerDeck],
+                specialModes: SpecialModeRegistry = SpecialModeRegistry()) {
         access = ServerAccess(deviceName: deviceName, formats: formats, transport: transport)
         self.makeDecks = makeDecks
+        self.specialModes = specialModes
         self.store = store
         self.preferences = preferences
         showsDiagnostics = preferences.showsDiagnostics
@@ -133,9 +140,10 @@ public final class AppModel {
     /// are kept in UserDefaults.
     public convenience init(deviceName: String, formats: PlayableFormats, store: any CredentialStore,
                             preferences: AppPreferences = AppPreferences(),
-                            makeDecks: @escaping @MainActor () -> [any PlayerDeck]) {
+                            makeDecks: @escaping @MainActor () -> [any PlayerDeck],
+                            specialModes: SpecialModeRegistry = SpecialModeRegistry()) {
         self.init(deviceName: deviceName, formats: formats, transport: URLSessionTransport.shared, store: store,
-                  preferences: preferences, makeDecks: makeDecks)
+                  preferences: preferences, makeDecks: makeDecks, specialModes: specialModes)
     }
     #endif
 
@@ -321,6 +329,49 @@ public final class AppModel {
         scheduleCode = code
         preferences.scheduleCode = code
         rebuildChannels()
+    }
+
+    /// What was typed where a schedule code goes, in Settings: a schedule
+    /// code to use, or a special mode's keyword, which opens it. Returns
+    /// what to say if it was neither or the mode can't open, or nil.
+    public func enterCode(_ text: String) async -> String? {
+        switch CodeEntry(text, specialModes: specialModes) {
+        case .schedule(let code):
+            setScheduleCode(code)
+            return nil
+        case .specialMode(let mode):
+            return await open(mode) ? nil : SettingsText.specialModeUnavailable
+        case nil:
+            return SettingsText.badCode
+        }
+    }
+
+    // MARK: - Special modes
+
+    /// Opens `mode` in place of live TV, with its programmes from the server
+    /// being watched. False if it can't: nothing's being watched, or the
+    /// server has none of its programmes.
+    private func open(_ mode: SpecialMode) async -> Bool {
+        guard case .watching = phase, let client else { return false }
+        let programmes = switch mode.catalogue {
+        case .wholeLibrary: library
+        case .library(let name): ((try? await client.fetchCollection(named: name)) ?? nil)?.filter { $0.duration > 0 } ?? []
+        }
+        // Still watching the same server, now it's fetched.
+        guard !programmes.isEmpty, case .watching = phase, self.client?.credentials.signInID == client.credentials.signInID
+        else { return false }
+        liveTV?.player.stop()
+        phase = .special(SpecialModeSession(mode: mode, programmes: programmes, streams: client) { [weak self] session in
+            self?.close(session)
+        })
+        return true
+    }
+
+    /// Leaves `session` for live TV, on the channel watched last.
+    private func close(_ session: SpecialModeSession) {
+        guard case .special(let open) = phase, open === session else { return }
+        guard let client else { return showMainPage() }
+        phase = watch(library: library, commercials: commercials, streams: client, preferring: preferences.lastChannelNumber)
     }
 
     // MARK: - Your channels and set times

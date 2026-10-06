@@ -1,0 +1,18 @@
+// This file holds the SHA-256 hashes of secret keywords, not the keywords
+// themselves. Typing one of the keywords where a schedule code goes, in
+// Settings, opens a special mode: another way of watching, which the app
+// doesn't mention anywhere else. Only the hashes are kept, so reading this
+// file (or the app built from it) doesn't give the keywords away.
+//
+// Each mode has:
+//   "id"             the mode's name; each front end lists its screens under it
+//   "keywordHashes"  the hashes of its keywords, each made with
+//                    `swift run keyword-hash "THE KEYWORD"` (Tools/KeywordHash)
+//   "library"        optional: the one library on the server it plays from;
+//                    without it, the whole library
+//
+// How a keyword is hashed, and everything else about special modes:
+// Sources/GregularCore/SpecialModes/SpecialModeRegistry.swift.
+{
+  "modes": []
+}

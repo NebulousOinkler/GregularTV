@@ -99,11 +99,14 @@ enum Fixture {
     /// playing on fake decks.
     /// - Parameter firstLaunch: as if just installed (no preferences yet),
     ///   which forgets what's in `store`; otherwise an app launched before.
-    @MainActor static func app(store: InMemoryCredentialStore = InMemoryCredentialStore(), firstLaunch: Bool = false) -> AppModel {
+    /// - Parameter transport: the network; by default, with no server on it.
+    @MainActor static func app(store: InMemoryCredentialStore = InMemoryCredentialStore(), firstLaunch: Bool = false,
+                               transport: any HTTPTransport = NoServer(),
+                               specialModes: SpecialModeRegistry = SpecialModeRegistry()) -> AppModel {
         let preferences = AppPreferences.testing()
         if !firstLaunch { preferences.scheduleCode = .standard }
-        return AppModel(deviceName: "Test Device", formats: .appleTV, transport: NoServer(), store: store,
-                        preferences: preferences, makeDecks: FakeDeck.pair)
+        return AppModel(deviceName: "Test Device", formats: .appleTV, transport: transport, store: store,
+                        preferences: preferences, makeDecks: FakeDeck.pair, specialModes: specialModes)
     }
 
     @MainActor static func settle(_ player: ChannelPlayer) async throws {

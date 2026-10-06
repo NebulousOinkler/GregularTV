@@ -28,6 +28,9 @@ struct RootView: View {
                 BrandedWait(message: "Loading your library…")
             case .watching:
                 EmptyView()   // drawn above
+            case .special(let session):
+                SpecialModeViews.all.screen(for: session)
+                    .id(ObjectIdentifier(session))
             case .failed(let message):
                 VStack(spacing: 32) {
                     Image(systemName: "exclamationmark.triangle").font(.system(size: 80))

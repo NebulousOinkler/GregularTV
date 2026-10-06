@@ -158,11 +158,8 @@ struct SettingsView: View {
     }
 
     private func applyTypedCode() {
-        guard let code = ScheduleCode(codeText) else {
-            codeError = SettingsText.badCode
-            return
+        Task {
+            if let error = await app.enterCode(codeText) { codeError = error } else { dismiss() }
         }
-        app.setScheduleCode(code)
-        dismiss()
     }
 }
