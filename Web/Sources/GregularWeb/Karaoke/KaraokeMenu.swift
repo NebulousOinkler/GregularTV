@@ -59,6 +59,7 @@ import JavaScriptKit
         case .artist, .album, .songs: "songs"
         case .search: "search"
         case .queue: "queue"
+        case .phones: "phones"
         }
     }
 
@@ -85,6 +86,7 @@ import JavaScriptKit
             })
         case .search: buildSearch()
         case .queue: redraws.append(Redraw { [weak self] in self?.drawQueue() })
+        case .phones: break   // Apple TV only: the web version doesn't offer it (`KaraokeModel.offersPhones`)
         }
     }
 

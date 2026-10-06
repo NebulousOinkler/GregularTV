@@ -35,6 +35,8 @@ public final class KaraokeModel {
         case songs
         case search
         case queue
+        /// Songs from phones: turning it on, and where phones go.
+        case phones
 
         /// Its heading.
         public var title: String {
@@ -48,6 +50,7 @@ public final class KaraokeModel {
             case .songs: HomeItem.songs.title
             case .search: HomeItem.search.title
             case .queue: HomeItem.queue.title
+            case .phones: HomeItem.phones.title
             }
         }
     }
@@ -55,7 +58,7 @@ public final class KaraokeModel {
     /// The home menu's items, in order.
     public enum HomeItem: Hashable, Sendable {
         case backToSong, restartSong, skipSong
-        case artists, albums, songs, search, surpriseMe, queue, themes, leave
+        case artists, albums, songs, search, surpriseMe, queue, phones, themes, leave
 
         public var title: String {
             switch self {
@@ -68,6 +71,7 @@ public final class KaraokeModel {
             case .search: "Search"
             case .surpriseMe: "Surprise Me!"
             case .queue: "Queue"
+            case .phones: KaraokeText.phones
             case .themes: "Change Theme"
             case .leave: KaraokeText.leave.action
             }
@@ -87,12 +91,19 @@ public final class KaraokeModel {
     public var query = ""
     /// Something to say, such as a song queued. Gone at the next change.
     public private(set) var notice: String?
+    /// The front end can let phones add songs (`LocalPage.songPicker`):
+    /// Apple TV can, as it serves pages on the home network; a browser can't.
+    public let offersPhones: Bool
+    /// Phones may add songs now. Off whenever karaoke opens: never remembered.
+    public private(set) var phonesAllowed = false
 
     private let session: SpecialModeSession
     private var hasChosenTheme = false
 
-    public init(session: SpecialModeSession, deck: any SongDeck) {
+    /// - Parameter offersPhones: whether this front end can let phones add songs.
+    public init(session: SpecialModeSession, deck: any SongDeck, offersPhones: Bool = false) {
         self.session = session
+        self.offersPhones = offersPhones
         songbook = Songbook(session.programmes, formats: session.formats)
         stage = KaraokeStage(deck: deck, media: session.media)
         stage.onUnplayable = { [weak self] song in
@@ -189,7 +200,7 @@ public final class KaraokeModel {
         case .loading, .ready: [.backToSong, .skipSong]
         case .singing, .paused: [.backToSong, .restartSong, .skipSong]
         }
-        return song + [.artists, .albums, .songs, .search, .surpriseMe, .queue, .themes, .leave]
+        return song + [.artists, .albums, .songs, .search, .surpriseMe, .queue] + (offersPhones ? [.phones] : []) + [.themes, .leave]
     }
 
     /// Carries out a home menu item (except Leave, which asks first: `leave()`).
@@ -204,6 +215,7 @@ public final class KaraokeModel {
         case .search: open(.search)
         case .surpriseMe: surpriseMe()
         case .queue: open(.queue)
+        case .phones: open(.phones)
         case .themes: open(.themes)
         case .leave: break
         }
@@ -240,6 +252,22 @@ public final class KaraokeModel {
         queue(song)
     }
 
+    // MARK: - Songs from phones
+
+    public func setPhonesAllowed(_ allowed: Bool) {
+        phonesAllowed = allowed && offersPhones
+    }
+
+    /// A song a phone picked (`SongPickerAPI`): it joins the queue, and the
+    /// TV says so without leaving whatever's on screen. False if the
+    /// songbook no longer has it.
+    func queueFromPhone(songID: String) -> Bool {
+        guard phonesAllowed, let song = songbook.songs.first(where: { $0.id == songID }) else { return false }
+        stage.add(song)
+        notice = KaraokeText.queuedFromPhone(song)
+        return true
+    }
+
     // MARK: - Leaving
 
     /// Asked before `leave()`.
@@ -247,6 +275,7 @@ public final class KaraokeModel {
 
     /// Back to live TV, letting go of every song.
     public func leave() {
+        phonesAllowed = false
         stage.stop()
         session.exit()
     }

@@ -385,4 +385,62 @@ final class WalkthroughTests: XCTestCase {
         XCTAssertTrue(text("channel list").waitForExistence(timeout: 20), "Leaving karaoke didn't go back to live TV")
         capture("karaoke-left")
     }
+
+    /// Songs from Phones: off until turned on in karaoke's menu; then a
+    /// phone on the home network, with the address and code on the TV,
+    /// adds a song (asking as the picker page does), and the TV says so.
+    func test9KaraokeFromAPhone() throws {
+        waitForWatching()
+        openSettings()
+        type("SWEETCAROLINE", into: "Enter a code")
+        guard text("Pick a Theme").waitForExistence(timeout: 10) else { return XCTFail("The keyword didn't open karaoke") }
+        press(.select)
+        guard choose("Songs from Phones") else { return }
+        XCTAssertTrue(button("Let phones add songs: Off").exists, "Phones should be off to begin with")
+        choose("Let phones add songs")
+        let code = app.staticTexts.matching(NSPredicate(format: "label MATCHES %@", "[0-9]{6}")).firstMatch
+        guard code.waitForExistence(timeout: 10) else { return XCTFail("No code for phones") }
+        let address = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "http://")).firstMatch.label
+        capture("karaoke-phones")
+
+        let status = phoneAsks(address, "POST", "/api/queue", code: code.label, body: #"{"id":"song0"}"#)
+        XCTAssertEqual(status, 200, "The phone's song wasn't taken")
+        XCTAssertTrue(text("A phone added").waitForExistence(timeout: 5), "The TV didn't say a phone added a song")
+        XCTAssertTrue(text("Pick a Theme").exists == false && button("Let phones add songs: On").exists,
+                      "A phone's song shouldn't move the TV off its menu")
+        press(.menu)
+        press(.menu)
+        XCTAssertTrue(text("Add songs from your phone").waitForExistence(timeout: 10), "The stage doesn't say where phones go")
+        capture("karaoke-phone-badge")
+        press(.menu)
+        choose("Leave Karaoke")
+        answerDialog("Leave Karaoke")
+        XCTAssertTrue(text("channel list").waitForExistence(timeout: 20), "Leaving karaoke didn't go back to live TV")
+    }
+
+    /// A request as a phone's browser sends it, to the page at `address`
+    /// ("http://192.168.1.20:8080"), and the status of the reply. Sent over
+    /// loopback, with the address as its Host: a test can't be given the
+    /// local-network permission a real phone's browser has.
+    private func phoneAsks(_ address: String, _ method: String, _ path: String, code: String, body: String) -> Int {
+        let host = String(address.dropFirst("http://".count))
+        guard let port = host.split(separator: ":").last.flatMap({ Int($0) }) else { return 0 }
+        let request = "\(method) \(path) HTTP/1.1\r\nHost: \(host)\r\nX-Gregular-Code: \(code)\r\n"
+            + "Content-Type: application/json\r\nContent-Length: \(body.utf8.count)\r\n\r\n\(body)"
+        var input: InputStream?
+        var output: OutputStream?
+        Stream.getStreamsToHost(withName: "127.0.0.1", port: port, inputStream: &input, outputStream: &output)
+        guard let input, let output else { return 0 }
+        input.open()
+        output.open()
+        defer { input.close(); output.close() }
+        let bytes = Array(request.utf8)
+        guard output.write(bytes, maxLength: bytes.count) == bytes.count else { return 0 }
+        var reply = [UInt8](repeating: 0, count: 4096)
+        let deadline = Date.now.addingTimeInterval(10)
+        while !input.hasBytesAvailable, Date.now < deadline { Thread.sleep(forTimeInterval: 0.05) }
+        let count = input.read(&reply, maxLength: reply.count)
+        guard count > 0, let line = String(decoding: reply.prefix(count), as: UTF8.self).split(separator: "\r\n").first else { return 0 }
+        return line.split(separator: " ").dropFirst().first.flatMap { Int($0) } ?? 0
+    }
 }

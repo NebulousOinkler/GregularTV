@@ -24,8 +24,8 @@ struct EditingPageTests {
     /// The address requests come from, unless a test says otherwise.
     static let phone = "192.168.1.30"
 
-    private func page(_ app: AppModel) -> EditingPage {
-        EditingPage(app: app, hosts: [Self.host], code: "123456")
+    private func page(_ app: AppModel) -> LocalPage {
+        LocalPage.editing(app: app, hosts: [Self.host], code: "123456")
     }
 
     // MARK: HTTP
@@ -65,7 +65,7 @@ struct EditingPageTests {
 
     @Test func wrongCodesShutOutThatDeviceThenLockThePage() async {
         let page = page(app())
-        for _ in 0..<EditingPage.mostWrongCodes {
+        for _ in 0..<LocalPage.mostWrongCodes {
             #expect(await page.handle(request("/api/state", code: "000000")).status == 401)
         }
         #expect(!page.isLocked, "One device can't lock everyone out")
@@ -73,23 +73,23 @@ struct EditingPageTests {
         #expect(await page.handle(request("/api/state", code: "123456"), from: "192.168.1.31").status == 200, "Another still gets in")
 
         // Wrong codes from many devices lock the page for everyone.
-        for device in 0..<(EditingPage.mostWrongCodesInAll / EditingPage.mostWrongCodes) {
-            for _ in 0..<EditingPage.mostWrongCodes {
+        for device in 0..<(LocalPage.mostWrongCodesInAll / LocalPage.mostWrongCodes) {
+            for _ in 0..<LocalPage.mostWrongCodes {
                 _ = await page.handle(request("/api/state", code: "000000"), from: "10.0.0.\(device)")
             }
         }
         #expect(page.isLocked)
         #expect(await page.handle(request("/api/state", code: "123456"), from: "192.168.1.31").status == 423)
-        #expect(EditingPage(app: app(), hosts: []).code.count == 6)
+        #expect(LocalPage.editing(app: app(), hosts: []).code.count == 6)
     }
 
     @Test func onlyTheHomeNetworkMayConnect() {
         for local in ["192.168.1.20", "10.0.0.5", "172.16.0.1", "172.31.255.255", "169.254.3.4", "127.0.0.1",
                       "::1", "fe80::1%en0", "fd12:3456::1", "::ffff:192.168.1.20"] {
-            #expect(EditingPage.isLocal(local), "\(local)")
+            #expect(LocalPage.isLocal(local), "\(local)")
         }
         for remote in ["8.8.8.8", "172.32.0.1", "100.64.0.1", "2001:4860::8888", "::ffff:8.8.8.8", "", "example.com"] {
-            #expect(!EditingPage.isLocal(remote), "\(remote)")
+            #expect(!LocalPage.isLocal(remote), "\(remote)")
         }
     }
 
@@ -109,7 +109,7 @@ struct EditingPageTests {
         let page = page(app)
         let response = await page.handle(request("/api/save", method: "POST", code: "123456", body: Self.document))
         #expect(response.status == 200)
-        #expect(page.lastSaved != nil)
+        #expect(page.lastChange != nil)
         let channel = try #require(app.customChannels.first)
         #expect(channel.name == "Laughs" && channel.rule.summary == "Comedy or Taskmaster, not Christmas")
         #expect(app.setTimes.first?.programmes.first?.days == ["Mon", "Feb 2"])
@@ -147,7 +147,7 @@ struct EditingPageTests {
     }
 }
 
-extension EditingPage {
+extension LocalPage {
     /// From the test's phone.
     func handle(_ request: HTTPRequest) async -> HTTPResponse {
         await handle(request, from: EditingPageTests.phone)

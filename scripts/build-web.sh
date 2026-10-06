@@ -4,9 +4,10 @@
 #
 #   Web/dist/index.html, app.css, js/, vendor/   Web/public, as they are
 #   Web/dist/app/                                 GregularWeb, compiled to WebAssembly
-#   Web/dist/editor.html, editor.css, editor.js   the channel editor: the same
-#                                                 files the Apple TV serves to phones
-#                                                 (Sources/GregularScreens/Editing/Page)
+#   Web/dist/editor.html, editor.css, editor.js,  the channel editor: the same
+#            local-page.js                        files the Apple TV serves to phones
+#                                                 (Sources/GregularScreens/Editing/Page,
+#                                                 and LocalPages/Page)
 #
 # Needs the swift.org toolchain and its WebAssembly SDK (README, *The web
 # version*). Debug builds have demo mode (?demoServer=…) and Debug options.
@@ -16,6 +17,7 @@ configuration=${1:-release}
 sdk=${GREGULAR_WASM_SDK:-swift-6.4.0-RELEASE_wasm}
 dist=$root/Web/dist
 page=$root/Sources/GregularScreens/Editing/Page
+shared=$root/Sources/GregularScreens/LocalPages/Page
 
 "$root/scripts/web-swift.sh" package --swift-sdk "$sdk" \
     --allow-writing-to-directory "$root/Web/.build/app" \
@@ -24,7 +26,7 @@ page=$root/Sources/GregularScreens/Editing/Page
 rm -rf "$dist"
 cp -R "$root/Web/public" "$dist"
 cp -R "$root/Web/.build/app" "$dist/app"
-cp "$page/editor.css" "$page/editor.js" "$dist/"
+cp "$page/editor.css" "$page/editor.js" "$shared/local-page.js" "$dist/"
 {
     cat <<'HEAD'
 <!doctype html>
@@ -39,7 +41,7 @@ cp "$page/editor.css" "$page/editor.js" "$dist/"
 <body>
 HEAD
     cat "$page/editor-body.html"
-    print '<script src="editor.js"></script>\n</body>\n</html>'
+    print '<script src="local-page.js"></script>\n<script src="editor.js"></script>\n</body>\n</html>'
 } > "$dist/editor.html"
 # The packaging step's own notes, and its Node.js and threads versions,
 # aren't part of the site. Its WASI shim comes from this site (vendor/),

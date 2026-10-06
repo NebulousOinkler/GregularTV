@@ -260,6 +260,8 @@
 @media (min-width: 40rem) {
   .k-theme-grid { grid-template-columns: repeat(2, 1fr); }
   .k-home-items { display: grid; grid-template-columns: repeat(2, 1fr); }
+  /* Leave on a row of its own, at the foot, below either column. */
+  .k-home-items .k-leave { grid-column: 1 / -1; }
   .k-card { padding: var(--space-7) var(--space-6); }
 }
 @media (min-width: 75rem) {

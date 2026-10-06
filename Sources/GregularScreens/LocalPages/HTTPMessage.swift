@@ -1,6 +1,7 @@
 import Foundation
 
-/// Just enough HTTP/1.1 for the editing page: one request per connection,
+/// Just enough HTTP/1.1 for the pages served on the home network
+/// (`LocalPage`): one request per connection,
 /// read in full and answered, then the connection closes. Everything the
 /// network hands over is untrusted, so sizes are capped and anything odd is
 /// refused rather than guessed at.

@@ -7,7 +7,7 @@ import SwiftUI
 struct EditingPageView: View {
     let app: AppModel
 
-    @State private var server = EditingServer()
+    @State private var server = LocalPageServer()
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -30,8 +30,8 @@ struct EditingPageView: View {
                 }
                 if let page = server.page {
                     SettingsRows.section("Then enter this code", footer: [
-                        page.isLocked ? "Locked after \(EditingPage.mostWrongCodesInAll) wrong codes. Close this screen and open it again for a new code." : nil,
-                        page.lastSaved.map { "Saved from the page at \($0.formatted(date: .omitted, time: .shortened)). Your channels have been rebuilt." },
+                        page.isLocked ? "Locked after \(LocalPage.mostWrongCodesInAll) wrong codes. Close this screen and open it again for a new code." : nil,
+                        page.lastChange.map { "Saved from the page at \($0.formatted(date: .omitted, time: .shortened)). Your channels have been rebuilt." },
                     ]) {
                         Text(page.isLocked ? "Locked" : page.code.chunked)
                             .font(.system(size: 96, weight: .heavy, design: .monospaced))
@@ -46,7 +46,7 @@ struct EditingPageView: View {
                 SettingsRows.row("Done") { dismiss() }
             }
         }
-        .onAppear { server.start(app: app) }
+        .onAppear { server.start { LocalPage.editing(app: app, hosts: $0) } }
         .onDisappear { server.stop() }
         .debugMenuKeyCloses()
     }

@@ -7,6 +7,8 @@ import SwiftUI
 struct KaraokeMenuView: View {
     let place: KaraokeModel.Place
     @Bindable var model: KaraokeModel
+    /// The song picker's server, for Songs from Phones.
+    let phones: LocalPageServer
     @FocusState private var focus: String?
     @State private var confirmingLeave = false
 
@@ -80,7 +82,47 @@ struct KaraokeMenuView: View {
             }
             .defaultFocus($focus, "search")
         case .queue: queue
+        case .phones: phonesPlace
         }
+    }
+
+    // MARK: - Songs from phones
+
+    /// The switch, and while it's on, where phones go and the code.
+    private var phonesPlace: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 28) {
+                item(KaraokeText.letPhonesAdd + ": " + SettingsText.onOff(model.phonesAllowed), key: "phones-switch") {
+                    sound(.choose)
+                    model.setPhonesAllowed(!model.phonesAllowed)
+                }
+                if model.phonesAllowed {
+                    switch phones.status {
+                    case .starting:
+                        ProgressView()
+                    case .failed(let message):
+                        Text(message).foregroundStyle(style.inkSoft)
+                    case .ready(let addresses):
+                        Text(KaraokeText.openOnPhone).font(.headline).foregroundStyle(style.inkSoft)
+                        ForEach(addresses, id: \.self) { address in
+                            Text(address).font(.system(size: 64, weight: .bold, design: .monospaced)).foregroundStyle(style.ink)
+                        }
+                        if let page = phones.page {
+                            Text(KaraokeText.thenCode).font(.headline).foregroundStyle(style.inkSoft)
+                            Text(page.isLocked ? "Locked" : page.code)
+                                .font(.system(size: 96, weight: .heavy, design: .monospaced)).foregroundStyle(style.accent)
+                            if page.isLocked {
+                                Text("Locked after \(LocalPage.mostWrongCodesInAll) wrong codes. Turn it off and on again for a new code.")
+                                    .foregroundStyle(style.inkSoft)
+                            }
+                        }
+                    }
+                }
+                Text(KaraokeText.phonesNote).font(.caption).foregroundStyle(style.inkSoft)
+            }
+            .padding(.vertical, 20)
+        }
+        .scrollClipDisabled()
     }
 
     // MARK: - Themes
@@ -124,15 +166,16 @@ struct KaraokeMenuView: View {
         return VStack(alignment: .leading, spacing: 24) {
             if let song { nowSinging(song) }
             LazyVGrid(columns: [GridItem(.flexible(), spacing: 32), GridItem(.flexible(), spacing: 32)], spacing: 24) {
-                ForEach(model.homeItems, id: \.self) { homeItem in
+                ForEach(model.homeItems.filter { $0 != .leave }, id: \.self) { homeItem in
                     let count = homeItem == .queue && !model.stage.queue.isEmpty ? " (\(model.stage.queue.count))" : ""
                     item(homeItem.title + count, key: "\(homeItem)", centred: true) {
-                        if homeItem == .leave { return confirmingLeave = true }
                         sound(homeItem == .surpriseMe ? .queue : .choose)
                         model.choose(homeItem)
                     }
                 }
             }
+            // Leave on a row of its own, at the foot, below either column.
+            item(KaraokeModel.HomeItem.leave.title, key: "leave", centred: true) { confirmingLeave = true }
         }
     }
 

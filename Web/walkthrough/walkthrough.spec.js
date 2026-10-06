@@ -295,3 +295,16 @@ test("karaoke fits a phone", async ({ browser }) => {
   await expect(page.getByRole("heading", { name: "Artists" })).toBeVisible();
   await context.close();
 });
+
+// The editing page's own script and the one it shares with every page the
+// Apple TV serves (local-page.js) both load, and it asks this app directly.
+test("the channel editor opens and makes a channel", async ({ page }) => {
+  const problems = watchForProblems(page);
+  await signIn(page);
+  await page.keyboard.press("s");
+  await page.getByRole("button", { name: "Edit Channels" }).click();
+  const editor = page.frameLocator("iframe[title='Your channels and set times']");
+  await editor.getByRole("button", { name: "Add a Channel" }).click();
+  await expect(editor.getByText("Not saved yet.")).toBeVisible();
+  expect(problems).toEqual([]);
+});

@@ -54,10 +54,14 @@ let package = Package(
         .target(name: "GregularCore", resources: [.embedInCode("Resources/channels.json"), .embedInCode("Resources/special-modes.jsonc")],
                 swiftSettings: strictImports),
         .target(name: "GregularJellyfin", dependencies: ["GregularCore"], swiftSettings: strictImports),
-        // The editing page's files are compiled in for the Apple TV to serve; the web version copies them.
+        // The pages served on the home network (the editing page, karaoke's song picker) are compiled in for
+        // the Apple TV to serve; the web version copies the editing page's.
         .target(name: "GregularScreens", dependencies: ["GregularCore", "GregularJellyfin"],
-                resources: [.embedInCode("Editing/Page/editor.css"), .embedInCode("Editing/Page/editor-body.html"),
-                            .embedInCode("Editing/Page/editor.js")],
+                resources: [.embedInCode("LocalPages/Page/local-page.js"),
+                             .embedInCode("Editing/Page/editor.css"), .embedInCode("Editing/Page/editor-body.html"),
+                             .embedInCode("Editing/Page/editor.js"),
+                             .embedInCode("Karaoke/Picker/picker.css"), .embedInCode("Karaoke/Picker/picker-body.html"),
+                             .embedInCode("Karaoke/Picker/picker.js")],
                 swiftSettings: strictImports),
         .target(name: "GregularKeychain", dependencies: ["GregularJellyfin"], swiftSettings: strictImports),
         // A tool, not part of the app: hashes a special mode's keyword for special-modes.jsonc.
