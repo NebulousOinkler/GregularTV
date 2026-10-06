@@ -27,14 +27,47 @@ public struct JellyfinClient: Sendable {
         try await LibraryQuery(api: api, userID: credentials.userID).fetchAll()
     }
 
-    /// The videos in the library called `name` (case-insensitive), for example
-    /// the commercials. Nil if there's no library by that name.
-    public func fetchLibrary(named name: String) async throws -> [MediaItem]? {
+    /// The items of `kinds` in the library called `name` (case-insensitive),
+    /// for example the commercials. Nil if there's no library by that name.
+    public func fetchLibrary(named name: String, kinds: Set<MediaItem.Kind>) async throws -> [MediaItem]? {
         let views: ItemsPage = try await api.get("/UserViews", query: [URLQueryItem(name: "userId", value: credentials.userID)])
         guard let library = views.items.first(where: { $0.name?.caseInsensitiveCompare(name) == .orderedSame }) else {
             return nil
         }
-        return try await LibraryQuery(api: api, userID: credentials.userID).fetchAll(inLibrary: library.id)
+        return try await LibraryQuery(api: api, userID: credentials.userID).fetchAll(inLibrary: library.id, kinds: kinds)
+    }
+
+    /// A song's lyrics, if the server has them timed (Jellyfin 10.9 and
+    /// later; the words' own timings from 10.10). Nil if it has none, or only
+    /// untimed words.
+    public func syncedLyrics(for itemID: String) async throws -> SyncedLyrics? {
+        let lyrics: LyricsDTO
+        do {
+            lyrics = try await api.get("/Audio/\(itemID)/Lyrics")
+        } catch JellyfinError.httpStatus(404) {
+            return nil
+        }
+        return lyrics.synced
+    }
+
+    /// Where `item`'s original file is, to fetch whole, if this device plays
+    /// it as it is. Nil if Jellyfin would have to convert it.
+    ///
+    /// Asked as if the server were on https even when it isn't: the file is
+    /// fetched by the app itself, not by a web page's player, so a browser's
+    /// rule against playing files from plain http doesn't apply (`PlayableFormats.playsFilesOnlyOverHTTPS`).
+    public func originalFileURL(of item: MediaItem) async throws -> URL? {
+        let info: PlaybackInfoResponse = try await api.post(
+            "/Items/\(item.id)/PlaybackInfo",
+            query: [
+                URLQueryItem(name: "userId", value: credentials.userID),
+                URLQueryItem(name: "mediaSourceId", value: item.id),
+                URLQueryItem(name: "subtitleStreamIndex", value: "-1"),
+            ],
+            body: PlaybackInfoRequest(itemID: item.id, userId: credentials.userID, formats: formats,
+                                      maxBitrate: StreamingQuality.maximumBitrate, secure: true))
+        guard let source = info.mediaSources.first, source.supportsDirectPlay else { return nil }
+        return directPlayURL(itemID: item.id, source: source, playSessionID: nil, isSong: item.kind == .song)
     }
 
     /// Asks Jellyfin how to play an item on this device, and returns the URL.
@@ -56,7 +89,7 @@ public struct JellyfinClient: Sendable {
         guard let source = info.mediaSources.first else { throw JellyfinError.noPlayableSource(itemID: itemID) }
 
         if source.supportsDirectPlay {
-            return PlaybackSource(url: directPlayURL(itemID: itemID, source: source, playSessionID: info.playSessionId),
+            return PlaybackSource(url: directPlayURL(itemID: itemID, source: source, playSessionID: info.playSessionId, isSong: false),
                                   method: .directPlay, playSessionID: info.playSessionId)
         }
         if let transcodingURL = source.transcodingUrl, let url = serverRelativeURL(transcodingURL) {
@@ -116,7 +149,8 @@ public struct JellyfinClient: Sendable {
     /// AVPlayer can't attach an Authorization header to every request, so
     /// stream URLs carry the token as `ApiKey`, as all Jellyfin clients do.
     /// Jellyfin's own `TranscodingUrl` already includes it.
-    private func directPlayURL(itemID: String, source: PlaybackInfoResponse.MediaSource, playSessionID: String?) -> URL {
+    /// - Parameter isSong: a sound file, which Jellyfin serves from `/Audio`.
+    private func directPlayURL(itemID: String, source: PlaybackInfoResponse.MediaSource, playSessionID: String?, isSong: Bool) -> URL {
         let container = source.container?.split(separator: ",").first.map(String.init)
         var query = [
             URLQueryItem(name: "Static", value: "true"),
@@ -125,7 +159,7 @@ public struct JellyfinClient: Sendable {
             URLQueryItem(name: "ApiKey", value: credentials.accessToken),
         ]
         if let playSessionID { query.append(URLQueryItem(name: "PlaySessionId", value: playSessionID)) }
-        return api.url("/Videos/\(itemID)/stream" + (container.map { ".\($0)" } ?? ""), query: query)
+        return api.url((isSong ? "/Audio/" : "/Videos/") + "\(itemID)/stream" + (container.map { ".\($0)" } ?? ""), query: query)
     }
 
     /// Jellyfin returns `TranscodingUrl` as a server-relative path. Prefix the
@@ -147,8 +181,20 @@ extension JellyfinClient: MediaLibrary {
         try await fetchLibrary()
     }
 
-    public func fetchCollection(named name: String) async throws -> [MediaItem]? {
-        try await fetchLibrary(named: name)
+    public func fetchCollection(named name: String, kinds: Set<MediaItem.Kind>) async throws -> [MediaItem]? {
+        try await fetchLibrary(named: name, kinds: kinds)
+    }
+}
+
+extension JellyfinClient: LyricsSource {
+    public func lyrics(for itemID: String) async throws -> SyncedLyrics? {
+        try await syncedLyrics(for: itemID)
+    }
+}
+
+extension JellyfinClient: OriginalFiles {
+    public func originalFile(of item: MediaItem) async throws -> URL? {
+        try await originalFileURL(of: item)
     }
 }
 

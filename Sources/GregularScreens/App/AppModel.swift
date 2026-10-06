@@ -353,9 +353,16 @@ public final class AppModel {
     /// server has none of its programmes.
     private func open(_ mode: SpecialMode) async -> Bool {
         guard case .watching = phase, let client else { return false }
-        let programmes = switch mode.catalogue {
-        case .wholeLibrary: library
-        case .library(let name): ((try? await client.fetchCollection(named: name)) ?? nil)?.filter { $0.duration > 0 } ?? []
+        var programmes: [MediaItem]
+        switch mode.catalogue {
+        case .wholeLibrary:
+            programmes = library
+        case .libraries(let names):
+            programmes = []
+            for name in names {
+                let found = (try? await client.fetchCollection(named: name, kinds: Set(MediaItem.Kind.allCases))) ?? nil
+                programmes += (found ?? []).filter { $0.duration > 0 }
+            }
         }
         // Still watching the same server, now it's fetched.
         guard !programmes.isEmpty, case .watching = phase, self.client?.credentials.signInID == client.credentials.signInID
@@ -517,7 +524,7 @@ public final class AppModel {
         }
         let found: [MediaItem]?
         do {
-            found = try await source.fetchCollection(named: name)
+            found = try await source.fetchCollection(named: name, kinds: [.video, .movie, .episode])
         } catch {
             commercialsStatus = "Couldn't load the \u{201C}\(name)\u{201D} library, so breaks show the Up Next card."
             return []

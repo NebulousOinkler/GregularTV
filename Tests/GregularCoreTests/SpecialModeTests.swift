@@ -6,21 +6,21 @@ import Testing
 /// as hashes.
 struct SpecialModeTests {
     /// A registry file, with `keywords` hashed as `keyword-hash` would.
-    static func registry(_ modes: [(id: String, keywords: [String], library: String?)]) throws -> SpecialModeRegistry {
+    static func registry(_ modes: [(id: String, keywords: [String], libraries: [String])]) throws -> SpecialModeRegistry {
         let entries = try modes.map { mode in
             let hashes = try mode.keywords.map { #""\#(try SpecialModeRegistry.keywordHash(for: $0))""# }
-            let library = mode.library.map { #", "library": "\#($0)""# } ?? ""
+            let library = mode.libraries.isEmpty ? "" : #", "libraries": [\#(mode.libraries.map { "\"\($0)\"" }.joined(separator: ","))]"#
             return #"{ "id": "\#(mode.id)", "keywordHashes": [\#(hashes.joined(separator: ","))]\#(library) }"#
         }
         return try SpecialModeRegistry.load(from: Data(#"{ "modes": [\#(entries.joined(separator: ","))] }"#.utf8))
     }
 
     static func modes() throws -> SpecialModeRegistry {
-        try registry([("everything", ["OPEN UP, SESAME", "Abracadabra"], nil), ("own-library", ["SING-ALONG"], "Songs")])
+        try registry([("everything", ["OPEN UP, SESAME", "Abracadabra"], []), ("own-library", ["SING-ALONG"], ["Songs", "Song Videos"])])
     }
 
     @Test func theBundledModesLoad() throws {
-        _ = try SpecialModeRegistry.bundled()
+        #expect(try SpecialModeRegistry.bundled().modes.map(\.id) == ["karaoke"])
     }
 
     /// Anyone reading the file is told what it is.
@@ -37,7 +37,7 @@ struct SpecialModeTests {
     @Test func eachModeSaysWhereItsProgrammesComeFrom() throws {
         #expect(try Self.modes().modes == [
             SpecialMode(id: "everything", catalogue: .wholeLibrary),
-            SpecialMode(id: "own-library", catalogue: .library(named: "Songs")),
+            SpecialMode(id: "own-library", catalogue: .libraries(["Songs", "Song Videos"])),
         ])
     }
 
@@ -49,7 +49,7 @@ struct SpecialModeTests {
     @Test func whatsTypedIsACodeAKeywordOrNeither() throws {
         let modes = try Self.modes()
         #expect(CodeEntry("7kqm2 x9pda", specialModes: modes) == .schedule(ScheduleCode("7KQM2-X9PDA")!))
-        #expect(CodeEntry("sing along", specialModes: modes) == .specialMode(SpecialMode(id: "own-library", catalogue: .library(named: "Songs"))))
+        #expect(CodeEntry("sing along", specialModes: modes) == .specialMode(SpecialMode(id: "own-library", catalogue: .libraries(["Songs", "Song Videos"]))))
         #expect(CodeEntry("open up, sesame please", specialModes: modes) == nil)
         #expect(CodeEntry("abracadabra", specialModes: SpecialModeRegistry()) == nil, "No modes, no keywords")
     }
@@ -69,10 +69,10 @@ struct SpecialModeTests {
 
     @Test func aKeywordMeansOneThing() throws {
         #expect(throws: SpecialModeRegistry.LoadError.duplicateKeyword(try SpecialModeRegistry.keywordHash(for: "ONE"))) {
-            try Self.registry([("a", ["ONE"], nil), ("b", ["o-n-e"], nil)])
+            try Self.registry([("a", ["ONE"], []), ("b", ["o-n-e"], [])])
         }
-        #expect(throws: SpecialModeRegistry.LoadError.duplicateMode("a")) { try Self.registry([("a", ["ONE"], nil), ("a", ["TWO"], nil)]) }
-        #expect(throws: SpecialModeRegistry.LoadError.noKeywords("a")) { try Self.registry([("a", [], nil)]) }
+        #expect(throws: SpecialModeRegistry.LoadError.duplicateMode("a")) { try Self.registry([("a", ["ONE"], []), ("a", ["TWO"], [])]) }
+        #expect(throws: SpecialModeRegistry.LoadError.noKeywords("a")) { try Self.registry([("a", [], [])]) }
         #expect(throws: SpecialModeRegistry.LoadError.notAHash("sesame")) {
             try SpecialModeRegistry.load(from: Data(#"{ "modes": [ { "id": "a", "keywordHashes": ["SESAME"] } ] }"#.utf8))
         }

@@ -23,8 +23,10 @@ struct JellyfinPrivacyTests {
 
         let client = JellyfinFixtures.client(mock)
         _ = try await client.fetchLibrary()
-        _ = try await client.fetchLibrary(named: "Commercials")
+        _ = try await client.fetchLibrary(named: "Commercials", kinds: Set(MediaItem.Kind.allCases))
         _ = try await client.playbackSource(for: "abc")
+        _ = try await client.lyrics(for: "abc")
+        _ = try await client.originalFile(of: MediaItem(id: "abc", kind: .song, name: "Song", duration: 200))
         try await client.stopTranscoding(playSessionID: "p")
         await client.signOut(clearing: InMemoryCredentialStore())
 

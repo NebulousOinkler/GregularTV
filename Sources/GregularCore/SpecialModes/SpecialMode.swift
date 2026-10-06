@@ -15,12 +15,14 @@ public struct SpecialMode: Sendable, Hashable, Identifiable {
     }
 
     /// Where a mode's programmes come from. Always the server's library:
-    /// all of it, or one library on it.
+    /// all of it, or some libraries on it.
     public enum Catalogue: Sendable, Hashable {
         /// Everything the channels could play.
         case wholeLibrary
-        /// Only the videos in the library (a `MediaLibrary` collection) called this.
-        case library(named: String)
+        /// Everything in whichever of the libraries (`MediaLibrary`
+        /// collections) with these names the server has: songs, music
+        /// videos and videos alike.
+        case libraries([String])
     }
 
     public let id: ID

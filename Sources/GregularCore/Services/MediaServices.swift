@@ -10,9 +10,25 @@ public protocol MediaLibrary: Sendable {
     /// Every item that can air as a programme, held in memory by the caller.
     func fetchProgrammes() async throws -> [MediaItem]
 
-    /// The items in the collection called `name` (case-insensitive), for
-    /// example the commercials. Nil if there's no collection by that name.
-    func fetchCollection(named name: String) async throws -> [MediaItem]?
+    /// The items of these kinds in the collection called `name`
+    /// (case-insensitive), for example the commercials. Nil if there's no
+    /// collection by that name.
+    func fetchCollection(named name: String, kinds: Set<MediaItem.Kind>) async throws -> [MediaItem]?
+}
+
+/// Songs' words, timed to the music.
+public protocol LyricsSource: Sendable {
+    /// `itemID`'s lyrics, if the server has them timed. Nil if it has none,
+    /// or only untimed words.
+    func lyrics(for itemID: String) async throws -> SyncedLyrics?
+}
+
+/// Items' original files, for playing whole: fetched completely before they
+/// play, so nothing can stall partway (unlike a `StreamSource`'s streams).
+public protocol OriginalFiles: Sendable {
+    /// Where `item`'s original file is, if this device plays it as it is.
+    /// Nil if the server would have to convert it.
+    func originalFile(of item: MediaItem) async throws -> URL?
 }
 
 /// Turns a scheduled item into something a player can play.

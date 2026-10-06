@@ -24,8 +24,8 @@ struct LibraryQuery: Sendable {
 
     func fetchAll() async throws -> [MediaItem] {
         // Episodes rarely carry genres or tags themselves, so they inherit them from their series.
-        async let seriesList = fetchPages(types: "Series")
-        async let playable = fetchPages(types: "Episode,Movie")
+        async let seriesList = fetchPages(types: "Series", fields: "Genres,Tags")
+        async let playable = fetchPages(types: "Episode,Movie", fields: "Genres,Tags")
         let seriesMetadata = Dictionary(try await seriesList.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
 
         var seen = Set<String>()
@@ -34,12 +34,28 @@ struct LibraryQuery: Sendable {
             .filter { seen.insert($0.id).inserted }   // paging can overlap if the library changes mid-fetch
     }
 
-    /// Every video in one library (a Jellyfin "view"), such as the
-    /// commercials library. Only the fields a filler needs are requested.
-    func fetchAll(inLibrary libraryID: String) async throws -> [MediaItem] {
+    /// Every item of `kinds` in one library (a Jellyfin "view"), such as the
+    /// commercials library. Items in folders are told the folders' names
+    /// (`MediaItem.folders`), for libraries arranged by folder.
+    func fetchAll(inLibrary libraryID: String, kinds: Set<MediaItem.Kind>) async throws -> [MediaItem] {
+        let types = MediaItem.Kind.allCases.filter(kinds.contains).map(ItemDTO.jellyfinType(for:))
+        guard !types.isEmpty else { return [] }
+        let items = try await fetchPages(types: types.joined(separator: ","), fields: "Genres,Tags,ParentId", parentID: libraryID)
+        // The folders' names, only if something is in one.
+        let inFolders = items.contains { $0.parentId != nil && $0.parentId != libraryID }
+        let folders = inFolders ? try await fetchPages(types: "Folder", fields: "ParentId", parentID: libraryID) : []
+        let foldersByID = Dictionary(folders.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+        func path(to parentID: String?) -> [String] {
+            var names: [String] = [], next = parentID, seen = Set<String>()
+            while let id = next, let folder = foldersByID[id], seen.insert(id).inserted {
+                names.insert(folder.name ?? "", at: 0)
+                next = folder.parentId
+            }
+            return names
+        }
         var seen = Set<String>()
-        return try await fetchPages(types: "Video,Movie,Episode", parentID: libraryID)
-            .compactMap { $0.mediaItem(series: nil) }
+        return items
+            .compactMap { $0.mediaItem(series: nil, folders: path(to: $0.parentId)) }
             .filter { seen.insert($0.id).inserted }
     }
 
@@ -48,7 +64,7 @@ struct LibraryQuery: Sendable {
     /// is only the server's word: it's capped at `mostItems`, pages stop
     /// being asked for once one comes back empty, each page counts for at
     /// most `pageSize` items, and all of them for at most `mostText` of text.
-    private func fetchPages(types: String, parentID: String? = nil) async throws -> [ItemDTO] {
+    private func fetchPages(types: String, fields: String, parentID: String? = nil) async throws -> [ItemDTO] {
         var text = 0
         func kept(_ items: [ItemDTO]) throws -> [ItemDTO] {
             let page = Array(items.prefix(Self.pageSize))
@@ -56,7 +72,7 @@ struct LibraryQuery: Sendable {
             guard text <= Self.mostText else { throw JellyfinError.responseTooLarge }
             return page
         }
-        let first = try await fetchPage(types: types, parentID: parentID, startIndex: 0)
+        let first = try await fetchPage(types: types, fields: fields, parentID: parentID, startIndex: 0)
         let firstItems = try kept(first.items)
         let total = min(first.totalRecordCount, Self.mostItems)
         let starts = Array(stride(from: firstItems.count, to: total, by: Self.pageSize))
@@ -68,7 +84,7 @@ struct LibraryQuery: Sendable {
             var reachedTheEnd = false
             func addNext() {
                 guard !reachedTheEnd, let start = pending.next() else { return }
-                group.addTask { (start, try await fetchPage(types: types, parentID: parentID, startIndex: start).items) }
+                group.addTask { (start, try await fetchPage(types: types, fields: fields, parentID: parentID, startIndex: start).items) }
             }
             for _ in 0..<Self.maxConcurrentPages { addNext() }
             while let (start, items) = try await group.next() {
@@ -80,17 +96,17 @@ struct LibraryQuery: Sendable {
         return firstItems + starts.flatMap { pages[$0] ?? [] }
     }
 
-    private func fetchPage(types: String, parentID: String?, startIndex: Int) async throws -> ItemsPage {
-        try await api.get("/Items", query: query(types: types, parentID: parentID, startIndex: startIndex))
+    private func fetchPage(types: String, fields: String, parentID: String?, startIndex: Int) async throws -> ItemsPage {
+        try await api.get("/Items", query: query(types: types, fields: fields, parentID: parentID, startIndex: startIndex))
     }
 
-    private func query(types: String, parentID: String?, startIndex: Int) -> [URLQueryItem] {
+    private func query(types: String, fields: String, parentID: String?, startIndex: Int) -> [URLQueryItem] {
         (parentID.map { [URLQueryItem(name: "ParentId", value: $0)] } ?? []) + [
             URLQueryItem(name: "userId", value: userID),
             URLQueryItem(name: "Recursive", value: "true"),
             URLQueryItem(name: "IncludeItemTypes", value: types),
             URLQueryItem(name: "IsMissing", value: "false"),
-            URLQueryItem(name: "Fields", value: "Genres,Tags"),
+            URLQueryItem(name: "Fields", value: fields),
             URLQueryItem(name: "EnableImages", value: "false"),
             URLQueryItem(name: "EnableUserData", value: "false"),
             URLQueryItem(name: "SortBy", value: "SortName"),
@@ -120,15 +136,23 @@ struct ItemDTO: Decodable, Sendable {
     let premiereDate: String?
     let genres: [String]?
     let tags: [String]?
+    let artists: [String]?
+    let album: String?
+    let hasLyrics: Bool?
+    let container: String?
+    /// The folder (or album, season…) it's in, when asked for.
+    let parentId: String?
 
     /// Bytes of text it holds, for `LibraryQuery.mostText`.
     var textSize: Int {
-        let texts = [id, name, type, seriesId, seriesName, premiereDate].compactMap { $0 } + (genres ?? []) + (tags ?? [])
+        let texts = [id, name, type, seriesId, seriesName, premiereDate, album, container, parentId].compactMap { $0 }
+            + (genres ?? []) + (tags ?? []) + (artists ?? [])
         return texts.reduce(0) { $0 + $1.utf8.count }
     }
 
-    /// Nil for item types we don't schedule, or items with no runtime.
-    func mediaItem(series: ItemDTO?) -> MediaItem? {
+    /// Nil for item types we don't play, or items with no runtime.
+    /// - Parameter folders: the folders it's in within its library, outermost first.
+    func mediaItem(series: ItemDTO?, folders: [String] = []) -> MediaItem? {
         guard let kind = Self.kind(forJellyfinType: type),
               let ticks = runTimeTicks, ticks > 0
         else { return nil }
@@ -145,7 +169,12 @@ struct ItemDTO: Decodable, Sendable {
             productionYear: productionYear ?? series?.productionYear,
             premiereDate: premiereDate.flatMap(Self.parseDate),
             genres: Self.union(genres, series?.genres),
-            tags: Self.union(tags, series?.tags)
+            tags: Self.union(tags, series?.tags),
+            artists: artists ?? [],
+            album: album,
+            folders: folders,
+            hasLyrics: hasLyrics ?? false,
+            container: container
         )
     }
 
@@ -155,7 +184,20 @@ struct ItemDTO: Decodable, Sendable {
         case "Episode": .episode
         case "Movie": .movie
         case "Video": .video
+        case "Audio": .song
+        case "MusicVideo": .musicVideo
         default: nil
+        }
+    }
+
+    /// The Jellyfin item type for each kind (the other way from `kind(forJellyfinType:)`).
+    static func jellyfinType(for kind: MediaItem.Kind) -> String {
+        switch kind {
+        case .episode: "Episode"
+        case .movie: "Movie"
+        case .video: "Video"
+        case .song: "Audio"
+        case .musicVideo: "MusicVideo"
         }
     }
 

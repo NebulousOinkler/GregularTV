@@ -11,8 +11,8 @@ struct SpecialModeTests {
     static let modes = try! SpecialModeRegistry.load(from: Data("""
     { "modes": [
         { "id": "everything", "keywordHashes": ["\(hash("ABRACADABRA"))"] },
-        { "id": "own-library", "keywordHashes": ["\(hash("SING ALONG"))"], "library": "Songs" },
-        { "id": "missing-library", "keywordHashes": ["\(hash("NOWHERE"))"], "library": "Nowhere" }
+        { "id": "own-library", "keywordHashes": ["\(hash("SING ALONG"))"], "libraries": ["Songs", "Song Videos"] },
+        { "id": "missing-library", "keywordHashes": ["\(hash("NOWHERE"))"], "libraries": ["Nowhere"] }
     ] }
     """.utf8))
 
@@ -20,7 +20,7 @@ struct SpecialModeTests {
         try! SpecialModeRegistry.keywordHash(for: keyword)
     }
 
-    /// Watching a server with three films, and a library of two songs.
+    /// Watching a server with three films, and a library of two songs (and no "Song Videos").
     private func watching(_ modes: SpecialModeRegistry = modes) async throws -> AppModel {
         let store = InMemoryCredentialStore(credentials: MainPageTests.home)
         let app = Fixture.app(store: store, transport: FakeServer(), specialModes: modes)
@@ -100,7 +100,7 @@ private extension AppModel.Phase {
 /// Everything else it's asked (streams, other libraries) isn't found.
 struct FakeServer: HTTPTransport {
     static let films = (1...3).map { (id: "m\($0)", name: "Film \($0)", type: "Movie") }
-    static let songs = (1...2).map { (id: "s\($0)", name: "Song \($0)", type: "Video") }
+    static let songs = (1...2).map { (id: "s\($0)", name: "Song \($0)", type: "Audio") }
 
     func send(_ request: ServerRequest) async throws -> ServerReply {
         let query = URLComponents(url: request.url, resolvingAgainstBaseURL: false)?.queryItems ?? []

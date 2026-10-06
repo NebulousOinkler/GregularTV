@@ -9,9 +9,10 @@ import Foundation
 /// 1. Hash each keyword: `swift run keyword-hash "THE KEYWORD"`.
 /// 2. Add the mode to `special-modes.jsonc`:
 ///
-///        { "modes": [ { "id": "example", "keywordHashes": ["…"], "library": "Example" } ] }
+///        { "modes": [ { "id": "example", "keywordHashes": ["…"], "libraries": ["Example"] } ] }
 ///
-///    `library` is optional: without it, the mode plays from the whole library.
+///    `libraries` is optional: the libraries it plays from, whichever of
+///    them the server has. Without it, the mode plays from the whole library.
 /// 3. In each front end that has screens for it, add them to its
 ///    `SpecialModeScreens` under the same id. A front end without them
 ///    doesn't accept its keywords, so they stay secret there.
@@ -102,7 +103,8 @@ public struct SpecialModeRegistry: Sendable {
         var modesByHash: [String: SpecialMode] = [:]
         var ids = Set<SpecialMode.ID>()
         for entry in try JSONDecoder().decode(File.self, from: Data(json.utf8)).modes {
-            let mode = SpecialMode(id: entry.id, catalogue: entry.library.map { .library(named: $0) } ?? .wholeLibrary)
+            let libraries = entry.libraries ?? []
+            let mode = SpecialMode(id: entry.id, catalogue: libraries.isEmpty ? .wholeLibrary : .libraries(libraries))
             guard ids.insert(mode.id).inserted else { throw LoadError.duplicateMode(mode.id) }
             guard !entry.keywordHashes.isEmpty else { throw LoadError.noKeywords(mode.id) }
             for hash in entry.keywordHashes.map({ $0.lowercased() }) {
@@ -117,7 +119,7 @@ public struct SpecialModeRegistry: Sendable {
         struct Mode: Decodable {
             let id: SpecialMode.ID
             let keywordHashes: [String]
-            let library: String?
+            let libraries: [String]?
         }
         let modes: [Mode]
     }

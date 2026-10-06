@@ -8,11 +8,16 @@
 //   "id"             the mode's name; each front end lists its screens under it
 //   "keywordHashes"  the hashes of its keywords, each made with
 //                    `swift run keyword-hash "THE KEYWORD"` (Tools/KeywordHash)
-//   "library"        optional: the one library on the server it plays from;
-//                    without it, the whole library
+//   "libraries"      optional: the libraries on the server it plays from,
+//                    whichever of them the server has; without it, the
+//                    whole library
 //
 // How a keyword is hashed, and everything else about special modes:
 // Sources/GregularCore/SpecialModes/SpecialModeRegistry.swift.
 {
-  "modes": []
+  "modes": [
+    { "id": "karaoke",
+      "keywordHashes": ["f360519e53a2d9a2784a4f3b467e8f12400ec58b25699e26e2369f2b40404482"],
+      "libraries": ["Karaoke", "Karaoke Videos"] }
+  ]
 }
