@@ -133,6 +133,8 @@ public final class WatchModel {
             onOpenMainPage?()
         case .watchLastServer:
             break   // only on the main page
+        case .playOrPauseSong, .openKaraokeMenu:
+            break   // only in karaoke
         }
     }
 

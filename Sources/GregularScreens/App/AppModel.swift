@@ -368,7 +368,7 @@ public final class AppModel {
         guard !programmes.isEmpty, case .watching = phase, self.client?.credentials.signInID == client.credentials.signInID
         else { return false }
         liveTV?.player.stop()
-        phase = .special(SpecialModeSession(mode: mode, programmes: programmes, streams: client) { [weak self] session in
+        phase = .special(SpecialModeSession(mode: mode, programmes: programmes, formats: client.formats, media: client) { [weak self] session in
             self?.close(session)
         })
         return true
