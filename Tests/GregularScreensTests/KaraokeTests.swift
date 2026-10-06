@@ -72,6 +72,10 @@ final class FakeSongServer: LyricsSource, OriginalFiles, @unchecked Sendable {
         unplayable.contains(item.id) ? nil : URL(string: "https://tv.invalid/\(item.id)")
     }
 
+    func download(_ url: URL, mostBytes: Int) async throws -> Data {
+        Data(url.lastPathComponent.utf8)
+    }
+
     func lyrics(for itemID: String) async throws -> SyncedLyrics? {
         lock.withLock { asked.append(itemID) }
         return lyrics[itemID]
@@ -415,5 +419,38 @@ struct KaraokeModelTests {
         karaoke.leave()
         #expect(left && karaoke.stage.state == .idle && deck.cued == nil)
         #expect(karaoke.leaveConfirmation.action == KaraokeModel.HomeItem.leave.title)
+    }
+}
+
+/// Every theme's tune and sound effects, as each front end's synthesizer gets them.
+struct KaraokeMusicTests {
+    @Test(arguments: KaraokeTheme.allCases)
+    func eachThemeHasATuneThatLoops(theme: KaraokeTheme) {
+        let music = theme.music
+        let loop = music.loop
+        #expect(!loop.isEmpty && music.duration > 4 && music.duration < 30)
+        #expect(loop.allSatisfy { $0.at >= 0 && $0.at < music.duration && $0.length > 0 && (0...1).contains($0.gain) })
+        #expect(loop.allSatisfy { if case .tone(_, let note) = $0.sound { (24...108).contains(note) } else { true } },
+                "Every note one a speaker can play")
+        #expect(loop.contains { $0.sound == .kick }, "A beat")
+        for effect in KaraokeMusic.Effect.allCases {
+            #expect(!music.notes(for: effect).isEmpty, "\(effect)")
+        }
+    }
+}
+
+/// Lines as words and gaps, as both front ends draw them.
+struct LyricsSegmentTests {
+    @Test func aLineIsWordsAndTheGapsBetween() {
+        let timeline = LyricsTimeline(SyncedLyrics(lines: [
+            .init(start: 0, text: "Oh, la la!", words: [.init(range: 0..<3, start: 0), .init(range: 4..<6, start: 1), .init(range: 7..<10, start: 2)]),
+            .init(start: 5, text: "  Two  words "),
+        ]))
+        let timed = timeline.segments(ofLine: 0)
+        #expect(timed.map(\.text) == ["Oh,", " ", "la", " ", "la!"])
+        #expect(timed.map(\.isWord) == [true, false, true, false, true])
+        #expect(timeline.segments(ofLine: 1).filter(\.isWord).map(\.text) == ["Two", "words"], "Untimed: between spaces")
+        #expect(timeline.segments(ofLine: 1).map(\.text).joined() == "  Two  words ", "Nothing lost")
+        #expect(timed[2].fill(sung: 5) == 0.5 && timed[0].fill(sung: 5) == 1 && timed[4].fill(sung: 5) == 0)
     }
 }

@@ -78,7 +78,7 @@ import JavaScriptKit
         return true
     }
 
-    private func sound(_ effect: KaraokeSound.Effect) {
+    private func sound(_ effect: KaraokeMusic.Effect) {
         KaraokeSound.effect(effect, in: model.shownTheme)
     }
 

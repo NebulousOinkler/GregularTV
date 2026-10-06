@@ -1,3 +1,4 @@
+import Foundation
 import GregularCore
 
 /// A special mode, open (`AppModel.Phase.special`): which mode, and the
@@ -21,6 +22,12 @@ import GregularCore
         self.formats = formats
         self.media = media
         self.onExit = onExit
+    }
+
+    /// The whole of a file the mode plays (`OriginalFiles.download`), for a
+    /// platform's player that can't fetch it whole itself.
+    public func download(_ url: URL, mostBytes: Int) async throws -> Data {
+        try await media.download(url, mostBytes: mostBytes)
     }
 
     /// Leaves the mode, back to live TV.

@@ -29,6 +29,11 @@ public protocol OriginalFiles: Sendable {
     /// Where `item`'s original file is, if this device plays it as it is.
     /// Nil if the server would have to convert it.
     func originalFile(of item: MediaItem) async throws -> URL?
+
+    /// The whole of an `originalFile(of:)`, in memory (never on disk), for
+    /// a platform whose player can't fetch it whole itself. Throws if it's
+    /// larger than `mostBytes`.
+    func download(_ url: URL, mostBytes: Int) async throws -> Data
 }
 
 /// Turns a scheduled item into something a player can play.

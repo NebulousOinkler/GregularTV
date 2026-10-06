@@ -117,6 +117,19 @@ struct SpecialLibraryTests {
         #expect(try await JellyfinFixtures.client(mock).originalFile(of: video) == nil)
     }
 
+    @Test func aWholeFileComesFromItsOwnServerOnly() async throws {
+        mock.on("GET", "/Audio/s1/stream.mp3", json: String(repeating: "x", count: 2000))
+        let client = JellyfinFixtures.client(mock)
+        let song = URL(string: "http://tv.local:8096/Audio/s1/stream.mp3?Static=true")!
+        #expect(try await client.download(song, mostBytes: 5000).count == 2000)
+        await #expect(throws: JellyfinError.responseTooLarge) { try await client.download(song, mostBytes: 1000) }
+        for elsewhere in ["http://other.local:8096/Audio/s1/stream.mp3", "https://tv.local:8096/Audio/s1/stream.mp3",
+                          "http://tv.local:9000/Audio/s1/stream.mp3"] {
+            await #expect(throws: JellyfinError.invalidResponse) { try await client.download(URL(string: elsewhere)!, mostBytes: 5000) }
+        }
+        #expect(mock.requests.count == 2, "Nothing sent anywhere else")
+    }
+
     /// A browser fetches the file itself, so plain http to the home network is fine for it.
     @Test func aBrowserAsksForTheOriginalEvenFromPlainHTTP() async throws {
         mock.on("POST", "/Items/m1/PlaybackInfo") { request in

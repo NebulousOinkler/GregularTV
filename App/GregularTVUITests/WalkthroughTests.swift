@@ -348,4 +348,41 @@ final class WalkthroughTests: XCTestCase {
         pause(5)
         capture("sign-in-demo-server")
     }
+
+    // MARK: Karaoke
+
+    /// Its keyword, typed where a schedule code goes, opens karaoke: the
+    /// theme boxes, its menu, a song loaded whole and held on its title
+    /// card, the song's lyrics, and Leave Karaoke back to live TV.
+    func test8Karaoke() throws {
+        waitForWatching()
+        openSettings()
+        type("SWEETCAROLINE", into: "Enter a code")
+        guard text("Pick a Theme").waitForExistence(timeout: 10) else { return XCTFail("The keyword didn't open karaoke") }
+        capture("karaoke-themes")
+        press(.right)
+        capture("karaoke-theme-sampled")
+        press(.left)
+        press(.select)
+        guard button("All Songs").waitForExistence(timeout: 5) else { return XCTFail("Choosing a theme didn't open karaoke's menu") }
+        capture("karaoke-menu")
+        press(.menu)
+        XCTAssertTrue(button("All Songs").exists, "Menu left karaoke's menu with nothing to go back to")
+        choose("All Songs")
+        XCTAssertTrue(button("Saturday Satellite").waitForExistence(timeout: 5), "No songs listed")
+        capture("karaoke-songs")
+        choose("Saturday Satellite")
+        guard text("Press Play to sing").waitForExistence(timeout: 20) else { return XCTFail("The song didn't load") }
+        capture("karaoke-title-card")
+        press(.playPause)
+        XCTAssertTrue(text("Spin").waitForExistence(timeout: 10), "No lyrics while singing")
+        pause(2)
+        capture("karaoke-singing")
+        press(.menu)
+        XCTAssertTrue(button("Back to the Song").waitForExistence(timeout: 5), "Menu didn't open karaoke's menu over the song")
+        choose("Leave Karaoke")
+        answerDialog("Leave Karaoke")
+        XCTAssertTrue(text("channel list").waitForExistence(timeout: 20), "Leaving karaoke didn't go back to live TV")
+        capture("karaoke-left")
+    }
 }

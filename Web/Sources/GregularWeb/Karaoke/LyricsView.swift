@@ -41,49 +41,19 @@ import JavaScriptKit
         let moment = timeline.moment(at: time)
         if moment.line != shown.line || moment.next != shown.next {
             shown = (moment.line, moment.next)
-            current.replaceChildren(moment.line.map { Self.spans(timeline.lines[$0]) } ?? [])
-            next.replaceChildren(moment.next.map { Self.spans(timeline.lines[$0]) } ?? [])
+            current.replaceChildren(moment.line.map { Self.spans(timeline.segments(ofLine: $0)) } ?? [])
+            next.replaceChildren(moment.next.map { Self.spans(timeline.segments(ofLine: $0)) } ?? [])
         }
         fill(sung: moment.sung)
         dots.text = moment.countdown.map { String(repeating: "\u{25CF}", count: $0) } ?? ""
         place(moment.ball)
     }
 
-    /// The line's text as words and the gaps between them. Without word
-    /// timings, the words are whatever's between spaces.
-    private static func spans(_ line: SyncedLyrics.Line) -> [El] {
-        let characters = Array(line.text)
-        let words = line.words.isEmpty ? spaced(characters) : line.words.map(\.range).sorted { $0.lowerBound < $1.lowerBound }
-        var spans: [El] = []
-        var at = 0
-        func add(_ range: Range<Int>, word: Bool) {
-            guard !range.isEmpty else { return }
-            let span = El("span", word ? "k-word" : "k-gap", text: String(characters[range]))
-            span.attribute("data-start", String(range.lowerBound)).attribute("data-end", String(range.upperBound))
-            spans.append(span)
+    private static func spans(_ segments: [LyricsTimeline.Segment]) -> [El] {
+        segments.map { segment in
+            El("span", segment.isWord ? "k-word" : "k-gap", text: segment.text)
+                .attribute("data-start", String(segment.range.lowerBound)).attribute("data-end", String(segment.range.upperBound))
         }
-        for word in words where word.lowerBound >= at && word.upperBound <= characters.count {
-            add(at..<word.lowerBound, word: false)
-            add(word, word: true)
-            at = word.upperBound
-        }
-        add(at..<characters.count, word: false)
-        return spans
-    }
-
-    private static func spaced(_ characters: [Character]) -> [Range<Int>] {
-        var words: [Range<Int>] = []
-        var start: Int?
-        for (index, character) in characters.enumerated() {
-            if character.isWhitespace {
-                if let begun = start { words.append(begun..<index) }
-                start = nil
-            } else if start == nil {
-                start = index
-            }
-        }
-        if let begun = start { words.append(begun..<characters.count) }
-        return words
     }
 
     /// Lights the current line up to `sung` characters.
@@ -91,10 +61,9 @@ import JavaScriptKit
         let list = current.object.children.object!
         for index in 0..<Int(list.length.number ?? 0) {
             guard let span = list[index].object,
-                  let start = span.dataset.start.string.flatMap(Double.init), let end = span.dataset.end.string.flatMap(Double.init)
+                  let start = span.dataset.start.string.flatMap(Int.init), let end = span.dataset.end.string.flatMap(Int.init)
             else { continue }
-            let fraction = end > start ? min(1, max(0, (sung - start) / (end - start))) : 1
-            _ = span.style.setProperty("--fill", String(fraction))
+            _ = span.style.setProperty("--fill", String(LyricsTimeline.fill(start..<end, sung: sung)))
         }
     }
 

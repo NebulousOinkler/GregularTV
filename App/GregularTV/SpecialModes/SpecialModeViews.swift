@@ -5,5 +5,7 @@ import SwiftUI
 /// (see `SpecialModeRegistry`). Apple TV only accepts the keywords of the
 /// modes listed here.
 @MainActor enum SpecialModeViews {
-    static let all = SpecialModeScreens<AnyView>([:])   // ← add each mode's screen: ["its-id": { session in … }]
+    static let all = SpecialModeScreens<AnyView>([
+        .karaoke: { AnyView(KaraokeView(session: $0)) },
+    ])
 }

@@ -12,7 +12,7 @@ import JavaScriptKit
 /// - **no redirects at all** (`redirect: "error"`): a browser can't show
 ///   where one goes before following it, so none is followed;
 /// - a reply is read as it arrives and stopped once it's larger than
-///   `TransportRules.largestResponse`;
+///   the request's `largestResponse`;
 /// - nothing is stored: no cookies or saved logins (`credentials: "omit"`),
 ///   no HTTP cache (`cache: "no-store"`), and no referrer is sent.
 ///
@@ -27,10 +27,10 @@ public struct FetchTransport: HTTPTransport {
     }
 
     @MainActor private static func fetch(_ request: ServerRequest) async throws -> ServerReply {
-        let (response, controller) = try await start(request, largest: TransportRules.largestResponse)
+        let (response, controller) = try await start(request)
         let status = Int(response.status.number ?? 0)
         var body = Data()
-        try await read(response, largest: TransportRules.largestResponse, abortingWith: controller) { chunk in
+        try await read(response, largest: request.largestResponse, abortingWith: controller) { chunk in
             body.append(Data.construct(from: chunk.jsValue) ?? Data())
         }
         // Not followed, so a reply always comes from where it was sent.
@@ -38,9 +38,9 @@ public struct FetchTransport: HTTPTransport {
     }
 
     /// Sends `request` and waits for the reply to start. A reply announced
-    /// as larger than `largest` is turned down before anything arrives.
+    /// as larger than the request's `largestResponse` is turned down before anything arrives.
     /// - Returns: the response, and the controller that aborts it.
-    @MainActor static func start(_ request: ServerRequest, largest: Int) async throws -> (response: JSObject, controller: JSObject) {
+    @MainActor static func start(_ request: ServerRequest) async throws -> (response: JSObject, controller: JSObject) {
         let controller = JSObject.global.AbortController.function!.new()
         let options = Self.options(for: request)
         options["signal"] = controller.signal
@@ -58,7 +58,7 @@ public struct FetchTransport: HTTPTransport {
         } catch {
             throw Self.failure(error)
         }
-        if let length = response.headers.object?.get!("content-length").string.flatMap(Int.init), length > largest {
+        if let length = response.headers.object?.get!("content-length").string.flatMap(Int.init), length > request.largestResponse {
             _ = controller.abort!()
             throw JellyfinError.responseTooLarge
         }

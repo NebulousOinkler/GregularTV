@@ -196,6 +196,11 @@ extension JellyfinClient: OriginalFiles {
     public func originalFile(of item: MediaItem) async throws -> URL? {
         try await originalFileURL(of: item)
     }
+
+    /// Only from this server, through its transport and rules.
+    public func download(_ url: URL, mostBytes: Int) async throws -> Data {
+        try await api.file(url, largest: mostBytes)
+    }
 }
 
 extension JellyfinClient: StreamSource {

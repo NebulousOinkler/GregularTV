@@ -97,6 +97,13 @@ extension TransportConformanceTests {
         #expect(reply.status == 200 && reply.body == Data(repeating: 7, count: 300_000))
     }
 
+    /// A request can ask for less (or, for a whole file, more) than the usual limit.
+    @Test(arguments: names)
+    func aRequestsOwnLimitIsKept(transport: String) async throws {
+        let request = ServerRequest(url: URL(string: "https://tv.example/small")!, largestResponse: 100_000)
+        await #expect(throws: JellyfinError.responseTooLarge) { try await self.transport(transport).send(request) }
+    }
+
     @Test(arguments: names)
     func aReplyAnnouncedAsTooLargeIsTurnedDown(transport: String) async {
         await #expect(throws: JellyfinError.responseTooLarge) { try await send(transport, "https://tv.example/announced") }

@@ -40,6 +40,25 @@ public struct LyricsTimeline: Sendable, Equatable {
         public let countdown: Int?
     }
 
+    /// Part of a line as drawn: a word, or what's between words.
+    public struct Segment: Sendable, Equatable, Identifiable {
+        /// Where it is in the line's text, in characters.
+        public let range: Range<Int>
+        public let text: String
+        public let isWord: Bool
+        public var id: Int { range.lowerBound }
+
+        /// How much of it is lit (0 to 1), with `sung` characters of its line sung.
+        public func fill(sung: Double) -> Double {
+            LyricsTimeline.fill(range, sung: sung)
+        }
+    }
+
+    /// How much of the characters in `range` are lit (0 to 1), with `sung` characters of their line sung.
+    public static func fill(_ range: Range<Int>, sung: Double) -> Double {
+        range.isEmpty ? 1 : min(1, max(0, (sung - Double(range.lowerBound)) / Double(range.count)))
+    }
+
     /// Dots in a countdown, one a second.
     public static let countdownDots = 4
     /// A gap this long since the last thing sung makes the next line count in.
@@ -118,9 +137,43 @@ public struct LyricsTimeline: Sendable, Equatable {
 
     /// The first word of a line's text, in characters.
     private func firstWord(of index: Int) -> Range<Int> {
-        let text = Array(lines[index].text)
-        let start = text.firstIndex { !$0.isWhitespace } ?? 0
-        let end = text[start...].firstIndex(where: \.isWhitespace) ?? text.count
-        return start..<end
+        segments(ofLine: index).first(where: \.isWord)?.range ?? 0..<0
+    }
+
+    /// A line's text as words and the gaps between, in order: its timed
+    /// words, or without timings, whatever's between spaces. The ball's
+    /// spots are its words.
+    public func segments(ofLine index: Int) -> [Segment] {
+        let line = lines[index]
+        let characters = Array(line.text)
+        let words = line.words.isEmpty ? Self.spaced(characters) : line.words.map(\.range).sorted { $0.lowerBound < $1.lowerBound }
+        var segments: [Segment] = []
+        var at = 0
+        func add(_ range: Range<Int>, word: Bool) {
+            guard !range.isEmpty else { return }
+            segments.append(Segment(range: range, text: String(characters[range]), isWord: word))
+        }
+        for word in words where word.lowerBound >= at && word.upperBound <= characters.count {
+            add(at..<word.lowerBound, word: false)
+            add(word, word: true)
+            at = word.upperBound
+        }
+        add(at..<characters.count, word: false)
+        return segments
+    }
+
+    private static func spaced(_ characters: [Character]) -> [Range<Int>] {
+        var words: [Range<Int>] = []
+        var start: Int?
+        for (index, character) in characters.enumerated() {
+            if character.isWhitespace {
+                if let begun = start { words.append(begun..<index) }
+                start = nil
+            } else if start == nil {
+                start = index
+            }
+        }
+        if let begun = start { words.append(begun..<characters.count) }
+        return words
     }
 }

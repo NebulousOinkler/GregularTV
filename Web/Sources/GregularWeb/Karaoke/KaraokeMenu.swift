@@ -10,11 +10,11 @@ import JavaScriptKit
     let place: KaraokeModel.Place
     let element: El
     private let model: KaraokeModel
-    private let sound: (KaraokeSound.Effect) -> Void
+    private let sound: (KaraokeMusic.Effect) -> Void
     private let body = El("div", "k-menu-body")
     private var redraws: [Redraw] = []
 
-    init(place: KaraokeModel.Place, model: KaraokeModel, sound: @escaping (KaraokeSound.Effect) -> Void) {
+    init(place: KaraokeModel.Place, model: KaraokeModel, sound: @escaping (KaraokeMusic.Effect) -> Void) {
         self.place = place
         self.model = model
         self.sound = sound
