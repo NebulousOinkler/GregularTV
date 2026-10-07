@@ -51,6 +51,17 @@ public struct PlayableFormats: Sendable, Equatable {
             self.profiles = profiles
             self.tags = tags
         }
+
+        /// 8-bit H.264, which Apple TV and every browser decode: 10-bit (High 10),
+        /// and the 4:2:2 and 4:4:4 profiles, are converted.
+        public static let eightBitH264 = CodecLimit(codec: "h264", profiles: [
+            "high", "main", "baseline", "constrained baseline", "progressive high", "constrained high",
+        ])
+
+        /// HEVC up to Main 10 (10-bit), under `tags` if given.
+        public static func hevc(tags: [String]? = nil) -> CodecLimit {
+            CodecLimit(codec: "hevc", profiles: ["main", "main 10"], tags: tags)
+        }
     }
 
     public init(name: String, containers: [String], videoCodecs: [String], audioCodecs: [String],
@@ -80,11 +91,7 @@ public struct PlayableFormats: Sendable, Equatable {
         containers: ["mp4", "m4v", "mov"],
         videoCodecs: ["hevc", "h264"],
         audioCodecs: ["aac", "ac3", "eac3", "alac", "mp3"],
-        codecLimits: [
-            CodecLimit(codec: "h264", profiles: ["high", "main", "baseline", "constrained baseline",
-                                                 "progressive high", "constrained high"]),
-            CodecLimit(codec: "hevc", profiles: ["main", "main 10"], tags: ["hvc1", "dvh1"]),
-        ],
+        codecLimits: [.eightBitH264, .hevc(tags: ["hvc1", "dvh1"])],
         convertedVideoCodecs: ["h264", "hevc"],
         convertedAudioCodecs: ["aac", "ac3", "eac3"],
         mostAudioChannels: 6,
@@ -109,15 +116,17 @@ public struct PlayableFormats: Sendable, Equatable {
         convertedAudioCodecs: ["aac"],
         mostAudioChannels: 8)
 
-    /// A web browser: H.264 and AAC in MP4 play everywhere. HEVC only where
-    /// the browser says it can (`playsHEVC`). Surround sound is mixed down
-    /// to stereo, which every browser plays.
+    /// A web browser: H.264 and AAC in MP4 play everywhere, but not 10-bit
+    /// H.264, which no browser reliably decodes. HEVC only where the browser
+    /// says it can (`playsHEVC`). Surround sound is mixed down to stereo,
+    /// which every browser plays.
     public static func browser(playsHEVC: Bool) -> PlayableFormats {
         PlayableFormats(
             name: "Web",
             containers: ["mp4", "m4v"],
             videoCodecs: playsHEVC ? ["h264", "hevc"] : ["h264"],
             audioCodecs: ["aac", "mp3"],
+            codecLimits: [.eightBitH264] + (playsHEVC ? [.hevc()] : []),
             convertedVideoCodecs: playsHEVC ? ["h264", "hevc"] : ["h264"],
             convertedAudioCodecs: ["aac"],
             mostAudioChannels: 2,

@@ -240,7 +240,8 @@ import Observation
                 }
                 return .undefined
             }
-            hls = player.attach!(video.object, url, item.start, item.bufferAhead ?? 30,
+            // Waits for each piece as long as the player waits for video to move.
+            hls = player.attach!(video.object, url, item.start, item.bufferAhead ?? 30, ChannelPlayer.stallTimeout,
                                  BrowserNetwork.isLocalHTTP(item.url), failed).object
         } else {
             video.object.src = .string(url)

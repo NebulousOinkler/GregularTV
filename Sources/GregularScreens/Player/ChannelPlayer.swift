@@ -35,7 +35,9 @@ import Observation
 ///   seeks what's loaded to live if it's still on, and only tunes in afresh if
 ///   the airing has changed (or a re-encoded one hasn't buffered that far).
 /// - **Drift:** if buffering leaves playback over a minute behind live, it
-///   re-tunes (in Auto, measuring the connection first).
+///   re-tunes (in Auto, measuring the connection first). If the server
+///   re-encodes the programme, it can't keep up, so the re-tune asks for
+///   less work, as after a re-encode fails (below).
 /// - **Failures** (server down, network drop) retry with backoff: 5 s, 10 s,
 ///   20 s, 40 s, then every minute, so playback returns by itself when the
 ///   server does.
@@ -59,9 +61,9 @@ import Observation
 ///   `maxTranscodeHeadStart`. Files that play as-is or are only repackaged
 ///   start at once.
 /// - **Re-encoding that can't keep up:** when a programme the server re-encodes
-///   fails or stalls, the retry asks for less work: 720p, then a step lower
-///   on each further failure, for that programme only (shown in Settings as
-///   its fix). The server's processor is the limit, not the connection, so
+///   fails, stalls or falls a minute behind live, the retry asks for less
+///   work: 720p, then a step lower each further time, for that programme
+///   only (shown in Settings as its fix). The server's processor is the limit, not the connection, so
 ///   Auto doesn't re-measure first.
 /// - **Too little left to re-encode:** a programme the server would re-encode
 ///   isn't started with under `minReencodedTimeLeft` to go, since starting a
@@ -123,7 +125,7 @@ public final class ChannelPlayer {
     /// so it doesn't compete with the video for bandwidth while it starts.
     public static var backgroundMeasurementDelay: Duration = .seconds(20)
     public static let stallTimeout: TimeInterval = 30
-    public static let transcodeHeadStart: TimeInterval = 20
+    public static var transcodeHeadStart: TimeInterval = 20
     public static let maxTranscodeHeadStart: TimeInterval = 120
     /// Seconds of video to have buffered before a head start begins playing.
     public static let startCushion: TimeInterval = 15
@@ -535,11 +537,16 @@ public final class ChannelPlayer {
             diagnostics = diagnosticsLine(for: current, behindLive: behindLive)
         }
 
-        // A long buffering stall left us well behind live, so jump back. The
-        // connection may not carry this stream, so Auto measures it first
-        // (unless the server re-encodes it: then its processor is the limit).
+        // A long buffering stall left us well behind live, so jump back. If
+        // the server re-encodes it, its processor is the limit: ask it for
+        // less work. Otherwise the connection may not carry this stream, so
+        // Auto measures it first.
         if player.state == .playing, behindLive > Self.maxDriftBehindLive {
-            if quality == .auto, !current.reencodes { needsMeasurementFirst = true }
+            if current.reencodes, !current.airing.isFiller {
+                askForLessReencoding(of: current.airing, from: current.cap)
+            } else if quality == .auto {
+                needsMeasurementFirst = true
+            }
             tune()
             return
         }
@@ -821,7 +828,7 @@ public final class ChannelPlayer {
         consecutiveFailures += 1
         if failedReencode, let failedCap {
             // The server couldn't re-encode fast enough: retry this programme with less work.
-            stepDownAfterReencodeFailure(of: airing, from: failedCap)
+            askForLessReencoding(of: airing, from: failedCap)
         } else if quality == .auto {
             // The server or connection may be struggling: measure again before the retry.
             needsMeasurementFirst = true
@@ -829,8 +836,9 @@ public final class ChannelPlayer {
         status = .failed(message: FriendlyError.message(for: error), retryAt: .now.addingTimeInterval(delay))
     }
 
-    /// 720p first, then a step lower each time, down to the lowest.
-    private func stepDownAfterReencodeFailure(of airing: Airing, from cap: Int) {
+    /// A re-encode the server can't keep up with: 720p first, then a step
+    /// lower each time, down to the lowest, for this programme only.
+    private func askForLessReencoding(of airing: Airing, from cap: Int) {
         let hd720 = StreamingQuality.hd720.fixedBitrate!
         let lower = cap > hd720 ? hd720 : StreamingQuality.bitrate(below: cap) ?? StreamingQuality.lowestBitrate
         fixedProgramme = (airing, lower)

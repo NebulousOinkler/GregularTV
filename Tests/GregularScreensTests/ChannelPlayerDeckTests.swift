@@ -142,6 +142,26 @@ struct ChannelPlayerDeckTests {
         player.stop()
     }
 
+    /// Over a minute behind live, the player jumps back. A programme the
+    /// server re-encodes comes back asking for less work (720p): the server
+    /// couldn't keep up. One sent as it is comes back the same.
+    @Test func fallingBehindLiveAsksTheServerForLessOnlyWhenItReencodes() async throws {
+        let headStart = ChannelPlayer.transcodeHeadStart
+        ChannelPlayer.transcodeHeadStart = 0   // play a re-encode at once
+        defer { ChannelPlayer.transcodeHeadStart = headStart }
+        for reencodes in [true, false] {
+            let streams = FakeStreams(converting: reencodes ? ["m1"] : [])
+            let player = try Fixture.surfer(streams: streams).player
+            player.start()
+            let deck = try await Fixture.playingDeck(player)
+            deck.position -= ChannelPlayer.maxDriftBehindLive + 30
+            try await waitUntil(3) { streams.caps.count == 2 }
+            #expect(streams.caps == [10_000_000, reencodes ? 4_000_000 : 10_000_000])
+            #expect(player.programmeFix == (reencodes ? .hd720 : .standard))
+            player.stop()
+        }
+    }
+
     @Test func aFailedStreamIsRetriedNotTreatedAsFinished() async throws {
         let surfer = try Fixture.surfer()
         let player = surfer.player
