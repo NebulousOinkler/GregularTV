@@ -7,15 +7,35 @@ import JavaScriptKit
 /// channel list, and on a phone the lineup under the picture. A tap, or
 /// Enter, tunes.
 @MainActor final class ChannelRows {
-    let rows: [(row: El, schedule: ChannelSchedule)]
+    private(set) var rows: [(row: El, schedule: ChannelSchedule)]
+    private let onSelect: (Int) -> Void
 
     init(channels: [ChannelSchedule], onSelect: @escaping (Int) -> Void) {
-        rows = channels.map { schedule in
-            let row = El("button", "channel-row")
-            row.attribute("type", "button").attribute("data-number", String(schedule.channel.number))
-            row.on("click") { _ in onSelect(schedule.channel.number) }
-            return (row, schedule)
+        self.onSelect = onSelect
+        rows = []
+        rows = channels.map(makeRow)
+    }
+
+    /// Shows `channels`, rebuilt after a setting changed (a schedule code,
+    /// a custom channel): the same rows with their new schedules when the
+    /// channels are the same numbers, so focus stays put, or new rows.
+    /// - Returns: whether the rows are new, to be put on the page.
+    @discardableResult
+    func show(_ channels: [ChannelSchedule]) -> Bool {
+        guard channels.map(\.channel.number) != rows.map(\.schedule.channel.number) else {
+            rows = zip(rows, channels).map { ($0.row, $1) }
+            return false
         }
+        rows = channels.map(makeRow)
+        return true
+    }
+
+    private func makeRow(_ schedule: ChannelSchedule) -> (row: El, schedule: ChannelSchedule) {
+        let row = El("button", "channel-row")
+        let number = schedule.channel.number
+        row.attribute("type", "button").attribute("data-number", String(number))
+        row.on("click") { [onSelect] _ in onSelect(number) }
+        return (row, schedule)
     }
 
     /// The row of channel `number`.

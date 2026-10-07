@@ -153,6 +153,38 @@ test("on a phone, every channel is under the picture", async ({ browser }) => {
   await context.close();
 });
 
+test("on a phone, the channels under the picture follow a new schedule code", async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true });
+  const page = await context.newPage();
+  await signIn(page);
+  const lineup = () => page.locator(".lineup .row-programme").allTextContents();
+  await expect.poll(async () => (await lineup()).length).toBeGreaterThan(0);
+  const before = await lineup();
+  // The channel list is made afresh each time it opens, so it has the channels as they are.
+  const channelList = async () => {
+    const rows = page.locator(".channel-list .row-programme");
+    // Opening a panel just after another (Settings) is ignored for a moment: try again.
+    await expect(async () => {
+      await page.getByRole("button", { name: "Channel list" }).click();
+      await expect(rows.first()).toBeVisible({ timeout: 1000 });
+    }).toPass();
+    const shown = await rows.allTextContents();
+    await page.keyboard.press("Escape");
+    return shown;
+  };
+  // Codes until one puts something else on (any one might happen not to).
+  let after = before;
+  for (const code of ["7KQM2-X9PDA", "11111-11111", "ZZZZZ-ZZZZZ", "00000-00000"]) {
+    await enterCode(page, code);
+    await expect(page.getByRole("dialog", { name: "Settings" })).toBeHidden();
+    after = await channelList();
+    if (after.join("\n") !== before.join("\n")) break;
+  }
+  expect(after).not.toEqual(before);
+  await expect.poll(lineup).toEqual(after);
+  await context.close();
+});
+
 test("a long channel list keeps every row whole", async ({ browser }) => {
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true });
   const page = await context.newPage();
@@ -197,8 +229,12 @@ test("Settings' switches say whether they're on", async ({ page }) => {
 
 /** Types `code` where a schedule code goes, in Settings. */
 async function enterCode(page, code) {
-  await page.keyboard.press("s");
   const field = page.getByLabel("Enter a code, like 7KQM2-X9PDA");
+  // Opening Settings just after another panel closed is ignored for a moment: try again.
+  await expect(async () => {
+    await page.keyboard.press("s");
+    await expect(field).toBeVisible({ timeout: 1000 });
+  }).toPass();
   await field.fill(code);
   await field.press("Enter");
 }
