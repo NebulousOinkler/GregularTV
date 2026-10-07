@@ -5,9 +5,9 @@ import Testing
 @testable import GregularScreens
 @testable import GregularTV
 
-/// Commercials never make the server re-encode video: the original file,
-/// asked for with no bitrate cap (as-is or remuxed), else they're skipped.
-/// They never run a speed test.
+/// Commercials are asked for with no bitrate cap, so the original file plays
+/// as-is or remuxed when it can; one the device can't play as it is is
+/// converted, as a programme is. They never run a speed test.
 @MainActor @Suite(.serialized)
 struct CommercialQualityTests {
     /// A channel tuned 30 seconds into a commercial break: a 20-minute
@@ -61,21 +61,16 @@ struct CommercialQualityTests {
         player.stop()
     }
 
-    @Test func aCommercialThatMustBeReencodedIsSkipped() async throws {
+    @Test func aCommercialThatMustBeReencodedIsConverted() async throws {
         let server = FakeServer(reply: FakeServer.hls(reasons: "VideoCodecNotSupported"))
         let player = try playerInABreak(server: server)
         player.tune()
         try await settle(server)
-        #expect(server.requestedCaps == [StreamingQuality.maximumBitrate], "Asked once; no lower-quality retry")
-        guard case .betweenProgrammes = player.status else {
-            Issue.record("A skipped commercial leaves the screen blank, not \(player.status)")
-            return
+        #expect(server.requestedCaps == [StreamingQuality.maximumBitrate], "Asked once, still with no cap")
+        #expect(player.airing?.isFiller == true, "The clip is on, converted as a programme would be")
+        if case .betweenProgrammes = player.status {
+            Issue.record("A commercial the server converts plays; the break isn't left blank")
         }
-        // Tuning in again asks nothing more about the same clip this session.
-        let asked = server.playbackInfos.count
-        player.tune()
-        try await Task.sleep(for: .milliseconds(300))
-        #expect(server.playbackInfos.count == asked)
         player.stop()
     }
 }

@@ -362,7 +362,7 @@ public final class WatchModel {
         guard surfer.preview == nil else { return nil }
         switch player.status {
         case .betweenProgrammes(let until):
-            // Inside a break (a skipped commercial), the next programme is after the break.
+            // Inside a break (time the clips don't fill), the next programme is after the break.
             let start = player.schedule.commercialBreak(at: until)?.end ?? until
             let next = player.schedule.airings(from: start, to: start.addingTimeInterval(1)).first
             // A mid-roll break in a film: it's still on, and carries on after.
@@ -384,11 +384,11 @@ public final class WatchModel {
         return surfer.typedDigits + String(repeating: "_", count: max(0, surfer.navigator.maxDigits - surfer.typedDigits.count))
     }
 
-    /// For Settings' diagnostics: what was found in the commercials library,
-    /// and how many clips were skipped.
+    /// For Settings' diagnostics: whether commercials are on, and what was
+    /// found in the commercials library.
     public func commercialsDiagnostics(playsCommercials: Bool, libraryStatus: String?) -> String? {
         let off = playsCommercials ? nil : "Turned off: breaks are blank."
-        let parts = [off, libraryStatus, player.skippedCommercialsNote].compactMap { $0 }
+        let parts = [off, libraryStatus].compactMap { $0 }
         return parts.isEmpty ? nil : parts.joined(separator: " ")
     }
 

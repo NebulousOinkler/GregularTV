@@ -19,6 +19,26 @@ struct ChannelPlayerDeckTests {
         #expect(deck.queue.isEmpty && deck.state == .paused)
     }
 
+    /// A commercial the device can't play as it is plays all the same,
+    /// converted by the server as a programme would be, still with no cap.
+    @Test func aCommercialTheServerConvertsStillPlays() async throws {
+        let film = MediaItem(id: "m1", kind: .movie, name: "Film", duration: 50 * 60)
+        let ads = (1...5).map { MediaItem(id: "ad\($0)", kind: .video, name: "Ad \($0)", duration: 60) }
+        // 30 seconds into the break after the film.
+        let channels = try ChannelSchedule.testing([1], epoch: Date.now.addingTimeInterval(-(50 * 60 + 30)), padTo: 60,
+                                                   items: [film], ads: ads)
+        let streams = FakeStreams(converting: Set(ads.map(\.id)))
+        let surfer = ChannelSurfer(channels: channels, startingWith: channels[0], streams: streams,
+                                   preferences: AppPreferences.testing(), decks: FakeDeck.pair())
+        let player = surfer.player
+        player.tune()
+        let deck = try await Fixture.playingDeck(player)
+        #expect(player.airing?.isFiller == true && deck.queue.first?.url.lastPathComponent.hasPrefix("ad") == true,
+                "The converted clip plays, not a blank break")
+        #expect(streams.caps.first == StreamingQuality.maximumBitrate, "Commercials keep their own cap")
+        player.stop()
+    }
+
     /// With "Show playback diagnostics" on, the player writes the line
     /// itself, from what the deck says it's doing.
     @Test func theDiagnosticsLineSaysWhatTheDeckIsDoing() async throws {

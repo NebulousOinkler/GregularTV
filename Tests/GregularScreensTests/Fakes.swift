@@ -60,22 +60,29 @@ import Testing
     }
 }
 
-/// A server that plays everything as the original file, and whose speed
-/// test says `measured`. It records the cap each stream was asked for.
+/// A server that plays everything as the original file, except the items
+/// in `converting`, which it re-encodes; its speed test says `measured`. It
+/// records the cap each stream was asked for.
 final class FakeStreams: StreamSource, @unchecked Sendable {
     private let lock = NSLock()
     private let measured: Int
+    private let converting: Set<String>
     private var asked: [Int] = []
     private var tests = 0
 
-    init(measured: Int = 50_000_000) { self.measured = measured }
+    init(measured: Int = 50_000_000, converting: Set<String> = []) {
+        self.measured = measured
+        self.converting = converting
+    }
 
     var caps: [Int] { lock.withLock { asked } }
     var speedTests: Int { lock.withLock { tests } }
 
     func stream(for itemID: String, maxBitrate: Int) async throws -> MediaStream {
         lock.withLock { asked.append(maxBitrate) }
-        return MediaStream(url: URL(string: "https://tv.invalid/\(itemID)")!, delivery: .original)
+        let url = URL(string: "https://tv.invalid/\(itemID)")!
+        return converting.contains(itemID) ? MediaStream(url: url, delivery: .converted, reencodes: true)
+            : MediaStream(url: url, delivery: .original)
     }
     func release(_ stream: MediaStream) async {}
     func measureBandwidth() async throws -> Int {
