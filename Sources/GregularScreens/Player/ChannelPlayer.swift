@@ -39,6 +39,15 @@ import Observation
 /// - **Failures** (server down, network drop) retry with backoff: 5 s, 10 s,
 ///   20 s, 40 s, then every minute, so playback returns by itself when the
 ///   server does.
+/// - **Keeping the server's work going:** a server may stop converting a
+///   stream that the player has stopped asking for more of, because it has
+///   buffered enough or is holding it ready (Jellyfin stops after a minute).
+///   So every 20 s the player tells the server it still wants each stream
+///   it holds (`StreamSource.keepAlive`): on screen, queued next, or
+///   buffering behind a break. Not while paused, which can last hours:
+///   resuming jumps to live, which the server can start afresh.
+/// - **Which player:** a stream says whether the device's own player or its
+///   fallback plays it (`MediaStream.player`), and the deck plays it there.
 /// - **Stalls:** if video hasn't moved for 30 s (for example, the server
 ///   can't transcode fast enough), it's treated as a failure and retried.
 /// - **Head start for re-encoding:** tuning into a programme the server has to
@@ -127,6 +136,9 @@ public final class ChannelPlayer {
     public static let stepDownAfterBuffering: TimeInterval = 4
     /// A re-encoded programme with less than this left isn't started.
     public static let minReencodedTimeLeft: TimeInterval = 180
+    /// How often the server hears the player still wants its streams: well
+    /// inside the minute after which Jellyfin stops a transcode.
+    public static var keepAliveInterval: TimeInterval = 20
 
     /// Two decks, each with its own picture. One is on screen (`player`);
     /// the other is standby, buffering the programme after a commercial
@@ -206,6 +218,8 @@ public final class ChannelPlayer {
     private var lastProgress: (position: Double, at: Date)?
     private var tuneTask: Task<Void, Never>?
     private var heartbeat: Task<Void, Never>?
+    /// When the server last heard the player still wants its streams.
+    private var lastKeepAlive: Date?
 
     /// An airing with its deck item and the server's stream.
     private struct LoadedAiring {
@@ -420,6 +434,7 @@ public final class ChannelPlayer {
 
     private func tick() {
         let now = Date.now
+        keepStreamsAlive(at: now)
         switch status {
         case .tuning, .paused, .startingSoon:
             return
@@ -537,6 +552,19 @@ public final class ChannelPlayer {
         if next == nil, !isPreparingNext, current.airing.end.timeIntervalSince(now) < Self.prepareNextLead {
             prepareNext(after: current)
         }
+    }
+
+    /// Every `keepAliveInterval`, tells the server the player still wants
+    /// each stream it holds, so it doesn't stop converting one that's
+    /// buffered ahead or waiting its turn. Not while paused.
+    private func keepStreamsAlive(at now: Date) {
+        guard !status.isPaused,
+              now.timeIntervalSince(lastKeepAlive ?? .distantPast) >= Self.keepAliveInterval else { return }
+        lastKeepAlive = now
+        let held = [current, next, afterBreak].compactMap { $0?.unreleased }.filter { $0.sessionID != nil }
+        guard !held.isEmpty else { return }
+        let streams = streams
+        Task.detached { for stream in held { await streams.keepAlive(stream) } }
     }
 
     /// At the end of a gap, starts the next item that was queued and held
@@ -679,7 +707,8 @@ public final class ChannelPlayer {
         // and a commercial still playing is cut off when the next programme starts.
         // A later part of a film split by mid-roll breaks starts where the
         // last part stopped, even when it's queued and starts by itself.
-        let item = player.makeItem(url: source.url, from: airing.mediaOffset, to: airing.mediaOffset + airing.length,
+        let item = player.makeItem(url: source.url, on: source.player,
+                                   from: airing.mediaOffset, to: airing.mediaOffset + airing.length,
                                    bufferAhead: source.reencodes ? Self.reencodedForwardBuffer : nil)
         return LoadedAiring(airing: airing,
                             item: item,

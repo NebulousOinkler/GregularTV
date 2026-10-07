@@ -5,19 +5,26 @@ import GregularCore
 /// server after login goes through here.
 ///
 /// **Privacy:** this type has no playback reporting (`/Sessions/Playing…`)
-/// and never marks items as played. It registers no capabilities either, and
-/// never opens the live connection Jellyfin sends remote control over, so
-/// other Jellyfin apps can't control the TV. That's deliberate, and
-/// `PrivacyTests` checks it. See PLAN.md §3.
+/// and never marks items as played. Its one call there is the transcode
+/// keep-alive (`keepTranscoding(playSessionID:)`), which names no item and
+/// no position: only the play session the server made for the stream. It
+/// registers no capabilities either, and never opens the live connection
+/// Jellyfin sends remote control over, so other Jellyfin apps can't control
+/// the TV. That's deliberate, and `PrivacyTests` checks it. See PLAN.md §3.
 public struct JellyfinClient: Sendable {
     public let credentials: Credentials
     /// What this device can play, for Jellyfin to choose between the file as it is and a conversion.
     public let formats: PlayableFormats
+    /// What the device's fallback player can play as it is, if it has one
+    /// (`MediaStream.Player.fallback`).
+    public let fallbackFormats: PlayableFormats?
     private let api: JellyfinAPI
 
-    public init(credentials: Credentials, identity: ClientIdentity, formats: PlayableFormats, transport: any HTTPTransport) {
+    public init(credentials: Credentials, identity: ClientIdentity, formats: PlayableFormats,
+                fallbackFormats: PlayableFormats? = nil, transport: any HTTPTransport) {
         self.credentials = credentials
         self.formats = formats
+        self.fallbackFormats = fallbackFormats
         api = JellyfinAPI(server: credentials.serverURL, identity: identity,
                           token: credentials.accessToken, transport: transport)
     }
@@ -71,10 +78,39 @@ public struct JellyfinClient: Sendable {
     }
 
     /// Asks Jellyfin how to play an item on this device, and returns the URL.
+    ///
+    /// The device's own player plays the file as it is if it can. If it
+    /// can't, but the fallback player (`fallbackFormats`) can, the fallback
+    /// plays it as it is, so the server only sends the file. Otherwise the
+    /// server converts it for the device's own player.
     /// - Parameter maxBitrate: the quality cap in bits per second (see `StreamingQuality`).
     public func playbackSource(
         for itemID: String, maxBitrate: Int = StreamingQuality.maximumBitrate
     ) async throws -> PlaybackSource {
+        let (info, source) = try await playbackInfo(for: itemID, formats: formats, maxBitrate: maxBitrate)
+        if source.supportsDirectPlay {
+            return PlaybackSource(url: directPlayURL(itemID: itemID, source: source, playSessionID: info.playSessionId, isSong: false),
+                                  method: .directPlay, playSessionID: info.playSessionId)
+        }
+        if let fallbackFormats,
+           let fallback = try? await playbackInfo(for: itemID, formats: fallbackFormats, maxBitrate: maxBitrate),
+           fallback.source.supportsDirectPlay {
+            return PlaybackSource(url: directPlayURL(itemID: itemID, source: fallback.source, playSessionID: fallback.info.playSessionId, isSong: false),
+                                  method: .directPlay, player: .fallback, playSessionID: fallback.info.playSessionId)
+        }
+        if let transcodingURL = source.transcodingUrl, let url = serverRelativeURL(transcodingURL) {
+            return PlaybackSource(url: url, method: .hls, playSessionID: info.playSessionId)
+        }
+        throw JellyfinError.noPlayableSource(itemID: itemID)
+    }
+
+    /// What Jellyfin says about playing an item on a player that plays
+    /// `formats`: its answer, and the item's own media source in it. Asking
+    /// starts nothing on the server; a transcode starts only when its
+    /// stream is fetched.
+    private func playbackInfo(
+        for itemID: String, formats: PlayableFormats, maxBitrate: Int
+    ) async throws -> (info: PlaybackInfoResponse, source: PlaybackInfoResponse.MediaSource) {
         let info: PlaybackInfoResponse = try await api.post(
             "/Items/\(itemID)/PlaybackInfo",
             query: [
@@ -85,17 +121,8 @@ public struct JellyfinClient: Sendable {
             ],
             body: PlaybackInfoRequest(itemID: itemID, userId: credentials.userID, formats: formats, maxBitrate: maxBitrate,
                                       secure: credentials.serverURL.scheme?.lowercased() == "https"))
-
         guard let source = info.mediaSources.first else { throw JellyfinError.noPlayableSource(itemID: itemID) }
-
-        if source.supportsDirectPlay {
-            return PlaybackSource(url: directPlayURL(itemID: itemID, source: source, playSessionID: info.playSessionId, isSong: false),
-                                  method: .directPlay, playSessionID: info.playSessionId)
-        }
-        if let transcodingURL = source.transcodingUrl, let url = serverRelativeURL(transcodingURL) {
-            return PlaybackSource(url: url, method: .hls, playSessionID: info.playSessionId)
-        }
-        throw JellyfinError.noPlayableSource(itemID: itemID)
+        return (info, source)
     }
 
     /// The fastest a measurement reports: 2 Gbps, far beyond any stream.
@@ -126,6 +153,20 @@ public struct JellyfinClient: Sendable {
             URLQueryItem(name: "playSessionId", value: playSessionID),
         ])
     }
+
+    /// Keeps the server's transcode for a play session going. Jellyfin stops
+    /// an HLS transcode, and deletes what it made, a minute after the player
+    /// last asked for a segment, and a player that has buffered enough (or
+    /// is waiting, paused, to play it) stops asking. This tells it the
+    /// player is still there. It sends only the play session's ID: no item,
+    /// no position, nothing the server records as played.
+    public func keepTranscoding(playSessionID: String) async throws {
+        try await api.call("POST", Self.keepAlivePath, query: [URLQueryItem(name: "playSessionId", value: playSessionID)])
+    }
+
+    /// The transcode keep-alive, the one path under `/Sessions/Playing` the
+    /// app calls (`PrivacyTests` allows it alone).
+    static let keepAlivePath = "/Sessions/Playing/Ping"
 
     /// Cancels the token on the server. False if the server couldn't be
     /// reached, or refused: then the token may still work there.
@@ -211,6 +252,11 @@ extension JellyfinClient: StreamSource {
     public func release(_ stream: MediaStream) async {
         guard let session = stream.sessionID else { return }
         try? await stopTranscoding(playSessionID: session)
+    }
+
+    public func keepAlive(_ stream: MediaStream) async {
+        guard let session = stream.sessionID else { return }
+        try? await keepTranscoding(playSessionID: session)
     }
 
     public func measureBandwidth() async throws -> Int {

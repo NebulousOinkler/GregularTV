@@ -46,9 +46,9 @@ enum JellyfinFixtures {
     static let identity = ClientIdentity(deviceID: "device-123", deviceName: "Apple TV")
     static let credentials = Credentials(serverURL: server, userID: "user-1", accessToken: "token-abc", deviceID: "device-123")
 
-    static func client(_ mock: MockJellyfin, server: URL = server) -> JellyfinClient {
+    static func client(_ mock: MockJellyfin, server: URL = server, fallback: PlayableFormats? = nil) -> JellyfinClient {
         JellyfinClient(credentials: Credentials(serverURL: server, userID: "user-1", accessToken: "token-abc", deviceID: "device-123"),
-                       identity: identity, formats: .appleTV, transport: mock)
+                       identity: identity, formats: .appleTV, fallbackFormats: fallback, transport: mock)
     }
 
     static let authResult = #"{ "AccessToken": "token-abc", "User": { "Id": "user-1", "Name": "sam" }, "ServerId": "srv" }"#

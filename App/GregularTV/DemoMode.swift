@@ -8,17 +8,18 @@ extension AppModel {
     /// person's name).
     static let deviceName = "Apple TV"
 
-    /// The model the app starts with, playing on AVFoundation decks. Release
+    /// The model the app starts with, playing on Apple TV's decks
+    /// (AVFoundation, and VLC for files only it plays as they are). Release
     /// builds always use the saved sign-in (or show sign-in); Debug builds
     /// can instead start in demo mode (see `DemoCredentials`).
     static func forLaunch() -> AppModel {
         #if DEBUG
         if let demo = DemoCredentials.fromLaunchArguments() {
-            return AppModel(deviceName: deviceName, formats: .appleTV, store: demo, makeDecks: AVPlayerDeck.pair,
-                            specialModes: SpecialModeViews.all.registry)
+            return AppModel(deviceName: deviceName, formats: .appleTV, fallbackFormats: .vlcOnAppleTV, store: demo,
+                            makeDecks: TVDeck.pair, specialModes: SpecialModeViews.all.registry)
         }
         #endif
-        return AppModel(deviceName: deviceName, formats: .appleTV, store: KeychainStore(), makeDecks: AVPlayerDeck.pair,
-                        specialModes: SpecialModeViews.all.registry)
+        return AppModel(deviceName: deviceName, formats: .appleTV, fallbackFormats: .vlcOnAppleTV, store: KeychainStore(),
+                        makeDecks: TVDeck.pair, specialModes: SpecialModeViews.all.registry)
     }
 }

@@ -9,14 +9,16 @@ import Testing
 @MainActor final class FakeDeck: PlayerDeck {
     final class Item: PlayerItem {
         let url: URL
+        let player: MediaStream.Player
         let start: TimeInterval
         let end: TimeInterval
         var hasFailed = false
         var failure: (any Error)?
         var bufferedAhead: TimeInterval = 60
         var bufferedInAll: TimeInterval = 60
-        init(url: URL, start: TimeInterval, end: TimeInterval) {
+        init(url: URL, player: MediaStream.Player, start: TimeInterval, end: TimeInterval) {
             self.url = url
+            self.player = player
             self.start = start
             self.end = end
         }
@@ -31,8 +33,9 @@ import Testing
 
     static func pair() -> [any PlayerDeck] { [FakeDeck(), FakeDeck()] }
 
-    func makeItem(url: URL, from start: TimeInterval, to end: TimeInterval, bufferAhead: TimeInterval?) -> any PlayerItem {
-        Item(url: url, start: start, end: end)
+    func makeItem(url: URL, on player: MediaStream.Player, from start: TimeInterval, to end: TimeInterval,
+                  bufferAhead: TimeInterval?) -> any PlayerItem {
+        Item(url: url, player: player, start: start, end: end)
     }
 
     var currentItem: (any PlayerItem)? { queue.first }
@@ -61,30 +64,44 @@ import Testing
 }
 
 /// A server that plays everything as the original file, except the items
-/// in `converting`, which it re-encodes; its speed test says `measured`. It
-/// records the cap each stream was asked for.
+/// in `converting`, which it re-encodes, and (with `streaming`) everything
+/// else, which it repackages; each stream it serves itself is in a session
+/// of its own. Its speed test says `measured`. It records the cap each
+/// stream was asked for, and each stream it was told is still wanted.
 final class FakeStreams: StreamSource, @unchecked Sendable {
     private let lock = NSLock()
     private let measured: Int
     private let converting: Set<String>
+    private let streaming: Bool
+    private let player: MediaStream.Player
     private var asked: [Int] = []
     private var tests = 0
+    private var kept: [String] = []
 
-    init(measured: Int = 50_000_000, converting: Set<String> = []) {
+    init(measured: Int = 50_000_000, converting: Set<String> = [], streaming: Bool = false, player: MediaStream.Player = .builtIn) {
         self.measured = measured
         self.converting = converting
+        self.streaming = streaming
+        self.player = player
     }
 
     var caps: [Int] { lock.withLock { asked } }
     var speedTests: Int { lock.withLock { tests } }
+    /// The sessions kept going, in order.
+    var keptAlive: [String] { lock.withLock { kept } }
 
     func stream(for itemID: String, maxBitrate: Int) async throws -> MediaStream {
         lock.withLock { asked.append(maxBitrate) }
         let url = URL(string: "https://tv.invalid/\(itemID)")!
-        return converting.contains(itemID) ? MediaStream(url: url, delivery: .converted, reencodes: true)
-            : MediaStream(url: url, delivery: .original)
+        let reencodes = converting.contains(itemID)
+        let served = reencodes || streaming
+        return MediaStream(url: url, delivery: served ? .converted : .original, player: player, reencodes: reencodes,
+                           sessionID: served ? "session-\(itemID)" : nil)
     }
     func release(_ stream: MediaStream) async {}
+    func keepAlive(_ stream: MediaStream) async {
+        if let session = stream.sessionID { lock.withLock { kept.append(session) } }
+    }
     func measureBandwidth() async throws -> Int {
         lock.withLock { tests += 1 }
         return measured
@@ -93,12 +110,12 @@ final class FakeStreams: StreamSource, @unchecked Sendable {
 
 enum Fixture {
     /// Two channels of hour-long films, `elapsed` seconds into one.
-    @MainActor static func surfer(elapsed: TimeInterval = 600) throws -> ChannelSurfer {
+    @MainActor static func surfer(elapsed: TimeInterval = 600, streams: FakeStreams = FakeStreams()) throws -> ChannelSurfer {
         let items = (1...3).map { MediaItem(id: "m\($0)", kind: .movie, name: "Film \($0)", duration: 3600) }
         let channels = try ChannelSchedule.testing([1, 2], epoch: Date.now.addingTimeInterval(-elapsed), items: items)
         let preferences = AppPreferences.testing()
         preferences.streamingQuality = .hd10
-        return ChannelSurfer(channels: channels, startingWith: channels[0], streams: FakeStreams(),
+        return ChannelSurfer(channels: channels, startingWith: channels[0], streams: streams,
                              preferences: preferences, decks: FakeDeck.pair())
     }
 

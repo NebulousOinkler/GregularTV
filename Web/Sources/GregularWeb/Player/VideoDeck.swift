@@ -1,5 +1,6 @@
 import Foundation
 import GregularBrowser
+import GregularCore
 import GregularScreens
 import JavaScriptKit
 import Observation
@@ -33,7 +34,9 @@ import Observation
         }
     }
 
-    func makeItem(url: URL, from start: TimeInterval, to end: TimeInterval,
+    /// A browser has no fallback player (`JellyfinClient` is given none), so
+    /// every stream is for the browser's own: `player` is always `.builtIn`.
+    func makeItem(url: URL, on player: MediaStream.Player, from start: TimeInterval, to end: TimeInterval,
                   bufferAhead: TimeInterval?) -> any PlayerItem {
         VideoItem(url: url, start: start, end: end, bufferAhead: bufferAhead)
     }

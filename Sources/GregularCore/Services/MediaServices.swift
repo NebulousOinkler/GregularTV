@@ -46,6 +46,13 @@ public protocol StreamSource: Sendable {
     /// transcode) now that the player is finished with it.
     func release(_ stream: MediaStream) async
 
+    /// Tells the server the player still wants `stream`, so it carries on
+    /// with the work it's doing for it. A player that has buffered enough
+    /// stops asking for more (paused, or far enough ahead), and a server
+    /// may take that as the player having gone, and stop. Only a stream
+    /// with a `sessionID` has work to keep going.
+    func keepAlive(_ stream: MediaStream) async
+
     /// How fast the server can send data right now, in bits per second.
     func measureBandwidth() async throws -> Int
 }
@@ -59,6 +66,16 @@ public struct MediaStream: Sendable, Equatable {
         case converted
     }
 
+    /// Which of the device's players plays it.
+    public enum Player: Sendable, Equatable {
+        /// The platform's own: AVFoundation on Apple TV, `<video>` in a browser.
+        case builtIn
+        /// The device's fallback player, for a file its own can't play as it
+        /// is but the fallback can (VLC on Apple TV), so the server needn't
+        /// convert it.
+        case fallback
+    }
+
     public let url: URL
     public let delivery: Delivery
     /// The server has to re-encode it (not just repackage it). That's the
@@ -70,11 +87,13 @@ public struct MediaStream: Sendable, Equatable {
     /// The server's handle on the work it's doing for this stream, for
     /// `StreamSource.release(_:)`. Nil when there's nothing to stop.
     public let sessionID: String?
+    public let player: Player
 
-    public init(url: URL, delivery: Delivery, reencodes: Bool = false,
+    public init(url: URL, delivery: Delivery, player: Player = .builtIn, reencodes: Bool = false,
                 conversionReasons: [String] = [], sessionID: String? = nil) {
         self.url = url
         self.delivery = delivery
+        self.player = player
         self.reencodes = reencodes
         self.conversionReasons = conversionReasons
         self.sessionID = sessionID

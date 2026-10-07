@@ -65,6 +65,15 @@ struct SettingsView: View {
                 }
             }
 
+            SettingsRows.section(SettingsText.picture, footer: [
+                SettingsText.matchFrameRateNote,
+                app.matchesFrameRate && !FrameRateMatching.isOnInAppleTVSettings ? SettingsText.matchContentIsOff : nil,
+            ]) {
+                SettingsRows.row(SettingsText.matchFrameRate, value: SettingsText.onOff(app.matchesFrameRate)) {
+                    app.setMatchesFrameRate(!app.matchesFrameRate)
+                }
+            }
+
             SettingsRows.section(SettingsText.diagnostics, footer: [
                 app.showsDiagnostics ? commercialsStatus.map(SettingsText.commercialsStatus) : nil,
                 SettingsText.diagnosticsNote,

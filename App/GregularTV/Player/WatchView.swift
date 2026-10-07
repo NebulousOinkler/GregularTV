@@ -54,8 +54,8 @@ struct WatchView: View {
             // behind buffers the programme after a commercial break.
             ZStack {
                 ForEach(player.decks.indices, id: \.self) { index in
-                    if let deck = player.decks[index] as? AVPlayerDeck {
-                        VideoSurface(player: deck.player)
+                    if let deck = player.decks[index] as? TVDeck {
+                        DeckSurface(deck: deck)
                             .zIndex(index == player.activeIndex ? 1 : 0)
                     }
                 }
@@ -136,6 +136,7 @@ struct WatchView: View {
         .onDisappear {
             model.disappeared()
             UIApplication.shared.isIdleTimerDisabled = false
+            Task { await FrameRateMatching.match(nil) }
         }
         // Focus goes back to live TV once the input layer can take it again.
         // Setting it in the same update that closes an overlay could fail and
@@ -163,6 +164,19 @@ struct WatchView: View {
         .task(id: model.curtainTrigger) { await model.runCurtain() }
         .task(id: model.curtainTrigger) { await model.runStationCard() }
         .task(id: model.bannerTrigger) { await model.runBannerTimer() }
+        // "Match frame rate": the TV follows what's on screen, again whenever that changes.
+        .task(id: FrameRateKey(on: app.matchesFrameRate, deck: player.activeIndex, airing: player.airing,
+                               tune: player.tuneCount)) {
+            await FrameRateMatching.match(app.matchesFrameRate ? player.player as? TVDeck : nil)
+        }
+    }
+
+    /// What's on screen, as far as the TV's frame rate goes.
+    private struct FrameRateKey: Equatable {
+        let on: Bool
+        let deck: Int
+        let airing: Airing?
+        let tune: Int
     }
 
     /// An invisible full-screen layer that owns the remote while watching.

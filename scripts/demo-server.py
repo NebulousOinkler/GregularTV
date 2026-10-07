@@ -9,6 +9,12 @@ Then launch a Debug build of the app with `-demoServer http://localhost:8765`
 version, open http://localhost:8080/?demoServer=http://127.0.0.1:8765
 (scripts/serve-web.py). It answers any web page, as Jellyfin does (CORS).
 
+With `--fallback` (Apple TV only), it says Apple TV's own player can't play
+the films and shows as they are, so they play in its fallback player (VLC),
+and the commercials in its own: every break hands from one to the other, as
+with a library of MKV films and MP4 commercials. (It's the same MP4, which
+VLC plays too.)
+
 It also signs anyone in, by any name and password (never a real account's),
 so sign-in can be tried: the sign-in screen with the address
 http://127.0.0.1:8765.
@@ -34,6 +40,7 @@ VIDEO = os.path.join(os.path.dirname(__file__), "..", ".build", "demo", "backgro
 SONG = os.path.join(os.path.dirname(__file__), "..", "Web", "public", "station-card.m4a")
 TICKS_PER_MINUTE = 60 * 10_000_000
 CHUNK = 1024 * 1024  # the most sent for an open-ended range
+FALLBACK = "--fallback" in sys.argv
 
 # Public-domain films (US): title, year, minutes, genres.
 FILMS = [
@@ -262,17 +269,21 @@ class Handler(BaseHTTPRequestHandler):
         return True
 
     def do_POST(self):
-        self.rfile.read(int(self.headers.get("Content-Length", "0") or 0))
+        body = self.rfile.read(int(self.headers.get("Content-Length", "0") or 0))
         path = urlparse(self.path).path
         if path == "/Users/AuthenticateByName":
             return self.send_json({"AccessToken": "demo", "ServerId": "demo",
                                    "User": {"Id": "demo", "Name": "demo", "Policy": {"IsAdministrator": False}}})
         if path.endswith("/PlaybackInfo"):
-            is_song = any(path == f"/Items/{song['Id']}/PlaybackInfo" for song in SONG_ITEMS)
-            return self.send_json({"MediaSources": [{"Id": "source", "SupportsDirectPlay": True,
+            item = path.split("/")[-2]
+            is_song = any(item == song["Id"] for song in SONG_ITEMS)
+            # Songs always play as they are: karaoke never has them converted.
+            plays = not FALLBACK or "VLC" in json.loads(body or b"{}").get("DeviceProfile", {}).get("Name", "") \
+                or item.startswith("ad") or is_song
+            return self.send_json({"MediaSources": [{"Id": "source", "SupportsDirectPlay": plays,
                                                      "Container": "m4a" if is_song else "mp4"}],
                                    "PlaySessionId": "demo"})
-        self.send_empty()  # capabilities, logout
+        self.send_empty()  # capabilities, logout, transcode keep-alive
 
     def do_DELETE(self):
         self.send_empty()  # stop transcoding: nothing to stop
@@ -309,5 +320,6 @@ if __name__ == "__main__":
     if not os.path.exists(VIDEO):
         sys.exit(f"Missing {VIDEO}. Run: swift scripts/make-demo-video.swift")
     print(f"Demo Jellyfin server on http://localhost:{PORT} "
-          f"({len(FILMS)} films, {len(SHOWS)} shows, {len(COMMERCIALS)} commercials). Ctrl-C to stop.")
+          f"({len(FILMS)} films, {len(SHOWS)} shows, {len(COMMERCIALS)} commercials"
+          f"{'; films and shows in VLC' if FALLBACK else ''}). Ctrl-C to stop.")
     ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()

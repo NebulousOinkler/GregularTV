@@ -82,6 +82,10 @@ public final class AppModel {
     /// "Edit from a phone or computer" in Settings (off by default): whether
     /// Settings offers the editing page (`EditingPage`) on the home network.
     public private(set) var allowsEditingPage: Bool
+    /// "Match frame rate" in Settings (off by default): whether the TV
+    /// switches to each programme's frame rate and dynamic range. Only
+    /// Apple TV offers it; it's the front end's to apply.
+    public private(set) var matchesFrameRate: Bool
     /// The kind of device, as servers list it, such as "Apple TV". Each
     /// sign-in pairs it with a device ID of its own (`ClientIdentity`).
     var deviceName: String { access.deviceName }
@@ -106,14 +110,17 @@ public final class AppModel {
     ///   - deviceName: the kind of device, as Jellyfin lists it, such as
     ///     "Apple TV" (never the name the user gave their device).
     ///   - formats: what the device's player can play.
+    ///   - fallbackFormats: what the device's fallback player can play as it
+    ///     is (VLC on Apple TV), for files its own player can't; nil if it has none.
     ///   - transport: the platform's network path (`HTTPTransport`).
     ///   - makeDecks: the two video decks for each channel player
     ///     (see `PlayerDeck`): AVFoundation on Apple TV.
     ///   - specialModes: the special modes the front end has screens for; none unless given.
-    public init(deviceName: String, formats: PlayableFormats, transport: any HTTPTransport, store: any CredentialStore,
+    public init(deviceName: String, formats: PlayableFormats, fallbackFormats: PlayableFormats? = nil,
+                transport: any HTTPTransport, store: any CredentialStore,
                 preferences: AppPreferences, makeDecks: @escaping @MainActor () -> [any PlayerDeck],
                 specialModes: SpecialModeRegistry = SpecialModeRegistry()) {
-        access = ServerAccess(deviceName: deviceName, formats: formats, transport: transport)
+        access = ServerAccess(deviceName: deviceName, formats: formats, fallbackFormats: fallbackFormats, transport: transport)
         self.makeDecks = makeDecks
         self.specialModes = specialModes
         self.store = store
@@ -123,6 +130,7 @@ public final class AppModel {
         customChannels = preferences.customChannels
         setTimes = preferences.setTimes
         allowsEditingPage = preferences.allowsEditingPage
+        matchesFrameRate = preferences.matchesFrameRate
         if let saved = preferences.scheduleCode {
             scheduleCode = saved
         } else {
@@ -138,12 +146,13 @@ public final class AppModel {
     #if canImport(Darwin)
     /// On Apple platforms: requests go through URLSession, and preferences
     /// are kept in UserDefaults.
-    public convenience init(deviceName: String, formats: PlayableFormats, store: any CredentialStore,
-                            preferences: AppPreferences = AppPreferences(),
+    public convenience init(deviceName: String, formats: PlayableFormats, fallbackFormats: PlayableFormats? = nil,
+                            store: any CredentialStore, preferences: AppPreferences = AppPreferences(),
                             makeDecks: @escaping @MainActor () -> [any PlayerDeck],
                             specialModes: SpecialModeRegistry = SpecialModeRegistry()) {
-        self.init(deviceName: deviceName, formats: formats, transport: URLSessionTransport.shared, store: store,
-                  preferences: preferences, makeDecks: makeDecks, specialModes: specialModes)
+        self.init(deviceName: deviceName, formats: formats, fallbackFormats: fallbackFormats,
+                  transport: URLSessionTransport.shared, store: store, preferences: preferences, makeDecks: makeDecks,
+                  specialModes: specialModes)
     }
     #endif
 
@@ -321,6 +330,11 @@ public final class AppModel {
     public func setAllowsEditingPage(_ allows: Bool) {
         allowsEditingPage = allows
         preferences.allowsEditingPage = allows
+    }
+
+    public func setMatchesFrameRate(_ matches: Bool) {
+        matchesFrameRate = matches
+        preferences.matchesFrameRate = matches
     }
 
     /// Rebuilds every channel from the new code, which re-tunes the current channel.

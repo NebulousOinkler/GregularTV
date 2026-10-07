@@ -515,4 +515,58 @@ final class WalkthroughTests: XCTestCase {
         guard count > 0, let line = String(decoding: reply.prefix(count), as: UTF8.self).split(separator: "\r\n").first else { return 0 }
         return line.split(separator: " ").dropFirst().first.flatMap { Int($0) } ?? 0
     }
+
+    // MARK: VLC, for files Apple TV's own player can't play as they are
+
+    /// With the demo server started with `--fallback`, films and shows play
+    /// in VLC: the diagnostics line says so (playing, not stuck buffering),
+    /// with Match frame rate on. Skipped without `--fallback`.
+    func test10FallbackPlayer() throws {
+        try XCTSkipUnless(Self.serverSendsProgrammesToVLC(), "Start the demo server with --fallback")
+        waitForWatching()
+        openSettings()
+        // Its line says what's playing. The TV follows each channel's frame
+        // rate meanwhile (the simulator doesn't switch, but it's asked).
+        let changed = ["Show playback diagnostics", "Match frame rate"].filter { setSwitch($0, on: true) }
+        closeSettings()
+
+        // On one channel or the other, a programme (not a break).
+        let seen = (0..<16).contains { _ in
+            press(.right)   // channel up: the banner shows, with the diagnostics line
+            pause(4)
+            return text("Playing in VLC").exists
+        }
+        XCTAssertTrue(seen, "No programme played in VLC")
+        capture("playing-in-vlc")
+
+        openSettings()
+        for label in changed { setSwitch(label, on: false) }
+        closeSettings()
+    }
+
+    /// Turns the Settings switch labelled `label` on or off. True if it changed.
+    @discardableResult
+    private func setSwitch(_ label: String, on: Bool) -> Bool {
+        let row = button(label)
+        guard reach(row, label), row.label.hasSuffix(on ? "Off" : "On") else { return false }
+        press(.select)
+        XCTAssertTrue(focusedLabel().hasSuffix(on ? "On" : "Off"), "\(label) didn't turn \(on ? "on" : "off"): \(focusedLabel())")
+        return true
+    }
+
+    /// Asks the demo server about a film for Apple TV's own player, as the app does.
+    private static func serverSendsProgrammesToVLC() -> Bool {
+        var request = URLRequest(url: URL(string: "http://localhost:8765/Items/film1/PlaybackInfo")!)
+        request.httpMethod = "POST"
+        request.httpBody = Data(#"{"DeviceProfile": {"Name": "Gregular (tvOS)"}}"#.utf8)
+        let done = DispatchSemaphore(value: 0)
+        nonisolated(unsafe) var plays = true
+        URLSession.shared.dataTask(with: request) { data, _, _ in
+            let sources = (data.flatMap { try? JSONSerialization.jsonObject(with: $0) } as? [String: Any])?["MediaSources"]
+            plays = ((sources as? [[String: Any]])?.first?["SupportsDirectPlay"] as? Bool) ?? true
+            done.signal()
+        }.resume()
+        _ = done.wait(timeout: .now() + 5)
+        return !plays
+    }
 }

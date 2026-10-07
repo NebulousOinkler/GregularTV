@@ -55,6 +55,38 @@ struct ChannelPlayerDeckTests {
         player.stop()
     }
 
+    /// A stream the device's own player can't play, but its fallback can,
+    /// is queued for the fallback.
+    @Test func theDeckPlaysEachStreamOnThePlayerItSays() async throws {
+        let player = try Fixture.surfer(streams: FakeStreams(player: .fallback)).player
+        player.tune()
+        let deck = try await Fixture.playingDeck(player)
+        #expect(deck.queue.first?.player == .fallback)
+        player.stop()
+    }
+
+    /// The server hears the player still wants the stream it's converting,
+    /// so it doesn't stop once the player has buffered enough; not while
+    /// paused, which can last hours.
+    @Test func theServerIsToldItsConversionIsStillWanted() async throws {
+        let interval = ChannelPlayer.keepAliveInterval
+        ChannelPlayer.keepAliveInterval = 0   // every heartbeat
+        defer { ChannelPlayer.keepAliveInterval = interval }
+        let streams = FakeStreams(streaming: true)
+        let player = try Fixture.surfer(streams: streams).player
+        player.start()
+        try await Fixture.settle(player)
+        try await waitUntil(3) { streams.keptAlive.count >= 2 }
+        #expect(Set(streams.keptAlive).count == 1 && streams.keptAlive[0].hasPrefix("session-"), "The one stream it holds")
+
+        player.togglePause()
+        try await Task.sleep(for: .milliseconds(200))   // one already on its way
+        let whilePaused = streams.keptAlive.count
+        try await Task.sleep(for: .seconds(1.5))
+        #expect(streams.keptAlive.count == whilePaused, "Not while paused")
+        player.stop()
+    }
+
     @Test func resumingSeeksToLiveWithoutLoadingAgain() async throws {
         let surfer = try Fixture.surfer(elapsed: 600)
         let player = surfer.player
