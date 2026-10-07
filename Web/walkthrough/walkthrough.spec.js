@@ -203,13 +203,18 @@ async function enterCode(page, code) {
   await field.press("Enter");
 }
 
+// Karaoke's keyword, from SPECIAL_MODE_KEYWORD: the repo keeps only its
+// hash, so the keyword itself is never written here.
+const keyword = process.env.SPECIAL_MODE_KEYWORD ?? "";
+
 test("a keyword opens karaoke, which sings and goes back to live TV", async ({ page }) => {
+  test.skip(!keyword, "Set SPECIAL_MODE_KEYWORD to walk through karaoke");
   test.setTimeout(90_000);
   const problems = watchForProblems(page);
   const songs = [];
   page.on("request", (r) => { if (r.url().includes("/Audio/")) songs.push(new URL(r.url()).pathname); });
   await signIn(page);
-  await enterCode(page, "Sweet Caroline");
+  await enterCode(page, keyword);
   await expect(page.getByRole("heading", { name: "Pick a Theme" })).toBeVisible();
 
   // A highlighted box samples its theme across the page; choosing it goes on.
@@ -220,7 +225,7 @@ test("a keyword opens karaoke, which sings and goes back to live TV", async ({ p
   await expect(page.getByRole("heading", { name: "Karaoke" })).toBeVisible();
 
   await page.getByRole("button", { name: "All Songs" }).click();
-  await expect(page.locator(".k-song, .k-list .k-item")).toHaveCount(4);
+  await expect(page.locator(".k-list .k-item")).toHaveCount(15);
   await expect(page.locator(".k-item", { hasText: "Splash Dance" }).locator(".k-badge")).toHaveText("Video");
   await expect(page.locator(".k-item", { hasText: "Hum Along" }).locator(".k-badge")).toHaveText("No lyrics");
   await page.locator(".k-item", { hasText: "Saturday Satellite" }).click();
@@ -248,9 +253,10 @@ test("a keyword opens karaoke, which sings and goes back to live TV", async ({ p
 });
 
 test("karaoke's queue: the next song loads while one plays, and the queue runs out to the attract screen", async ({ page }) => {
+  test.skip(!keyword, "Set SPECIAL_MODE_KEYWORD to walk through karaoke");
   test.setTimeout(90_000);
   await signIn(page);
-  await enterCode(page, "SWEETCAROLINE");
+  await enterCode(page, keyword.toUpperCase());
   await page.locator(".k-theme-box").first().click();
   await page.getByRole("button", { name: "All Songs" }).click();
   await page.locator(".k-item", { hasText: "Moonlight Microphone" }).click();
@@ -276,10 +282,11 @@ test("karaoke's queue: the next song loads while one plays, and the queue runs o
 // Clicked rather than tapped, as in the other phone tests: WebKit on a
 // computer doesn't make a tap into a click, as a phone's does.
 test("karaoke fits a phone", async ({ browser }) => {
+  test.skip(!keyword, "Set SPECIAL_MODE_KEYWORD to walk through karaoke");
   const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true });
   const page = await context.newPage();
   await signIn(page);
-  await enterCode(page, "sweet caroline");
+  await enterCode(page, keyword.toLowerCase());
   const boxes = page.locator(".k-theme-box");
   await expect(boxes).toHaveCount(4);
   const [first, second] = [await boxes.nth(0).boundingBox(), await boxes.nth(1).boundingBox()];

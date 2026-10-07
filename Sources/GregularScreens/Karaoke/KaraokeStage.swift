@@ -42,6 +42,11 @@ public final class KaraokeStage {
     public private(set) var lyrics: LyricsTimeline?
     /// Something to say, such as a song skipped. Gone at the next change.
     public private(set) var notice: String?
+    /// How many songs have been sung to their end (not skipped): a front
+    /// end cheers each ("Encore!").
+    public private(set) var songsFinished = 0
+    /// The song last sung to its end.
+    public private(set) var lastFinished: Songbook.Song?
     /// Told of a song that couldn't be loaded, to leave it out from now on.
     var onUnplayable: ((Songbook.Song) -> Void)?
 
@@ -65,7 +70,12 @@ public final class KaraokeStage {
     init(deck: any SongDeck, media: any LyricsSource & OriginalFiles) {
         self.deck = deck
         self.media = media
-        deck.onFinish = { [weak self] in self?.next() }
+        deck.onFinish = { [weak self] in
+            guard let self else { return }
+            lastFinished = state.song
+            songsFinished += 1
+            next()
+        }
     }
 
     /// Adds `song` to the end of the queue; with nothing on, it loads at once.

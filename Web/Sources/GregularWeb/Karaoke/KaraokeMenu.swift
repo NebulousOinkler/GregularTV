@@ -6,6 +6,7 @@ import JavaScriptKit
 /// the theme boxes, the home menu, artists, albums, songs, search, or the
 /// queue. Every item is a button, so the arrows, Enter, touch and the mouse
 /// all work; each has a `data-key`, so the highlight can come back to it.
+/// Long lists have a rail of letters to jump by.
 @MainActor final class KaraokeMenu {
     let place: KaraokeModel.Place
     let element: El
@@ -18,7 +19,6 @@ import JavaScriptKit
         self.place = place
         self.model = model
         self.sound = sound
-        let heading = El("h1", "k-title", text: place.title)
         var bar: [El] = []
         if model.canGoBack {
             bar.append(El.button("Back", icon: .back, "icon-button k-back", labelHidden: true) {
@@ -26,9 +26,15 @@ import JavaScriptKit
                 model.back()
             })
         }
-        bar.append(heading)
-        let hint = El("p", "k-hint", text: RemoteControls.hint(for: RemoteControls.karaokeMenus, names: KeyboardControls.names))
-        element = El("section", "k-menu k-menu-\(Self.kind(of: place))", [El("header", "k-bar", bar), body, hint])
+        var top: [El] = []
+        if place == .themes {
+            top = [KaraokeParts.title(KaraokeText.karaoke, framed: true), El("h2", "k-pick", text: place.title)]
+        } else {
+            bar.append(KaraokeParts.title(place.title, framed: place == .home))
+        }
+        let controls = model.menuControls
+        let hint = controls.isEmpty ? [] : [El("p", "k-hint", text: RemoteControls.hint(for: controls, names: KeyboardControls.names))]
+        element = El("section", "k-menu k-menu-\(Self.kind(of: place))", [El("header", "k-bar", bar + top)] + hint + [body])
         element.attribute("aria-label", place.title)
         build()
     }
@@ -68,13 +74,17 @@ import JavaScriptKit
         case .themes: buildThemes()
         case .home: redraws.append(Redraw { [weak self] in self?.drawHome() })
         case .artists:
-            body.replaceChildren([list(model.songbook.artists.map { artist in
-                item(artist.name, detail: KaraokeText.songCount(artist.songCount), key: "artist-" + artist.name) { [model] in
+            let artists = model.songbook.artists
+            body.replaceChildren([list(artists.map { artist in
+                item(artist.name, detail: KaraokeText.songCount(artist.songCount), key: "artist-" + artist.name,
+                     cover: KaraokeParts.cover(KaraokeCover(artist.name), round: true)) { [model, sound] in
+                    sound(.choose)
                     model.open(.artist(artist.name))
                 }
-            })])
+            }, jumps: jumps(artists.map(\.name)) { "artist-" + artists[$0].name })])
         case .albums:
-            body.replaceChildren([list(model.songbook.albums.map(albumItem))])
+            let albums = model.songbook.albums
+            body.replaceChildren([list(albums.map(albumItem), jumps: jumps(albums.map { $0.title ?? "" }) { "album-" + albums[$0].id })])
         case .artist(let name):
             redraws.append(Redraw { [weak self] in self?.drawArtist(name) })
         case .album(let album):
@@ -82,7 +92,8 @@ import JavaScriptKit
         case .songs:
             redraws.append(Redraw { [weak self] in
                 guard let self else { return }
-                body.replaceChildren([list(model.songbook.songs.map(songItem))])
+                let songs = model.songbook.songs
+                body.replaceChildren([list(songs.map(songItem), jumps: jumps(songs.map(\.title)) { "song-" + songs[$0].id })])
             })
         case .search: buildSearch()
         case .queue: redraws.append(Redraw { [weak self] in self?.drawQueue() })
@@ -92,12 +103,13 @@ import JavaScriptKit
 
     // MARK: - Themes
 
-    /// A box for each theme: its look in miniature, playing. Highlighting one
-    /// samples it across the page, with its tune.
+    /// A box for each theme: its scene in miniature, playing, with its
+    /// lettering. Highlighting one samples it across the page, with its tune.
     private func buildThemes() {
         let boxes = KaraokeTheme.allCases.map { theme in
             let box = El("button", "k-theme-box", [
-                El("span", "k-mini", (0..<5).map { El("span", "k-mini-\($0)") }).attribute("aria-hidden", "true"),
+                El("span", "k-mini", [KaraokeScene.element(), KaraokeParts.title(KaraokeText.karaoke, "span")])
+                    .attribute("aria-hidden", "true"),
                 El("span", "k-theme-name", text: theme.name),
                 El("span", "k-theme-tagline", text: theme.tagline),
             ])
@@ -107,8 +119,8 @@ import JavaScriptKit
             box.on("pointerenter") { [model] event in
                 if event.pointerType.string == "mouse" { model.preview(theme) }
             }
-            box.on("click") { [model, sound] _ in
-                sound(.choose)
+            box.on("click") { [model] _ in
+                KaraokeSound.effect(.theme, in: theme)
                 model.choose(theme)
             }
             return box
@@ -125,28 +137,65 @@ import JavaScriptKit
 
     // MARK: - Home
 
-    private func drawHome() {
-        let song = model.stage.state.song
-        var parts: [El] = []
-        if let song {
-            parts.append(El("p", "k-now", text: "\u{266A} \(song.title) \u{2014} \(song.credit)"))
+    private static func icon(_ item: KaraokeModel.HomeItem) -> Icon {
+        switch item {
+        case .backToSong: .play
+        case .restartSong: .restart
+        case .skipSong: .skip
+        case .artists: .mic
+        case .albums: .albums
+        case .songs: .songs
+        case .search: .search
+        case .surpriseMe: .dice
+        case .queue: .list
+        case .phones: .phone
+        case .themes: .palette
+        case .leave: .door
         }
-        parts.append(El("div", "k-home-items", model.homeItems.map { homeItem in
-            let classes = "k-item k-home-item" + (homeItem == .leave ? " k-leave" : homeItem == .surpriseMe ? " k-surprise" : "")
-            let title = homeItem == .queue && !model.stage.queue.isEmpty ? "\(homeItem.title) (\(model.stage.queue.count))" : homeItem.title
-            let button = El.button(title, classes) { [model, sound] in
-                if homeItem == .leave {
-                    Parts.confirm(model.leaveConfirmation) { model.leave() }
-                    return
-                }
-                sound(homeItem == .surpriseMe ? .queue : .choose)
-                model.choose(homeItem)
+    }
+
+    private func homeButton(_ homeItem: KaraokeModel.HomeItem, _ classes: String) -> El {
+        let queued = homeItem == .queue ? model.stage.queue.count : 0
+        let button = El.button(homeItem.title, icon: Self.icon(homeItem), classes) { [model, sound] in
+            if homeItem == .leave {
+                Parts.confirm(model.leaveConfirmation) { model.leave() }
+                return
             }
-            return button.attribute("data-key", "\(homeItem)")
+            sound(homeItem == .surpriseMe ? .queue : .choose)
+            model.choose(homeItem)
+        }
+        if queued > 0 {
+            button.append(El("span", "k-count", text: "\(queued)").attribute("aria-hidden", "true"))
+            button.attribute("aria-label", "\(homeItem.title) (\(queued))")
+        }
+        return button.attribute("data-key", "\(homeItem)")
+    }
+
+    private func drawHome() {
+        let items = model.homeItems
+        var parts: [El] = []
+        if let song = model.stage.state.song { parts.append(nowSinging(song)) }
+        let song = items.filter { $0.group == .song }
+        if !song.isEmpty {
+            parts.append(El("div", "k-song-controls", song.map { homeButton($0, "k-item k-big-button" + ($0 == .backToSong ? " k-prominent" : "")) }))
+        }
+        parts.append(El("div", "k-tiles", items.filter { $0.group == .songs }.enumerated().map { index, homeItem in
+            homeButton(homeItem, "k-item k-tile" + (homeItem == .surpriseMe ? " k-prominent" : "")).styled("--i: \(index)")
         }))
+        let next = model.stage.queue.prefix(3)
+        if !next.isEmpty {
+            parts.append(El("p", "k-up-next-strip", [El("strong", text: KaraokeText.upNext)] + next.flatMap { song in
+                [KaraokeParts.cover(KaraokeCover(song), size: "small"), El("span", text: song.title)]
+            }))
+        }
+        parts.append(El("div", "k-more", items.filter { $0.group == .more }.map { homeButton($0, "k-item k-small-button") }))
         let focused = highlightedKey
         body.replaceChildren(parts)
         if let focused { Focus.focusable(in: body).first { $0.object.dataset.key.string == focused }?.focus() }
+    }
+
+    private func nowSinging(_ song: Songbook.Song) -> El {
+        El("p", "k-now", [KaraokeParts.cover(KaraokeCover(song), size: "small"), El("span", text: KaraokeText.nowSinging(song))])
     }
 
     // MARK: - Artists, albums and songs
@@ -166,16 +215,19 @@ import JavaScriptKit
 
     private func albumItem(_ album: Songbook.Album) -> El {
         item(album.title ?? KaraokeText.otherSongs, detail: "\(album.artist) \u{00B7} \(KaraokeText.songCount(album.songs.count))",
-             key: "album-" + album.id) { [model] in model.open(.album(album)) }
+             key: "album-" + album.id, cover: KaraokeParts.cover(KaraokeCover(album))) { [model, sound] in
+            sound(.choose)
+            model.open(.album(album))
+        }
     }
 
     /// A song: chosen, it joins the queue.
     private func songItem(_ song: Songbook.Song) -> El {
         let badges = El("span", "k-badges")
-        if song.isVideo { badges.append(El("span", "k-badge", text: KaraokeText.video)) }
-        if !song.hasLyrics { badges.append(El("span", "k-badge k-badge-quiet", text: KaraokeText.noLyrics)) }
+        if song.isVideo { badges.append(KaraokeParts.badge(KaraokeText.video)) }
+        if !song.hasLyrics { badges.append(KaraokeParts.badge(KaraokeText.noLyrics, quiet: true)) }
         let detail = [song.credit, song.album].compactMap { $0 }.joined(separator: " \u{00B7} ")
-        let row = item(song.title, detail: detail, key: "song-" + song.id) { [model, sound] in
+        let row = item(song.title, detail: detail, key: "song-" + song.id, cover: KaraokeParts.cover(KaraokeCover(song))) { [model, sound] in
             sound(.queue)
             model.queue(song)
         }
@@ -184,23 +236,41 @@ import JavaScriptKit
     }
 
     private func surpriseItem(_ songs: [Songbook.Song]) -> El {
-        El.button(KaraokeModel.HomeItem.surpriseMe.title, "k-item k-surprise") { [model, sound] in
+        El.button(KaraokeModel.HomeItem.surpriseMe.title, icon: .dice, "k-item k-surprise k-prominent") { [model, sound] in
             sound(.queue)
             model.surpriseMe(from: songs)
         }.attribute("data-key", "surprise")
     }
 
-    private func item(_ title: String, detail: String?, key: String, action: @escaping @MainActor () -> Void) -> El {
+    private func item(_ title: String, detail: String?, key: String, cover: El? = nil, action: @escaping @MainActor () -> Void) -> El {
         let text = El("span", "k-item-text", [El("span", "k-item-title", text: title)])
         if let detail, !detail.isEmpty { text.append(El("span", "k-item-detail", text: detail)) }
-        let button = El("button", "k-item", [text])
+        let button = El("button", "k-item k-row", (cover.map { [$0] } ?? []) + [text])
         button.attribute("type", "button").attribute("data-key", key)
         button.on("click") { _ in action() }
         return button
     }
 
-    private func list(_ items: [El]) -> El {
-        items.isEmpty ? El("p", "k-empty", text: KaraokeText.noSongs) : El("div", "k-list", items)
+    /// Where each letter starts in a list, as the key of its first row.
+    private func jumps(_ names: [String], key: (Int) -> String) -> [(letter: String, key: String)] {
+        Songbook.letters(of: names).map { ($0.letter, key($0.index)) }
+    }
+
+    private func list(_ items: [El], jumps: [(letter: String, key: String)] = []) -> El {
+        guard !items.isEmpty else { return El("p", "k-empty", text: KaraokeText.noSongs) }
+        for (index, item) in items.enumerated() { item.styled("--i: \(min(index, 12))") }
+        let list = El("div", "k-list", items)
+        guard !jumps.isEmpty else { return list }
+        let rail = El("nav", "k-rail", jumps.map { jump in
+            El.button(jump.letter, "k-rail-letter") { [list] in
+                guard let row = Focus.focusable(in: list).first(where: { $0.object.dataset.key.string == jump.key }) else { return }
+                row.focus()
+                _ = row.object.scrollIntoView!(JSObject.options(["block": "start"]))
+            }
+            .attribute("aria-label", "Jump to \(jump.letter)")
+            .attribute("data-key", "letter-" + jump.letter)
+        }).attribute("aria-label", "Jump to a letter")
+        return El("div", "k-list-wrap", [list, rail])
     }
 
     // MARK: - Search
@@ -235,9 +305,7 @@ import JavaScriptKit
         let queue = model.stage.queue
         let focused = highlightedKey
         var parts: [El] = []
-        if let song = model.stage.state.song {
-            parts.append(El("p", "k-now", text: "\u{266A} \(song.title) \u{2014} \(song.credit)"))
-        }
+        if let song = model.stage.state.song { parts.append(nowSinging(song)) }
         guard !queue.isEmpty else {
             body.replaceChildren(parts + [El("p", "k-empty", text: KaraokeText.emptyQueue)])
             return
@@ -256,9 +324,11 @@ import JavaScriptKit
                 }.attribute("data-key", "remove-\(song.id)"),
             ])
             return El("li", "k-queue-item", [
+                El("span", "k-queue-number", text: "\(index + 1)").attribute("aria-hidden", "true"),
+                KaraokeParts.cover(KaraokeCover(song)),
                 El("span", "k-item-text", [El("span", "k-item-title", text: song.title), El("span", "k-item-detail", text: song.credit)]),
                 controls,
-            ])
+            ]).styled("--i: \(min(index, 12))")
         }))
         body.replaceChildren(parts)
         if let focused { Focus.focusable(in: body).first { $0.object.dataset.key.string == focused }?.focus() }

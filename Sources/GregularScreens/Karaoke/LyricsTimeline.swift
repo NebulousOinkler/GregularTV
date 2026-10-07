@@ -82,6 +82,19 @@ public struct LyricsTimeline: Sendable, Equatable {
                       countdown: countdown(current: current, upcoming: upcoming, at: time))
     }
 
+    /// How long a pulse takes to die away, in seconds.
+    public static let pulseLength: TimeInterval = 0.2
+
+    /// A beat for the backdrop to pulse to (1 as a word, or a line, starts;
+    /// dying away to 0): the lyrics' timings stand in for the song's beat,
+    /// which the app never analyses.
+    public func pulse(at time: TimeInterval) -> Double {
+        guard let index = lines.lastIndex(where: { $0.start <= time }),
+              !lines[index].text.trimmingCharacters(in: .whitespaces).isEmpty else { return 0 }
+        let started = lines[index].words.last(where: { $0.start <= time })?.start ?? lines[index].start
+        return exp(-(time - started) / Self.pulseLength)
+    }
+
     private func sung(on index: Int, at time: TimeInterval) -> Double {
         let line = lines[index]
         guard !line.words.isEmpty else { return Double(line.text.count) }

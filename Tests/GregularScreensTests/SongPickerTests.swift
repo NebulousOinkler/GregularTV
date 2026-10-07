@@ -45,7 +45,7 @@ struct SongPickerTests {
         #expect(reply.status == 200)
         #expect(karaoke.stage.state.song?.id == "s4", "Nothing was on: it's on stage")
         #expect(karaoke.places == [.home, .artists], "The TV stays where it was")
-        #expect(karaoke.notice == "A phone added \u{201C}Sweet Caroline\u{201D}.")
+        #expect(karaoke.notice == "A phone added \u{201C}Mr. Blue Sky\u{201D}.")
         #expect(page.lastChange != nil, "The TV can say when a phone last added one")
         _ = await ask(page, "POST", "/api/queue", body: #"{"id":"s1"}"#)
         let stage = json(await ask(page, "GET", "/api/queue"))

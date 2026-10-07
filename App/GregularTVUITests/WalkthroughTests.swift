@@ -57,9 +57,19 @@ final class WalkthroughTests: XCTestCase {
         return element.exists && element.hasFocus
     }
 
-    /// Moves the highlight down, then up, until `element` has it; a failure
-    /// only if it's in neither direction.
+    /// Moves the highlight towards `element` while it's on screen (grids
+    /// need left and right too), then down, then up, until it has it; a
+    /// failure only if it's in no direction.
     private func reach(_ element: XCUIElement, _ what: String) -> Bool {
+        for _ in 0..<20 where element.exists && !element.hasFocus {
+            let focused = app.descendants(matching: .any).element(matching: NSPredicate(format: "hasFocus == true"))
+            guard focused.exists else { break }
+            let (from, to) = (focused.frame, element.frame)
+            let direction: XCUIRemote.Button = to.minY >= from.maxY ? .down : to.maxY <= from.minY ? .up
+                : to.midX > from.midX ? .right : .left
+            remote.press(direction)
+            pause(0.35)
+        }
         let ok = focus(element, tries: 30) || focus(element, moving: .up, tries: 60)
         XCTAssertTrue(ok, "Couldn't reach \(what)")
         return ok
@@ -351,26 +361,43 @@ final class WalkthroughTests: XCTestCase {
 
     // MARK: Karaoke
 
+    /// Karaoke's keyword, from `TEST_RUNNER_SPECIAL_MODE_KEYWORD`: the repo
+    /// keeps only its hash, so the keyword itself is never written here.
+    private func keyword() throws -> String {
+        guard let keyword = ProcessInfo.processInfo.environment["SPECIAL_MODE_KEYWORD"], !keyword.isEmpty else {
+            throw XCTSkip("Set TEST_RUNNER_SPECIAL_MODE_KEYWORD to walk through karaoke")
+        }
+        return keyword
+    }
+
     /// Its keyword, typed where a schedule code goes, opens karaoke: the
-    /// theme boxes, its menu, a song loaded whole and held on its title
-    /// card, the song's lyrics, and Leave Karaoke back to live TV.
+    /// theme boxes (each sampled in turn), its menu, a song loaded whole and
+    /// held on its title card, the song's lyrics, the cheer when it ends,
+    /// and Leave Karaoke back to live TV.
     func test8Karaoke() throws {
+        let keyword = try keyword()
         waitForWatching()
         openSettings()
-        type("SWEETCAROLINE", into: "Enter a code")
+        type(keyword, into: "Enter a code")
         guard text("Pick a Theme").waitForExistence(timeout: 10) else { return XCTFail("The keyword didn't open karaoke") }
         capture("karaoke-themes")
-        press(.right)
-        capture("karaoke-theme-sampled")
-        press(.left)
+        for theme in ["bar", "bubblegum", "vegas"] {
+            press(.right)
+            pause(1)
+            capture("karaoke-theme-\(theme)")
+        }
+        for _ in 0..<3 { press(.left) }
         press(.select)
         guard button("All Songs").waitForExistence(timeout: 5) else { return XCTFail("Choosing a theme didn't open karaoke's menu") }
+        pause(1)
         capture("karaoke-menu")
         press(.menu)
         XCTAssertTrue(button("All Songs").exists, "Menu left karaoke's menu with nothing to go back to")
         choose("All Songs")
-        XCTAssertTrue(button("Saturday Satellite").waitForExistence(timeout: 5), "No songs listed")
+        XCTAssertTrue(button("Bubble Bath Ballad").waitForExistence(timeout: 5), "No songs listed")
+        pause(1)
         capture("karaoke-songs")
+        XCTAssertTrue(button("Jump to S").exists, "A long list has letters to jump by")
         choose("Saturday Satellite")
         guard text("Press Play to sing").waitForExistence(timeout: 20) else { return XCTFail("The song didn't load") }
         capture("karaoke-title-card")
@@ -378,21 +405,66 @@ final class WalkthroughTests: XCTestCase {
         XCTAssertTrue(text("Spin").waitForExistence(timeout: 10), "No lyrics while singing")
         pause(2)
         capture("karaoke-singing")
-        press(.menu)
-        XCTAssertTrue(button("Back to the Song").waitForExistence(timeout: 5), "Menu didn't open karaoke's menu over the song")
+        XCTAssertTrue(text("Encore!").waitForExistence(timeout: 20), "No cheer at the end of the song")
+        pause(0.8)
+        capture("karaoke-encore")
+        pause(4)
+        press(.select)
+        XCTAssertTrue(button("Artists").waitForExistence(timeout: 5), "Any button on the attract screen opens the menu")
         choose("Leave Karaoke")
         answerDialog("Leave Karaoke")
         XCTAssertTrue(text("channel list").waitForExistence(timeout: 20), "Leaving karaoke didn't go back to live TV")
         capture("karaoke-left")
     }
 
+    /// Karaoke in each theme: its menu and a long list, then a song on its
+    /// title card and sung, in the last theme. For looking at, mostly.
+    func test11KaraokeInEachTheme() throws {
+        let keyword = try keyword()
+        waitForWatching()
+        openSettings()
+        type(keyword, into: "Enter a code")
+        guard text("Pick a Theme").waitForExistence(timeout: 10) else { return XCTFail("The keyword didn't open karaoke") }
+        for (index, theme) in ["neon", "bar", "bubblegum", "vegas"].enumerated() {
+            if index > 0 {
+                guard choose("Change Theme") else { return }
+                pause(1)
+                for _ in 0..<3 { press(.left) }
+                press(.right, times: index)
+            }
+            press(.select)
+            guard button("All Songs").waitForExistence(timeout: 5) else { return XCTFail("No menu in \(theme)") }
+            pause(1)
+            capture("\(theme)-menu")
+            choose("All Songs")
+            pause(1.5)
+            capture("\(theme)-songs")
+            press(.menu)
+            pause(1)
+        }
+        choose("Search")
+        press(.menu)
+        choose("All Songs")
+        choose("Disco Lemonade")
+        guard text("Press Play to sing").waitForExistence(timeout: 20) else { return XCTFail("The song didn't load") }
+        pause(1)
+        capture("vegas-title-card")
+        press(.playPause)
+        pause(6)
+        capture("vegas-singing")
+        press(.menu)
+        choose("Leave Karaoke")
+        answerDialog("Leave Karaoke")
+    }
+
     /// Songs from Phones: off until turned on in karaoke's menu; then a
     /// phone on the home network, with the address and code on the TV,
     /// adds a song (asking as the picker page does), and the TV says so.
     func test9KaraokeFromAPhone() throws {
+        let keyword = try keyword()
         waitForWatching()
         openSettings()
-        type("SWEETCAROLINE", into: "Enter a code")
+        type(keyword, into: "Enter a code")
         guard text("Pick a Theme").waitForExistence(timeout: 10) else { return XCTFail("The keyword didn't open karaoke") }
         press(.select)
         guard choose("Songs from Phones") else { return }

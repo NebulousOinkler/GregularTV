@@ -10,6 +10,8 @@ public enum KaraokeText {
     public static let getReady = "Get ready!"
     public static let pressPlay = "Press Play to sing"
     public static let upNext = "Up next"
+    /// Cheered when a song is sung to its end.
+    public static let encore = "Encore!"
     public static let noLyrics = "No lyrics"
     public static let video = "Video"
     public static let unknownArtist = "Unknown Artist"
@@ -18,6 +20,16 @@ public enum KaraokeText {
     public static let nothingFound = "No songs match."
     public static let emptyQueue = "No songs in the queue yet."
     public static let noSongs = "There are no songs here that play on this device."
+
+    /// A song in a line: "Dancing Queen — ABBA".
+    public static func line(_ song: Songbook.Song) -> String {
+        "\(song.title) \u{2014} \(song.credit)"
+    }
+
+    /// The song on: "♪ Dancing Queen — ABBA".
+    public static func nowSinging(_ song: Songbook.Song) -> String {
+        "\u{266A} " + line(song)
+    }
 
     public static func songCount(_ count: Int) -> String {
         count == 1 ? "1 song" : "\(count) songs"

@@ -97,6 +97,9 @@ COMMERCIALS = [
 ]
 
 
+# Lyrics timed by the line, shared by the songs further down the list.
+SING_ALONG = [(1.0, "La la la, the night is young"), (5.0, "Sing it loud for everyone"), (9.0, "Hold the note and have some fun")]
+
 # Made-up songs: id, title, artists, album, lyrics (lines of (seconds, text)),
 # and whether each word is timed too. None for no lyrics.
 SONGS = [
@@ -106,6 +109,21 @@ SONGS = [
     ("song1", "Moonlight Microphone", ["The Tin Canaries"], "Neon Nights", [
         (2.0, "Moonlight on the microphone"), (6.0, "Every note to take me home"), (10.0, "La la la, we sing along")], False),
     ("song2", "Hum Along", ["Velvet Comet", "Duet Partner"], None, None, False),
+] + [
+    # More, so All Songs is long enough to jump through by letter.
+    (f"song{3 + i}", title, artists, album, SING_ALONG, False) for i, (title, artists, album) in enumerate([
+        ("Bubble Bath Ballad", ["Lounge Lizard Larry"], "Suds"),
+        ("Cosmic Karaoke", ["The Tin Canaries"], "Neon Nights"),
+        ("Disco Lemonade", ["Velvet Comet"], "Fizz"),
+        ("Electric Avocado", ["The Disco Dolphins"], "Ocean Floor Disco"),
+        ("Friday Fondue", ["Lounge Lizard Larry"], "Suds"),
+        ("Glitter Gravy", ["Glamtastic"], "Sequins"),
+        ("Jukebox Jellyfish", ["The Disco Dolphins"], None),
+        ("Penguin Polka Party", ["Glamtastic"], "Sequins"),
+        ("Roller Rink Romance", ["Velvet Comet"], "Fizz"),
+        ("Tambourine Tuesday", ["The Tin Canaries"], None),
+        ("Zebra Crossing Shuffle", ["Glamtastic"], None),
+    ])
 ]
 MUSIC_VIDEOS = [("mv0", "Splash Dance", ["The Disco Dolphins"], "Ocean Floor Disco")]
 SONG_SECONDS = 15

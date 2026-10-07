@@ -93,7 +93,7 @@ enum Songs {
         song("s1", "Dancing Queen"),
         song("s2", "Knowing Me, Knowing You"),
         song("s3", "Waterloo", album: nil),
-        song("s4", "Sweet Caroline", by: ["Neil Diamond"], album: "Brother Love's Travelling Salvation Show"),
+        song("s4", "Mr. Blue Sky", by: ["Electric Light Orchestra"], album: "Out of the Blue"),
         song("v1", "Africa", by: [], album: nil, kind: .video, lyrics: false, folders: ["Toto", "Toto IV"], container: "mp4"),
         song("s5", "Café del Mar", by: ["Energy 52"], album: nil, lyrics: false),
     ]
@@ -130,12 +130,12 @@ struct SongbookTests {
     }
 
     @Test func artistsAlbumsAndSongsAreInOrder() throws {
-        #expect(book.songs.map(\.title) == ["Africa", "Café del Mar", "Dancing Queen", "Knowing Me, Knowing You", "Sweet Caroline", "Waterloo"])
-        #expect(book.artists.map(\.name) == ["ABBA", "Energy 52", "Neil Diamond", "Toto"])
+        #expect(book.songs.map(\.title) == ["Africa", "Café del Mar", "Dancing Queen", "Knowing Me, Knowing You", "Mr. Blue Sky", "Waterloo"])
+        #expect(book.artists.map(\.name) == ["ABBA", "Electric Light Orchestra", "Energy 52", "Toto"])
         let abba = try #require(book.artist(named: "ABBA"))
         #expect(abba.albums.map(\.title) == ["Arrival", nil], "Songs on no album last")
         #expect(abba.songCount == 3)
-        #expect(book.albums.map(\.title) == ["Arrival", "Brother Love's Travelling Salvation Show", "Toto IV"])
+        #expect(book.albums.map(\.title) == ["Arrival", "Out of the Blue", "Toto IV"])
     }
 
     @Test func searchMatchesEveryWordWhateverTheCaseOrAccents() {
@@ -171,6 +171,13 @@ struct LyricsTimelineTests {
         #expect(timeline.moment(at: 9.2).countdown == 1)
         let intro = timeline.moment(at: 9.2)
         #expect(intro.line == nil && intro.next == 0 && intro.ball == nil)
+    }
+
+    @Test func theBackdropPulsesAsEachWordStarts() {
+        #expect(timeline.pulse(at: 11) == 1)
+        #expect(abs(timeline.pulse(at: 11 + LyricsTimeline.pulseLength) - exp(-1)) < 1e-9)
+        #expect(timeline.pulse(at: 5) == 0 && timeline.pulse(at: 19) == 0, "Not before the singing, nor in a gap")
+        #expect(timeline.pulse(at: 40) == 1, "Lines timed: as each line starts")
     }
 
     @Test func theBallLandsOnEachWordAsItsSung() throws {
@@ -425,17 +432,166 @@ struct KaraokeModelTests {
 /// Every theme's tune and sound effects, as each front end's synthesizer gets them.
 struct KaraokeMusicTests {
     @Test(arguments: KaraokeTheme.allCases)
-    func eachThemeHasATuneThatLoops(theme: KaraokeTheme) {
+    func eachThemeHasATuneLongEnoughNotToSoundLikeALoop(theme: KaraokeTheme) {
         let music = theme.music
         let loop = music.loop
-        #expect(!loop.isEmpty && music.duration > 4 && music.duration < 30)
+        #expect(music.duration >= 25 && music.duration <= 60, "Half a minute or so before it repeats")
         #expect(loop.allSatisfy { $0.at >= 0 && $0.at < music.duration && $0.length > 0 && (0...1).contains($0.gain) })
-        #expect(loop.allSatisfy { if case .tone(_, let note) = $0.sound { (24...108).contains(note) } else { true } },
-                "Every note one a speaker can play")
-        #expect(loop.contains { $0.sound == .kick }, "A beat")
-        for effect in KaraokeMusic.Effect.allCases {
-            #expect(!music.notes(for: effect).isEmpty, "\(effect)")
+        #expect(music.intro.allSatisfy { $0.at < music.introDuration } && !music.intro.isEmpty, "A pickup into the loop")
+        #expect(loop.contains { $0.sound == .drum(.kick) } || loop.contains { $0.sound == .drum(.brush) }, "A beat")
+        #expect(Set(loop.compactMap { if case .note(let part, _) = $0.sound { part } else { nil } }).count >= 4,
+                "Bass, chords and a tune at least")
+        #expect(loop.allSatisfy { (-1...1).contains($0.pan) })
+    }
+
+    @Test(arguments: KaraokeTheme.allCases)
+    func everyNoteHasAnInstrumentAndASpeakerCanPlayIt(theme: KaraokeTheme) {
+        let music = theme.music
+        let events = music.intro + music.loop + KaraokeMusic.Effect.allCases.flatMap { music.notes(for: $0) }
+        for event in events {
+            guard case .note(let part, let note) = event.sound else { continue }
+            #expect(music.patches[part] != nil, "\(part) has no instrument")
+            #expect((24...108).contains(note), "\(part) note \(note)")
         }
+        for patch in music.patches.values {
+            #expect(!patch.waves.isEmpty && patch.level > 0 && patch.level <= 1 && (-1...1).contains(patch.pan))
+            #expect(patch.attack > 0 && patch.decay > 0 && patch.release > 0, "No clicks")
+        }
+        #expect(music.patches[.blip]?.group == .effects && music.patches[.fanfare]?.group == .effects)
+    }
+
+    @Test(arguments: KaraokeTheme.allCases)
+    func everyEffectSounds(theme: KaraokeTheme) {
+        for effect in KaraokeMusic.Effect.allCases {
+            let notes = theme.music.notes(for: effect)
+            #expect(!notes.isEmpty && notes.allSatisfy { $0.at >= 0 && $0.at < 4 && (0...1).contains($0.gain) }, "\(effect)")
+        }
+        let blips = (0..<10).map { theme.music.notes(for: .move, step: $0)[0].sound }
+        #expect(Set(blips.prefix(8)).count == 8 && blips[9] == blips[7], "Climbing the scale, then staying at the top")
+    }
+
+    @Test func eachThemeSoundsItsOwn() {
+        let tempos = Set(KaraokeTheme.allCases.map(\.music.tempo))
+        #expect(tempos.count == KaraokeTheme.allCases.count)
+    }
+
+    @Test func waitingTurnsTheDrumsAndTuneDownUnderTheChords() {
+        #expect(KaraokeMusic.Group.allCases.allSatisfy { KaraokeMusic.gain(of: $0, in: .full) == 1 })
+        #expect(KaraokeMusic.gain(of: .pad, in: .waiting) == 1 && KaraokeMusic.gain(of: .effects, in: .waiting) == 1)
+        #expect(KaraokeMusic.gain(of: .drums, in: .waiting) < 0.5 && KaraokeMusic.gain(of: .lead, in: .waiting) < 0.5)
+    }
+
+    @Test func aLineOfNotesReadsAsWritten() {
+        let notes = Score.notes(in: "0 - - 7 . x - . . . . . . . 12 -")
+        #expect(notes.map(\.step) == [0, 3, 5, 14])
+        #expect(notes.map(\.steps) == [3, 1, 2, 2])
+        #expect(notes.map(\.value) == [0, 7, nil, 12])
+    }
+
+    @Test func offBeatsSwing() {
+        let straight = Score(tempo: 120, root: 48)
+        let swung = Score(tempo: 120, root: 48, swing: 0.33, swingSteps: 2)
+        #expect(straight.time(bar: 0, step: 2) == 0.25)
+        #expect(abs(swung.time(bar: 0, step: 2) - (0.25 + 0.33 * 0.25)) < 1e-9)
+        #expect(swung.time(bar: 1, step: 4) == straight.time(bar: 1, step: 4), "On the beat: as written")
+    }
+
+    @Test func theBlipClimbsWhileMovesComeQuickly() {
+        var ladder = BlipLadder()
+        #expect([0, 0.2, 0.4, 0.6].map { ladder.step(at: $0) } == [0, 1, 2, 3])
+        #expect(ladder.step(at: 2) == 0, "A pause starts again at the bottom")
+        for time in stride(from: 2.1, to: 4, by: 0.1) { _ = ladder.step(at: time) }
+        #expect(ladder.step(at: 4.05) == 7, "Never past the top")
+    }
+}
+
+/// The pictures drawn for songs and albums, and the letters long lists jump by.
+struct KaraokeCoverTests {
+    @Test func theSameNameAlwaysGetsTheSamePicture() {
+        let cover = KaraokeCover("Dancing Queen", by: "ABBA")
+        #expect(cover == KaraokeCover("Dancing Queen", by: "ABBA"))
+        #expect(cover.initials == "DQ" && cover.back != cover.front && cover.angle % 45 == 0)
+        #expect((0..<KaraokeCover.colourCount).contains(cover.back) && (0..<KaraokeCover.colourCount).contains(cover.front))
+    }
+
+    @Test func namesGetAllSortsOfPictures() {
+        let covers = (0..<200).map { KaraokeCover("Song \($0)", by: "Someone") }
+        #expect(Set(covers.map(\.pattern)).count == KaraokeCover.Pattern.allCases.count)
+        #expect(Set(covers.map(\.back)).count == KaraokeCover.colourCount)
+        #expect(Set(covers.map(\.angle)).count == 4)
+    }
+
+    @Test func initialsAreTheFirstTwoWords() {
+        #expect(KaraokeCover.initials(of: "Mr. Blue Sky") == "MB")
+        #expect(KaraokeCover.initials(of: "Café del Mar") == "CD")
+        #expect(KaraokeCover.initials(of: "(Don't Fear) the Reaper") == "DF")
+        #expect(KaraokeCover.initials(of: "1999") == "1")
+        #expect(KaraokeCover.initials(of: "!!!") == "")
+    }
+
+    @Test func longListsJumpByLetter() {
+        let names = ["ABBA", "Africa", "Électrique", "Energy 52", "1999", "Zed"] + (0..<8).map { "Toto \($0)" }
+        let letters = Songbook.letters(of: names)
+        #expect(letters.map(\.letter) == ["A", "E", "#", "Z", "T"])
+        #expect(letters.map(\.index) == [0, 2, 4, 5, 6])
+        #expect(Songbook.letters(of: Array(names.prefix(6))).isEmpty, "A short list needs no letters")
+        #expect(Songbook.letters(of: (0..<20).map { "Toto \($0)" }).isEmpty, "Nor does a list all under one letter")
+        #expect(Songbook.letter(of: "  ñandú") == "N" && Songbook.letter(of: "") == "#")
+    }
+}
+
+/// What the model tells a front end to show and play, beyond moving about.
+@MainActor struct KaraokePresentationTests {
+    let deck = FakeSongDeck()
+
+    @Test func theHomeMenuIsInGroups() {
+        let karaoke = KaraokeModel(session: Songs.session(), deck: deck, offersPhones: true)
+        karaoke.choose(.neonDisco)
+        #expect(karaoke.homeItems.filter { $0.group == .songs } == [.artists, .albums, .songs, .search, .surpriseMe, .queue])
+        #expect(karaoke.homeItems.filter { $0.group == .more } == [.phones, .themes, .leave])
+        #expect(karaoke.homeItems.allSatisfy { $0.group != .song }, "No song: no song controls")
+    }
+
+    @Test func theHintNamesOnlyButtonsThatDoSomething() async throws {
+        let karaoke = KaraokeModel(session: Songs.session(), deck: deck)
+        #expect(karaoke.menuControls.isEmpty, "On the first theme boxes, Menu and Play/Pause do nothing")
+        karaoke.choose(.neonDisco)
+        #expect(karaoke.menuControls.isEmpty, "Nor on the home menu with nothing on")
+        karaoke.open(.songs)
+        #expect(karaoke.menuControls.values.sorted { "\($0)" < "\($1)" } == [.stepBack])
+        karaoke.queue(karaoke.songs[0])
+        try await waitUntil(2) { if case .ready = karaoke.stage.state { true } else { false } }
+        karaoke.perform(.openKaraokeMenu)
+        #expect(Set(karaoke.menuControls.values) == [.stepBack, .playOrPauseSong])
+    }
+
+    @Test func theTuneWaitsSoftlyUnderATitleCard() async throws {
+        let karaoke = KaraokeModel(session: Songs.session(), deck: deck)
+        karaoke.choose(.neonDisco)
+        #expect(karaoke.musicMood == .full)
+        karaoke.surpriseMe()
+        try await waitUntil(2) { if case .ready = karaoke.stage.state { true } else { false } }
+        #expect(karaoke.musicMood == .waiting)
+        karaoke.perform(.openKaraokeMenu)
+        #expect(karaoke.musicMood == .full, "A menu over it: full")
+    }
+
+    @Test func queuedAndFinishedSongsAreCounted() async throws {
+        let karaoke = KaraokeModel(session: Songs.session(), deck: deck)
+        karaoke.choose(.neonDisco)
+        let song = karaoke.songbook.songs[0]
+        karaoke.queue(song)
+        karaoke.surpriseMe()
+        #expect(karaoke.songsQueued == 2 && karaoke.lastQueued != nil)
+        try await waitUntil(2) { if case .ready = karaoke.stage.state { true } else { false } }
+        karaoke.stage.playOrPause()
+        karaoke.stage.skip()
+        #expect(karaoke.stage.songsFinished == 0, "Skipped isn't finished")
+        try await waitUntil(2) { if case .ready = karaoke.stage.state { true } else { false } }
+        karaoke.stage.playOrPause()
+        let sung = karaoke.stage.state.song
+        deck.finishSong()
+        #expect(karaoke.stage.songsFinished == 1 && karaoke.stage.lastFinished == sung)
     }
 }
 

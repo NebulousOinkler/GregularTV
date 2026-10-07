@@ -60,6 +60,21 @@ public final class KaraokeModel {
         case backToSong, restartSong, skipSong
         case artists, albums, songs, search, surpriseMe, queue, phones, themes, leave
 
+        /// The home menu shows its items in three groups (`group`): the song
+        /// on stage's controls, large, at the top; finding songs, as tiles;
+        /// then the rest, small, at the foot.
+        public enum Group: Sendable {
+            case song, songs, more
+        }
+
+        public var group: Group {
+            switch self {
+            case .backToSong, .restartSong, .skipSong: .song
+            case .artists, .albums, .songs, .search, .surpriseMe, .queue: .songs
+            case .phones, .themes, .leave: .more
+            }
+        }
+
         public var title: String {
             switch self {
             case .backToSong: "Back to the Song"
@@ -91,6 +106,11 @@ public final class KaraokeModel {
     public var query = ""
     /// Something to say, such as a song queued. Gone at the next change.
     public private(set) var notice: String?
+    /// How many songs have joined the queue, from here or from phones: a
+    /// front end celebrates each (confetti, the queue's count bouncing).
+    public private(set) var songsQueued = 0
+    /// The song that last joined the queue.
+    public private(set) var lastQueued: Songbook.Song?
     /// The front end can let phones add songs (`LocalPage.songPicker`):
     /// Apple TV can, as it serves pages on the home network; a browser can't.
     public let offersPhones: Bool
@@ -130,6 +150,31 @@ public final class KaraokeModel {
 
     /// The look on screen: the highlighted theme box's, or the chosen theme's.
     public var shownTheme: KaraokeTheme { previewedTheme ?? theme }
+
+    /// How the tune sits: soft under a title card waiting for Play, and
+    /// otherwise full.
+    public var musicMood: KaraokeMusic.Mood {
+        switch stage.state {
+        case .loading, .ready: places.isEmpty ? .waiting : .full
+        case .idle, .singing, .paused: .full
+        }
+    }
+
+    /// The buttons that do something in the menu on screen, for its hint:
+    /// Menu if there's somewhere to go back to, Play/Pause if there's a song.
+    public var menuControls: [RemoteButton: RemoteAction] {
+        let songLoaded = switch stage.state {
+        case .ready, .singing, .paused: true
+        case .idle, .loading: false
+        }
+        return RemoteControls.karaokeMenus.filter { _, action in
+            switch action {
+            case .stepBack: canGoBack
+            case .playOrPauseSong: songLoaded
+            default: true
+            }
+        }
+    }
 
     /// The theme whose tune plays now, or nil for quiet: never over a song,
     /// singing or paused.
@@ -238,6 +283,7 @@ public final class KaraokeModel {
     public func queue(_ song: Songbook.Song) {
         let wasIdle = stage.state == .idle
         stage.add(song)
+        celebrate(song)
         if wasIdle {
             places = []
         } else {
@@ -252,6 +298,11 @@ public final class KaraokeModel {
         queue(song)
     }
 
+    private func celebrate(_ song: Songbook.Song) {
+        lastQueued = song
+        songsQueued += 1
+    }
+
     // MARK: - Songs from phones
 
     public func setPhonesAllowed(_ allowed: Bool) {
@@ -264,6 +315,7 @@ public final class KaraokeModel {
     func queueFromPhone(songID: String) -> Bool {
         guard phonesAllowed, let song = songbook.songs.first(where: { $0.id == songID }) else { return false }
         stage.add(song)
+        celebrate(song)
         notice = KaraokeText.queuedFromPhone(song)
         return true
     }

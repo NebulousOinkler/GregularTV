@@ -8,9 +8,11 @@ import JavaScriptKit
 /// below it, the bouncing ball, and the countdown dots.
 ///
 /// Each word is a `<span>` (`data-start` and `data-end`, in characters),
-/// filled as it's sung through its `--fill` (0 to 1); the ball is moved
-/// over the words with a transform. Only `update(at:)` changes anything,
-/// once a frame.
+/// filled as it's sung through its `--fill` (0 to 1), rising a touch while
+/// it's being sung (`k-singing`); the ball is moved over the words with a
+/// transform, squashed (`--squash`) as it lands and leaves. A new line
+/// rises into place (`k-enter`). Only `update(at:)` changes anything, once
+/// a frame.
 @MainActor final class LyricsView {
     let element = El("div", "k-lyrics")
     private let dots = El("p", "k-dots").attribute("aria-hidden", "true")
@@ -43,9 +45,18 @@ import JavaScriptKit
             shown = (moment.line, moment.next)
             current.replaceChildren(moment.line.map { Self.spans(timeline.segments(ofLine: $0)) } ?? [])
             next.replaceChildren(moment.next.map { Self.spans(timeline.segments(ofLine: $0)) } ?? [])
+            // Rising into place: the animation starts again on each new line.
+            for line in [current, next] {
+                line.classed("k-enter", false)
+                _ = line.object.offsetWidth
+                line.classed("k-enter", true)
+            }
         }
         fill(sung: moment.sung)
-        dots.text = moment.countdown.map { String(repeating: "\u{25CF}", count: $0) } ?? ""
+        let count = moment.countdown ?? 0
+        if dots.object.childElementCount.number.map(Int.init) != count {
+            dots.replaceChildren((0..<count).map { _ in El("span", "k-dot") })
+        }
         place(moment.ball)
     }
 
@@ -63,7 +74,9 @@ import JavaScriptKit
             guard let span = list[index].object,
                   let start = span.dataset.start.string.flatMap(Int.init), let end = span.dataset.end.string.flatMap(Int.init)
             else { continue }
-            _ = span.style.setProperty("--fill", String(LyricsTimeline.fill(start..<end, sung: sung)))
+            let fill = LyricsTimeline.fill(start..<end, sung: sung)
+            _ = span.style.setProperty("--fill", String(fill))
+            _ = span.classList.toggle("k-singing", fill > 0 && fill < 1 && end > start)
         }
     }
 
@@ -74,11 +87,13 @@ import JavaScriptKit
             return
         }
         let to = ball.to.flatMap(rect(of:)) ?? from
-        let p = ball.progress
+        let p = ball.to == nil ? 0 : ball.progress
         let x = from.x + (to.x - from.x) * p
         let y = from.y + (to.y - from.y) * p - sin(.pi * p) * Self.bounce * max(from.height, to.height)
+        let squash = ball.to == nil ? 0 : max(0, 1 - min(p, 1 - p) / 0.1)
         self.ball.hidden = false
         self.ball.style("transform", "translate(\(x)px, \(y)px)")
+        self.ball.style("--squash", String(format: "%.3f", squash))
     }
 
     /// Where a word is: the middle of its top, from the top left of the lyrics.

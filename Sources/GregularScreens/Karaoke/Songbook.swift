@@ -108,6 +108,28 @@ public struct Songbook: Sendable {
         Songbook(songs: songs.filter { $0.id != song.id })
     }
 
+    /// The letter a name is listed under, for jumping through a long list:
+    /// its first letter without accents, in capitals, or "#" for anything
+    /// else (a digit, a symbol).
+    public static func letter(of name: String) -> String {
+        guard let first = name.first(where: { !$0.isWhitespace }) else { return "#" }
+        let plain = String(first).folding(options: [.diacriticInsensitive, .caseInsensitive], locale: nil).uppercased()
+        return plain.count == 1 && plain.first!.isASCII && plain.first!.isLetter ? plain : "#"
+    }
+
+    /// Where each letter starts in `names` (listed in order): each letter
+    /// once, with the index of its first name. Empty when there are too few
+    /// names, or letters, for jumping to be worth it.
+    public static func letters(of names: [String], fewest: Int = 12) -> [(letter: String, index: Int)] {
+        guard names.count >= fewest else { return [] }
+        var letters: [(letter: String, index: Int)] = []
+        for (index, name) in names.enumerated() {
+            let letter = letter(of: name)
+            if !letters.contains(where: { $0.letter == letter }) { letters.append((letter, index)) }
+        }
+        return letters.count > 1 ? letters : []
+    }
+
     /// Case-insensitive, then by `tiebreak`, so the order never depends on the server's.
     private static func ordered(_ a: String, _ b: String, _ tiebreakA: String = "", _ tiebreakB: String = "") -> Bool {
         switch a.localizedCaseInsensitiveCompare(b) {
