@@ -24,14 +24,15 @@ import JavaScriptKit
         if let server = demoServer {
             app = AppModel(deviceName: deviceName, formats: formats, transport: FetchTransport(),
                            store: DemoCredentials(server: server), preferences: AppPreferences(storage: preferences),
-                           makeDecks: VideoDeck.pair)
+                           makeDecks: VideoDeck.pair, specialModes: SpecialModePages.all.registry)
             return await run(app)
         }
         #endif
         let store = await BrowserCredentialStore.load()
         signIns = store
         app = AppModel(deviceName: deviceName, formats: formats, transport: FetchTransport(), store: store,
-                       preferences: AppPreferences(storage: preferences), makeDecks: VideoDeck.pair)
+                       preferences: AppPreferences(storage: preferences), makeDecks: VideoDeck.pair,
+                       specialModes: SpecialModePages.all.registry)
         await run(app)
     }
 
@@ -120,6 +121,7 @@ import JavaScriptKit
         case .mainPage: "mainPage"
         case .loading: "loading"
         case .watching: "watching"
+        case .special(let session): "special:\(ObjectIdentifier(session))"
         case .failed(let message): "failed:" + message
         }
         guard key != pageKey else { return }
@@ -131,6 +133,7 @@ import JavaScriptKit
         case .mainPage: MainPage(app: app)
         case .loading: WaitPage(message: "Loading your library…")
         case .watching: nil   // drawn underneath
+        case .special(let session): SpecialModePages.all.screen(for: session)
         case .failed(let message): FailedPage(app: app, message: message)
         }
         pageLayer.replaceChildren(page.map { [$0.element] } ?? [])

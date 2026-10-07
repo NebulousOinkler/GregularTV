@@ -72,6 +72,21 @@ import JavaScriptKit
         _ = object.style.setProperty(property, value)
     }
 
+    /// Sets style properties ("--i: 3; left: 10%"), through the style object:
+    /// the page's Content Security Policy refuses `style` attributes.
+    @discardableResult
+    func styled(_ declarations: String) -> El {
+        func trimmed(_ text: Substring) -> String {
+            String(text.drop { $0 == " " }.reversed().drop { $0 == " " }.reversed())
+        }
+        for declaration in declarations.split(separator: ";") {
+            let parts = declaration.split(separator: ":", maxSplits: 1)
+            guard parts.count == 2 else { continue }
+            style(trimmed(parts[0]), trimmed(parts[1]))
+        }
+        return self
+    }
+
     func append(_ children: El...) {
         for child in children { _ = object.append!(child.object) }
     }

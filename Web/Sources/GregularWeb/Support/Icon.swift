@@ -7,7 +7,9 @@ import JavaScriptKit
 @MainActor enum Icon: String {
     case play, pause, previous, next, guide, list, info, settings, servers
     case fullScreen, exitFullScreen, close, back, plus, server, tv, warning, check
-    case signOut, chevronRight, sound, lock
+    case signOut, chevronRight, chevronUp, chevronDown, sound, lock
+    // Karaoke's home menu.
+    case mic, albums, songs, search, dice, phone, palette, door, restart, skip
 
     /// The drawing: SVG path data, stroked.
     private var paths: [String] {
@@ -34,8 +36,21 @@ import JavaScriptKit
         case .check: ["M20 6L9 17l-5-5"]
         case .signOut: ["M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4", "M16 17l5-5-5-5", "M21 12H9"]
         case .chevronRight: ["M9 18l6-6-6-6"]
+        case .chevronUp: ["M18 15l-6-6-6 6"]
+        case .chevronDown: ["M6 9l6 6 6-6"]
         case .sound: ["M11 5L6 9H2v6h4l5 4z", "M15.5 8.5a5 5 0 0 1 0 7", "M19 5a10 10 0 0 1 0 14"]
         case .lock: ["M5 11h14v10H5z", "M8 11V7a4 4 0 0 1 8 0v4"]
+        case .mic: ["M15 4a5 5 0 1 1 5 5", "M15 4a5 5 0 0 0 5 5l-9 9-2-2z", "M8 16l-4 4"]
+        case .albums: ["M4 7h16v13H4z", "M6 4h12", "M8 1.5h8"]
+        case .songs: ["M3 6h11", "M3 11h11", "M3 16h7", "M17 18V5l4-1", "M17 18a2 2 0 1 1-4 0 2 2 0 0 1 4 0z"]
+        case .search: ["M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14z", "M21 21l-5-5"]
+        case .dice: ["M4 4h16v16H4z", "M8.5 8.5h.01", "M15.5 8.5h.01", "M12 12h.01", "M8.5 15.5h.01", "M15.5 15.5h.01"]
+        case .phone: ["M7 2h10v20H7z", "M11 18h2"]
+        case .palette: ["M12 21a9 9 0 1 1 9-9c0 2.5-2 3-3.5 3H15a2 2 0 0 0-1.5 3.3c.7.9.2 2.7-1.5 2.7z",
+                        "M7.5 11h.01", "M10 7h.01", "M14.5 7h.01"]
+        case .door: ["M5 21V3h11v18", "M3 21h18", "M13 12h.01"]
+        case .restart: ["M3 12a9 9 0 1 0 3-6.7", "M3 4v5h5"]
+        case .skip: ["M5 5l10 7-10 7z", "M19 5v14"]
         }
     }
 

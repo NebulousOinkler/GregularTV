@@ -9,7 +9,7 @@ enum Crockford {
     /// any other character isn't in the alphabet.
     static func digits(of text: String) -> [UInt8]? {
         var digits: [UInt8] = []
-        for character in text.uppercased() where character != "-" && character != " " {
+        for character in text.uppercased() where !isSeparator(character) {
             let normalized: Character = switch character {
             case "O": "0"
             case "I", "L": "1"
@@ -19,6 +19,11 @@ enum Crockford {
             digits.append(UInt8(digit))
         }
         return digits
+    }
+
+    /// Dashes and spaces, which typing a code may put anywhere.
+    static func isSeparator(_ character: Character) -> Bool {
+        character == "-" || character == " "
     }
 
     /// `bytes`, five bits per character, in groups of five joined by dashes.

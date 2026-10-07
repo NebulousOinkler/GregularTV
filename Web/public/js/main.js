@@ -15,10 +15,12 @@ if (globalThis.trustedTypes) {
 }
 
 import * as hls from "./hls-player.js";
+import * as karaokeSound from "./karaoke-sound.js";
 import * as vault from "./vault.js";
 import { init } from "../app/index.js";
 
 globalThis.gregularHLS = hls;
+globalThis.gregularKaraokeSound = karaokeSound;
 globalThis.gregularVault = vault;
 
 // If the app itself stops (a crash in its WebAssembly), say so rather than

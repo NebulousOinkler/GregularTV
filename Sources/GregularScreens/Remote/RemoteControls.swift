@@ -16,6 +16,7 @@ import Foundation
 // Actions: .channelUp .channelDown .showInfo .hideInfo .hideInfoOrOpenGuide
 //          .pauseOrJumpToLive .openChannelList .openGuide .openSettings
 //          .close .stepBack .openMainPage .watchLastServer
+//          .playOrPauseSong .openKaraokeMenu (karaoke only)
 //
 // Fixed, not in the tables:
 // - Clicks and swipes are told apart only while watching. In the channel
@@ -86,6 +87,21 @@ public enum RemoteControls {
     public static let settings: [RemoteButton: RemoteAction] = [
         .menu: .close,
         .playPause: .close,
+    ]
+
+    /// Karaoke's stage: a song's title card, or the song. (On the attract
+    /// screen, with nothing queued, any button opens karaoke's menu.)
+    public static let karaokeStage: [RemoteButton: RemoteAction] = [
+        .playPause: .playOrPauseSong,
+        .click: .playOrPauseSong,
+        .menu: .openKaraokeMenu,
+    ]
+
+    /// Karaoke's menus and lists, over the stage. Arrows move the highlight
+    /// and a click chooses, as everywhere; Play/Pause still works the song.
+    public static let karaokeMenus: [RemoteButton: RemoteAction] = [
+        .menu: .stepBack,
+        .playPause: .playOrPauseSong,
     ]
 
     #if DEBUG || (REMOTE_KEYS && targetEnvironment(simulator))
@@ -188,6 +204,10 @@ public enum RemoteAction: Hashable, CaseIterable, Sendable {
     case openMainPage
     /// From the main page, watch the server watched last. Carried out by the app.
     case watchLastServer
+    /// Karaoke: start the song on its title card, or pause and resume it.
+    case playOrPauseSong
+    /// Karaoke: its home menu, over the song.
+    case openKaraokeMenu
 
     /// How hints describe the action while paused, if that's different.
     public var pausedLabel: String {
@@ -210,6 +230,8 @@ public enum RemoteAction: Hashable, CaseIterable, Sendable {
         case .stepBack: "back"
         case .openMainPage: "servers"
         case .watchLastServer: "watch"
+        case .playOrPauseSong: "play or pause"
+        case .openKaraokeMenu: "menu"
         }
     }
 }

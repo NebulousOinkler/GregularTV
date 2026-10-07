@@ -69,18 +69,36 @@ struct JellyfinAPI: Sendable {
         return components.url!
     }
 
+    /// A whole file from this server, such as a song's (`url` must be one
+    /// of its own, as `url(_:query:)` makes), of at most `largest` bytes.
+    func file(_ url: URL, largest: Int) async throws -> Data {
+        guard isOnThisServer(url) else { throw JellyfinError.invalidResponse }
+        return try await send(ServerRequest(url: url, largestResponse: largest), anonymous: false)
+    }
+
+    /// Same scheme, host and port, under any reverse-proxy sub-path.
+    private func isOnThisServer(_ url: URL) -> Bool {
+        url.scheme?.lowercased() == server.scheme?.lowercased() && url.host()?.lowercased() == server.host()?.lowercased()
+            && url.port == server.port && url.path().hasPrefix(server.path().hasSuffix("/") ? server.path() : server.path() + "/")
+    }
+
     // MARK: - Internals
 
     private func send(_ method: String, _ path: String, query: [URLQueryItem], body: Data? = nil,
                       anonymous: Bool = false) async throws -> Data {
-        // Nothing, a password or token least of all, goes over plain http beyond the local network.
-        guard ServerAddress.isAllowed(server) else { throw JellyfinError.insecureAddress }
         var request = ServerRequest(method: method, url: url(path, query: query), headers: ["Accept": "application/json"], body: body)
-        if !anonymous {
-            request.headers["Authorization"] = identity.authorizationHeader(token: token)
-        }
         if body != nil {
             request.headers["Content-Type"] = "application/json"
+        }
+        return try await send(request, anonymous: anonymous)
+    }
+
+    private func send(_ request: ServerRequest, anonymous: Bool) async throws -> Data {
+        // Nothing, a password or token least of all, goes over plain http beyond the local network.
+        guard ServerAddress.isAllowed(server) else { throw JellyfinError.insecureAddress }
+        var request = request
+        if !anonymous {
+            request.headers["Authorization"] = identity.authorizationHeader(token: token)
         }
 
         let reply = try await transport.send(request)
@@ -88,7 +106,7 @@ struct JellyfinAPI: Sendable {
         // redirect shouldn't have gone, or too large, is never used.
         guard reply.url == request.url || TransportRules.allowsRedirect(from: request.url, to: reply.url)
         else { throw JellyfinError.invalidResponse }
-        guard reply.body.count <= TransportRules.largestResponse else { throw JellyfinError.responseTooLarge }
+        guard reply.body.count <= request.largestResponse else { throw JellyfinError.responseTooLarge }
         switch reply.status {
         case 200..<300: return reply.body
         case 401: throw JellyfinError.unauthorized

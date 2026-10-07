@@ -374,7 +374,7 @@ import Observation
     static func unlock() {
         guard shared.isNeeded else { return }
         shared.isNeeded = false
-        let videos = DOM.document.querySelectorAll!("video.current").object!
+        let videos = DOM.document.querySelectorAll!("video.current, video.song-video").object!
         for index in 0..<Int(videos.length.number ?? 0) {
             videos[index].muted = .boolean(false)
         }

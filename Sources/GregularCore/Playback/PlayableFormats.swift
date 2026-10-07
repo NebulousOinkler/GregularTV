@@ -14,6 +14,9 @@ public struct PlayableFormats: Sendable, Equatable {
     public let convertedAudioCodecs: [String]
     /// More sound channels than this are mixed down.
     public let mostAudioChannels: Int
+    /// What a sound file (a song) must be to play as it is.
+    public let audioFileContainers: [String]
+    public let audioFileCodecs: [String]
     /// Files play as they are only from an https server. A web page on
     /// https can't play a video file from plain http (mixed content); only
     /// requests it makes itself (HLS, through hls.js) can be let through to
@@ -21,9 +24,18 @@ public struct PlayableFormats: Sendable, Equatable {
     /// usually only the container changes, which is cheap for the server.
     public let playsFilesOnlyOverHTTPS: Bool
 
+    /// Whether a file in `container` (as `MediaItem.container` names it) could
+    /// play as it is, judged by the container alone. True when it isn't
+    /// known: only the server can say for sure (`OriginalFiles`).
+    public func mightPlayAsIs(_ kind: MediaItem.Kind, container: String?) -> Bool {
+        guard let container else { return true }
+        let playable = kind == .song ? audioFileContainers : containers
+        return container.lowercased().split(separator: ",").contains { playable.contains(String($0)) }
+    }
+
     public init(name: String, containers: [String], videoCodecs: [String], audioCodecs: [String],
                 convertedVideoCodecs: [String], convertedAudioCodecs: [String], mostAudioChannels: Int,
-                playsFilesOnlyOverHTTPS: Bool = false) {
+                audioFileContainers: [String] = [], audioFileCodecs: [String] = [], playsFilesOnlyOverHTTPS: Bool = false) {
         self.name = name
         self.containers = containers
         self.videoCodecs = videoCodecs
@@ -31,6 +43,8 @@ public struct PlayableFormats: Sendable, Equatable {
         self.convertedVideoCodecs = convertedVideoCodecs
         self.convertedAudioCodecs = convertedAudioCodecs
         self.mostAudioChannels = mostAudioChannels
+        self.audioFileContainers = audioFileContainers
+        self.audioFileCodecs = audioFileCodecs
         self.playsFilesOnlyOverHTTPS = playsFilesOnlyOverHTTPS
     }
 
@@ -44,7 +58,9 @@ public struct PlayableFormats: Sendable, Equatable {
         audioCodecs: ["aac", "ac3", "eac3", "alac", "mp3"],
         convertedVideoCodecs: ["h264", "hevc"],
         convertedAudioCodecs: ["aac", "ac3", "eac3"],
-        mostAudioChannels: 6)
+        mostAudioChannels: 6,
+        audioFileContainers: ["mp3", "m4a", "mp4", "aac", "flac", "wav"],
+        audioFileCodecs: ["mp3", "aac", "alac", "flac", "pcm_s16le", "pcm_s24le"])
 
     /// A web browser: H.264 and AAC in MP4 play everywhere. HEVC only where
     /// the browser says it can (`playsHEVC`). Surround sound is mixed down
@@ -58,6 +74,8 @@ public struct PlayableFormats: Sendable, Equatable {
             convertedVideoCodecs: playsHEVC ? ["h264", "hevc"] : ["h264"],
             convertedAudioCodecs: ["aac"],
             mostAudioChannels: 2,
+            audioFileContainers: ["mp3", "m4a", "mp4", "aac", "flac", "wav"],
+            audioFileCodecs: ["mp3", "aac", "flac", "pcm_s16le"],
             playsFilesOnlyOverHTTPS: true)
     }
 }

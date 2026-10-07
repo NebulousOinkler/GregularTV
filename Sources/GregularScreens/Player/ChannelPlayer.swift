@@ -23,13 +23,13 @@ import Observation
 ///   starts where the last part stopped and ends at its cut, so a mid-roll is
 ///   an ordinary break: the part after it preloads in `standby` like any
 ///   programme after a break. A programme fix covers every part of the film.
-/// - **Commercials** are only ever played as-is or remuxed, with no bitrate
-///   cap, so a clip's bitrate never makes it re-encoded. One that would need
-///   re-encoding anyway (a video codec the Apple TV can't play) is skipped,
-///   and its time is blank.
+/// - **Commercials** are asked for with no bitrate cap, so a clip's bitrate
+///   never makes it re-encoded. One the device can't play as it is (a video
+///   codec the Apple TV can't play) is converted by the server, as a
+///   programme is.
 /// - **Gaps:** time with nothing scheduled (a gap of a minute or less, the
-///   end of a break, a skipped commercial, or every break with commercials
-///   off) is a blank screen with an "Up next" card. The next item is still
+///   end of a break, or every break with commercials off) is a blank screen
+///   with an "Up next" card. The next item is still
 ///   queued 30 seconds ahead, but held until its start time.
 /// - **Pause** really pauses. Resuming jumps back to live (PLAN.md §7): it
 ///   seeks what's loaded to live if it's still on, and only tunes in afresh if
@@ -175,15 +175,6 @@ public final class ChannelPlayer {
     }
     /// Live playback details for the banner, while diagnostics are on.
     public private(set) var diagnostics: String?
-    /// For Settings' diagnostics: how many commercials have been skipped.
-    public var skippedCommercialsNote: String? {
-        switch skippedCommercialIDs.count {
-        case 0: nil
-        case 1: "1 was skipped so far because the server would have to re-encode it."
-        case let n: "\(n) were skipped so far because the server would have to re-encode them."
-        }
-    }
-
     /// Where streams come from: the media server, through Core's interface.
     private let streams: any StreamSource
     private var current: LoadedAiring?
@@ -202,8 +193,6 @@ public final class ChannelPlayer {
     private var nextIsOnStandby = false
     /// Swaps to `standby` right on the programme's start time.
     private var standbyHandoff: Task<Void, Never>?
-    /// Commercials that would need re-encoding, found this session. In memory only.
-    private var skippedCommercialIDs: Set<String> = []
     /// Failures since video last actually played, on this channel. Sets the retry backoff.
     private var consecutiveFailures = 0
     /// Auto's cap after playback had trouble, and when it was measured. Nil
@@ -420,10 +409,6 @@ public final class ChannelPlayer {
                 }
                 player.play()
                 status = .playing
-            } catch is SkippedCommercial {
-                // Blank, with the banner, until the next clip or programme.
-                guard !Task.isCancelled else { return }
-                status = .betweenProgrammes(until: tuning.airing.slotEnd)
             } catch {
                 guard !Task.isCancelled else { return }
                 fail(error, airing: tuning.airing)
@@ -573,26 +558,18 @@ public final class ChannelPlayer {
     private func prepareNext(after current: LoadedAiring) {
         isPreparingNext = true   // stays set on failure; the end-of-programme re-tune tries again
         Task {
-            // Whatever airs next, passing over any commercial that would need
-            // re-encoding: its time is left blank.
-            var from = current.airing.slotEnd
-            while let upcoming = schedule.airings(from: from, to: from.addingTimeInterval(1)).first {
-                // The channel may have changed, or re-tuned, while we were loading.
-                guard self.current?.item === current.item, next == nil else { return }
-                // The programme after a break is already buffering in `standby`.
-                if let preloaded = afterBreak, preloaded.airing == upcoming {
-                    return scheduleStandbyHandoff(to: preloaded)
-                }
-                do {
-                    let loaded = try await load(upcoming)
-                    guard self.current?.item === current.item, next == nil else { return release(loaded) }
-                    return queue(loaded, after: current)
-                } catch is SkippedCommercial {
-                    from = upcoming.slotEnd
-                } catch {
-                    return
-                }
+            // Whatever airs next.
+            let from = current.airing.slotEnd
+            guard let upcoming = schedule.airings(from: from, to: from.addingTimeInterval(1)).first,
+                  // The channel may have changed, or re-tuned, while we were loading.
+                  self.current?.item === current.item, next == nil else { return }
+            // The programme after a break is already buffering in `standby`.
+            if let preloaded = afterBreak, preloaded.airing == upcoming {
+                return scheduleStandbyHandoff(to: preloaded)
             }
+            guard let loaded = try? await load(upcoming) else { return }
+            guard self.current?.item === current.item, next == nil else { return release(loaded) }
+            queue(loaded, after: current)
         }
     }
 
@@ -720,22 +697,13 @@ public final class ChannelPlayer {
         return (try await streams.stream(for: airing.item.id, maxBitrate: cap), cap)
     }
 
-    /// Commercials never make the server re-encode video, and never start a
-    /// speed test. They play the original file, as-is or at most remuxed,
-    /// which costs the server almost nothing. They're asked for with no
+    /// Commercials never start a speed test, and are asked for with no
     /// bitrate cap (the quality setting doesn't apply), so a clip is never
-    /// re-encoded just for its bitrate. A clip that would need re-encoding
-    /// anyway is skipped (`SkippedCommercial`): its time is blank. It's
-    /// remembered for the rest of the session, so it isn't asked about again.
+    /// re-encoded just for its bitrate. One the device can't play as it is
+    /// is converted by the server, as a programme is.
     private func commercialSource(for item: MediaItem) async throws -> (MediaStream, cap: Int) {
-        guard !skippedCommercialIDs.contains(item.id) else { throw SkippedCommercial() }
         let cap = StreamingQuality.maximumBitrate
-        let source = try await streams.stream(for: item.id, maxBitrate: cap)
-        guard !source.reencodes else {
-            skippedCommercialIDs.insert(item.id)   // nothing to stop: a transcode only starts when the stream is requested
-            throw SkippedCommercial()
-        }
-        return (source, cap)
+        return (try await streams.stream(for: item.id, maxBitrate: cap), cap)
     }
 
     /// The bitrate cap for the current quality setting.
@@ -873,8 +841,6 @@ public final class ChannelPlayer {
     }
 }
 
-/// A commercial that would make the server re-encode video, so it isn't played.
-public struct SkippedCommercial: Error {}
 
 /// Playback made no progress for `ChannelPlayer.stallTimeout` seconds.
 public struct StallError: LocalizedError {

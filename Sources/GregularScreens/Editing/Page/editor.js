@@ -1,6 +1,7 @@
 "use strict";
-// The editing page, for every version of the app (EditingPageHTML). Either
-// the Apple TV serves it on the home network (EditingPage), and it sends
+// The editing page, for every version of the app (EditingPageHTML), after
+// local-page.js. Either the Apple TV serves it on the home network
+// (LocalPage.editing), and it sends
 // the code shown on the TV with every request; or the web version opens it
 // inside itself, as `host`, which answers it directly: no network, no code.
 const host = window.parent !== window ? window.parent.gregularEditor : undefined;
@@ -9,24 +10,6 @@ let state = null;
 let doc = null;
 let dirty = false;
 
-const $ = (id) => document.getElementById(id);
-function el(tag, props, ...children) {
-  const node = document.createElement(tag);
-  for (const [key, value] of Object.entries(props || {})) {
-    if (key === "text") node.textContent = value;
-    else if (key.startsWith("on")) node.addEventListener(key.slice(2), value);
-    else if (key === "list") node.setAttribute("list", value);
-    else if (key in node) node[key] = value;
-    else node.setAttribute(key, value);
-  }
-  for (const child of children.flat()) if (child) node.append(child);
-  return node;
-}
-function say(text, good) {
-  const box = $("message");
-  box.replaceChildren();
-  if (text) box.append(el("div", { className: "message " + (good ? "good" : "bad"), text }));
-}
 function changed() { dirty = true; $("dirty").textContent = "Not saved yet."; $("json").value = JSON.stringify(doc, null, 2); }
 
 async function api(path, body) {
@@ -39,14 +22,7 @@ async function api(path, body) {
     status = reply.status;
     try { data = JSON.parse(reply.body); } catch (e) {}
   } else {
-    const response = await fetch(path, {
-      method,
-      headers: { "X-Gregular-Code": code, "Content-Type": "application/json" },
-      body: text,
-      cache: "no-store", credentials: "omit", referrerPolicy: "no-referrer",
-    });
-    status = response.status;
-    try { data = await response.json(); } catch (e) {}
+    ({ status, data } = await askAppleTV(method, path, text, code));
   }
   if (status === 401 || status === 423) {
     $("editor").hidden = true; $("connect").hidden = false;

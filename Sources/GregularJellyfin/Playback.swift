@@ -65,8 +65,9 @@ public struct PlaybackSource: Sendable, Equatable {
 struct DeviceProfile: Encodable {
     struct DirectPlayProfile: Encodable {
         let container: String
-        let type = "Video"
-        let videoCodec: String
+        /// "Video", or "Audio" for sound files.
+        let type: String
+        let videoCodec: String?
         let audioCodec: String
     }
 
@@ -113,9 +114,12 @@ struct DeviceProfile: Encodable {
         name = "\(ClientIdentity.clientName) (\(formats.name))"
         maxStreamingBitrate = maxBitrate
         maxStaticBitrate = maxBitrate
-        directPlayProfiles = formats.playsFilesOnlyOverHTTPS && !secure ? [] : [DirectPlayProfile(container: formats.containers.joined(separator: ","),
-                                                videoCodec: formats.videoCodecs.joined(separator: ","),
-                                                audioCodec: formats.audioCodecs.joined(separator: ","))]
+        let video = DirectPlayProfile(container: formats.containers.joined(separator: ","), type: "Video",
+                                      videoCodec: formats.videoCodecs.joined(separator: ","),
+                                      audioCodec: formats.audioCodecs.joined(separator: ","))
+        let audio = DirectPlayProfile(container: formats.audioFileContainers.joined(separator: ","), type: "Audio",
+                                      videoCodec: nil, audioCodec: formats.audioFileCodecs.joined(separator: ","))
+        directPlayProfiles = formats.playsFilesOnlyOverHTTPS && !secure ? [] : [video] + (formats.audioFileContainers.isEmpty ? [] : [audio])
         transcodingProfiles = [TranscodingProfile(videoCodec: formats.convertedVideoCodecs.joined(separator: ","),
                                                   audioCodec: formats.convertedAudioCodecs.joined(separator: ","),
                                                   maxAudioChannels: String(formats.mostAudioChannels))]
@@ -161,4 +165,58 @@ struct PlaybackInfoResponse: Decodable {
 
     let mediaSources: [MediaSource]
     let playSessionId: String?
+}
+
+/// `/Audio/{id}/Lyrics`: the lyrics Jellyfin read from the song's lyrics
+/// file (such as an .lrc), with times in ticks.
+struct LyricsDTO: Decodable {
+    struct Line: Decodable {
+        let text: String?
+        let start: Int64?
+        /// Each word's timing (Jellyfin 10.10 and later), by its place in `text`.
+        let cues: [Cue]?
+    }
+
+    struct Cue: Decodable {
+        /// Where the word starts and ends in the line's text, in UTF-16 units (as .NET counts).
+        let position: Int?
+        let endPosition: Int?
+        let start: Int64?
+        let end: Int64?
+    }
+
+    let lyrics: [Line]?
+
+    /// The timed lines, or nil if there are none (no lyrics, or untimed words).
+    var synced: SyncedLyrics? {
+        let lines: [SyncedLyrics.Line] = (lyrics ?? []).compactMap { line in
+            guard let start = line.start else { return nil }
+            let text = line.text ?? ""
+            return SyncedLyrics.Line(start: Ticks.seconds(start), text: text, words: Self.words(line.cues ?? [], in: text))
+        }
+        return lines.isEmpty ? nil : SyncedLyrics(lines: lines)
+    }
+
+    /// The cues as words, by character. A cue with no end runs to the next one, or the end of the line.
+    private static func words(_ cues: [Cue], in text: String) -> [SyncedLyrics.Word] {
+        let utf16Count = text.utf16.count
+        let timed = cues.filter { $0.start != nil && $0.position != nil }.sorted { $0.position! < $1.position! }
+        return timed.enumerated().compactMap { index, cue in
+            let from = min(max(cue.position!, 0), utf16Count)
+            let to = min(max(cue.endPosition ?? (index + 1 < timed.count ? timed[index + 1].position! : utf16Count), from), utf16Count)
+            let range = characters(upTo: from, in: text)..<characters(upTo: to, in: text)
+            guard !range.isEmpty else { return nil }
+            return SyncedLyrics.Word(range: range, start: Ticks.seconds(cue.start!), end: cue.end.map(Ticks.seconds))
+        }
+    }
+
+    /// How many characters start in the first `utf16Offset` UTF-16 units of `text`.
+    private static func characters(upTo utf16Offset: Int, in text: String) -> Int {
+        var units = 0, count = 0
+        for character in text where units < utf16Offset {
+            units += character.utf16.count
+            count += 1
+        }
+        return count
+    }
 }

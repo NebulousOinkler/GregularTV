@@ -7,7 +7,7 @@ import GregularCore
 ///
 /// **A transport must follow `TransportRules`:** follow a redirect only when
 /// `allowsRedirect(from:to:)` says so, stop a reply as it arrives once it's
-/// larger than `largestResponse`, and store nothing (no disk cache, cookies
+/// larger than the request's `largestResponse`, and store nothing (no disk cache, cookies
 /// or saved logins). `TransportConformanceTests` checks all three; add a new
 /// transport there. `JellyfinAPI` checks the first two again on every reply,
 /// so a transport that gets them wrong still can't pass a reply on.
@@ -22,12 +22,17 @@ public struct ServerRequest: Sendable {
     public var url: URL
     public var headers: [String: String]
     public var body: Data?
+    /// The most the reply may be (bytes): `TransportRules.largestResponse`,
+    /// unless it's a whole file (`JellyfinClient.download(_:mostBytes:)`).
+    public var largestResponse: Int
 
-    public init(method: String = "GET", url: URL, headers: [String: String] = [:], body: Data? = nil) {
+    public init(method: String = "GET", url: URL, headers: [String: String] = [:], body: Data? = nil,
+                largestResponse: Int = TransportRules.largestResponse) {
         self.method = method
         self.url = url
         self.headers = headers
         self.body = body
+        self.largestResponse = largestResponse
     }
 
     /// The value of header `name`, whatever its case.
@@ -52,9 +57,9 @@ public struct ServerReply: Sendable {
 
 /// What every transport must do, whatever the platform (see `HTTPTransport`).
 public enum TransportRules {
-    /// The most one reply may be (bytes). Far more than any real one (a
-    /// page of 500 programmes is about 300 KB, the speed test 3 MB), so only
-    /// a server sending far too much hits it.
+    /// The most one reply may be (bytes), unless a request says otherwise.
+    /// Far more than any real one (a page of 500 programmes is about 300 KB,
+    /// the speed test 3 MB), so only a server sending far too much hits it.
     public static let largestResponse = 16 * 1024 * 1024
 
     /// Whether a redirect from `from` to `to` may be followed: only to the
@@ -113,13 +118,13 @@ public struct URLSessionTransport: HTTPTransport {
         urlRequest.httpMethod = request.method
         urlRequest.allHTTPHeaderFields = request.headers
         urlRequest.httpBody = request.body
-        let (data, response) = try await send(urlRequest)
+        let (data, response) = try await send(urlRequest, largest: request.largestResponse)
         return ServerReply(url: response.url ?? request.url, status: response.statusCode, body: data)
     }
 
-    private func send(_ request: URLRequest) async throws -> (Data, HTTPURLResponse) {
+    private func send(_ request: URLRequest, largest: Int) async throws -> (Data, HTTPURLResponse) {
         let task = session.dataTask(with: request)
-        let load = BoundedLoad(limit: TransportRules.largestResponse)
+        let load = BoundedLoad(limit: largest)
         task.delegate = load
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in

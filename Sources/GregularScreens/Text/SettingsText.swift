@@ -35,6 +35,8 @@ public enum SettingsText {
     public static let codePlaceholder = "Enter a code, like 7KQM2-X9PDA"
     public static let newRandomCode = "Use a New Random Code"
     public static let badCode = "A code is 10 letters and digits, like 7KQM2-X9PDA."
+    /// A special mode's keyword (`AppModel.enterCode`), with nothing on this server to open it with.
+    public static let specialModeUnavailable = "There's nothing on this server for that code."
     public static let scheduleCodeNote = "The code sets the running order on every channel. Anyone using the same code, with the same "
         + "\(AppModel.serverName) library and channels, sees the same programmes at the same time. Changing it reshuffles every channel."
 

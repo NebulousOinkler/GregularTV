@@ -57,9 +57,19 @@ final class WalkthroughTests: XCTestCase {
         return element.exists && element.hasFocus
     }
 
-    /// Moves the highlight down, then up, until `element` has it; a failure
-    /// only if it's in neither direction.
+    /// Moves the highlight towards `element` while it's on screen (grids
+    /// need left and right too), then down, then up, until it has it; a
+    /// failure only if it's in no direction.
     private func reach(_ element: XCUIElement, _ what: String) -> Bool {
+        for _ in 0..<20 where element.exists && !element.hasFocus {
+            let focused = app.descendants(matching: .any).element(matching: NSPredicate(format: "hasFocus == true"))
+            guard focused.exists else { break }
+            let (from, to) = (focused.frame, element.frame)
+            let direction: XCUIRemote.Button = to.minY >= from.maxY ? .down : to.maxY <= from.minY ? .up
+                : to.midX > from.midX ? .right : .left
+            remote.press(direction)
+            pause(0.35)
+        }
         let ok = focus(element, tries: 30) || focus(element, moving: .up, tries: 60)
         XCTAssertTrue(ok, "Couldn't reach \(what)")
         return ok
@@ -347,5 +357,162 @@ final class WalkthroughTests: XCTestCase {
         choose("Connect")
         pause(5)
         capture("sign-in-demo-server")
+    }
+
+    // MARK: Karaoke
+
+    /// Karaoke's keyword, from `TEST_RUNNER_SPECIAL_MODE_KEYWORD`: the repo
+    /// keeps only its hash, so the keyword itself is never written here.
+    private func keyword() throws -> String {
+        guard let keyword = ProcessInfo.processInfo.environment["SPECIAL_MODE_KEYWORD"], !keyword.isEmpty else {
+            throw XCTSkip("Set TEST_RUNNER_SPECIAL_MODE_KEYWORD to walk through karaoke")
+        }
+        return keyword
+    }
+
+    /// Its keyword, typed where a schedule code goes, opens karaoke: the
+    /// theme boxes (each sampled in turn), its menu, a song loaded whole and
+    /// held on its title card, the song's lyrics, the cheer when it ends,
+    /// and Leave Karaoke back to live TV.
+    func test8Karaoke() throws {
+        let keyword = try keyword()
+        waitForWatching()
+        openSettings()
+        type(keyword, into: "Enter a code")
+        guard text("Pick a Theme").waitForExistence(timeout: 10) else { return XCTFail("The keyword didn't open karaoke") }
+        capture("karaoke-themes")
+        for theme in ["bar", "bubblegum", "vegas"] {
+            press(.right)
+            pause(1)
+            capture("karaoke-theme-\(theme)")
+        }
+        for _ in 0..<3 { press(.left) }
+        press(.select)
+        guard button("All Songs").waitForExistence(timeout: 5) else { return XCTFail("Choosing a theme didn't open karaoke's menu") }
+        pause(1)
+        capture("karaoke-menu")
+        press(.menu)
+        XCTAssertTrue(button("All Songs").exists, "Menu left karaoke's menu with nothing to go back to")
+        choose("All Songs")
+        XCTAssertTrue(button("Bubble Bath Ballad").waitForExistence(timeout: 5), "No songs listed")
+        pause(1)
+        capture("karaoke-songs")
+        XCTAssertTrue(button("Jump to S").exists, "A long list has letters to jump by")
+        choose("Saturday Satellite")
+        guard text("Press Play to sing").waitForExistence(timeout: 20) else { return XCTFail("The song didn't load") }
+        capture("karaoke-title-card")
+        press(.playPause)
+        XCTAssertTrue(text("Spin").waitForExistence(timeout: 10), "No lyrics while singing")
+        pause(2)
+        capture("karaoke-singing")
+        XCTAssertTrue(text("Encore!").waitForExistence(timeout: 20), "No cheer at the end of the song")
+        pause(0.8)
+        capture("karaoke-encore")
+        pause(4)
+        press(.select)
+        XCTAssertTrue(button("Artists").waitForExistence(timeout: 5), "Any button on the attract screen opens the menu")
+        choose("Leave Karaoke")
+        answerDialog("Leave Karaoke")
+        XCTAssertTrue(text("channel list").waitForExistence(timeout: 20), "Leaving karaoke didn't go back to live TV")
+        capture("karaoke-left")
+    }
+
+    /// Karaoke in each theme: its menu and a long list, then a song on its
+    /// title card and sung, in the last theme. For looking at, mostly.
+    func test11KaraokeInEachTheme() throws {
+        let keyword = try keyword()
+        waitForWatching()
+        openSettings()
+        type(keyword, into: "Enter a code")
+        guard text("Pick a Theme").waitForExistence(timeout: 10) else { return XCTFail("The keyword didn't open karaoke") }
+        for (index, theme) in ["neon", "bar", "bubblegum", "vegas"].enumerated() {
+            if index > 0 {
+                guard choose("Change Theme") else { return }
+                pause(1)
+                for _ in 0..<3 { press(.left) }
+                press(.right, times: index)
+            }
+            press(.select)
+            guard button("All Songs").waitForExistence(timeout: 5) else { return XCTFail("No menu in \(theme)") }
+            pause(1)
+            capture("\(theme)-menu")
+            choose("All Songs")
+            pause(1.5)
+            capture("\(theme)-songs")
+            press(.menu)
+            pause(1)
+        }
+        choose("Search")
+        press(.menu)
+        choose("All Songs")
+        choose("Disco Lemonade")
+        guard text("Press Play to sing").waitForExistence(timeout: 20) else { return XCTFail("The song didn't load") }
+        pause(1)
+        capture("vegas-title-card")
+        press(.playPause)
+        pause(6)
+        capture("vegas-singing")
+        press(.menu)
+        choose("Leave Karaoke")
+        answerDialog("Leave Karaoke")
+    }
+
+    /// Songs from Phones: off until turned on in karaoke's menu; then a
+    /// phone on the home network, with the address and code on the TV,
+    /// adds a song (asking as the picker page does), and the TV says so.
+    func test9KaraokeFromAPhone() throws {
+        let keyword = try keyword()
+        waitForWatching()
+        openSettings()
+        type(keyword, into: "Enter a code")
+        guard text("Pick a Theme").waitForExistence(timeout: 10) else { return XCTFail("The keyword didn't open karaoke") }
+        press(.select)
+        guard choose("Songs from Phones") else { return }
+        XCTAssertTrue(button("Let phones add songs: Off").exists, "Phones should be off to begin with")
+        choose("Let phones add songs")
+        let code = app.staticTexts.matching(NSPredicate(format: "label MATCHES %@", "[0-9]{6}")).firstMatch
+        guard code.waitForExistence(timeout: 10) else { return XCTFail("No code for phones") }
+        let address = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "http://")).firstMatch.label
+        capture("karaoke-phones")
+
+        let status = phoneAsks(address, "POST", "/api/queue", code: code.label, body: #"{"id":"song0"}"#)
+        XCTAssertEqual(status, 200, "The phone's song wasn't taken")
+        XCTAssertTrue(text("A phone added").waitForExistence(timeout: 5), "The TV didn't say a phone added a song")
+        XCTAssertTrue(text("Pick a Theme").exists == false && button("Let phones add songs: On").exists,
+                      "A phone's song shouldn't move the TV off its menu")
+        press(.menu)
+        press(.menu)
+        XCTAssertTrue(text("Add songs from your phone").waitForExistence(timeout: 10), "The stage doesn't say where phones go")
+        capture("karaoke-phone-badge")
+        press(.menu)
+        choose("Leave Karaoke")
+        answerDialog("Leave Karaoke")
+        XCTAssertTrue(text("channel list").waitForExistence(timeout: 20), "Leaving karaoke didn't go back to live TV")
+    }
+
+    /// A request as a phone's browser sends it, to the page at `address`
+    /// ("http://192.168.1.20:8080"), and the status of the reply. Sent over
+    /// loopback, with the address as its Host: a test can't be given the
+    /// local-network permission a real phone's browser has.
+    private func phoneAsks(_ address: String, _ method: String, _ path: String, code: String, body: String) -> Int {
+        let host = String(address.dropFirst("http://".count))
+        guard let port = host.split(separator: ":").last.flatMap({ Int($0) }) else { return 0 }
+        let request = "\(method) \(path) HTTP/1.1\r\nHost: \(host)\r\nX-Gregular-Code: \(code)\r\n"
+            + "Content-Type: application/json\r\nContent-Length: \(body.utf8.count)\r\n\r\n\(body)"
+        var input: InputStream?
+        var output: OutputStream?
+        Stream.getStreamsToHost(withName: "127.0.0.1", port: port, inputStream: &input, outputStream: &output)
+        guard let input, let output else { return 0 }
+        input.open()
+        output.open()
+        defer { input.close(); output.close() }
+        let bytes = Array(request.utf8)
+        guard output.write(bytes, maxLength: bytes.count) == bytes.count else { return 0 }
+        var reply = [UInt8](repeating: 0, count: 4096)
+        let deadline = Date.now.addingTimeInterval(10)
+        while !input.hasBytesAvailable, Date.now < deadline { Thread.sleep(forTimeInterval: 0.05) }
+        let count = input.read(&reply, maxLength: reply.count)
+        guard count > 0, let line = String(decoding: reply.prefix(count), as: UTF8.self).split(separator: "\r\n").first else { return 0 }
+        return line.split(separator: " ").dropFirst().first.flatMap { Int($0) } ?? 0
     }
 }

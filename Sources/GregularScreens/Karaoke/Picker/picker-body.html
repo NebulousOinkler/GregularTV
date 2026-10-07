@@ -1,0 +1,25 @@
+<main>
+  <h1>Gregular Karaoke</h1>
+  <p class="dim">Pick songs for the queue on the TV. This page works only while songs from phones are on in karaoke's menu.</p>
+
+  <form id="connect" class="card">
+    <h2>Code</h2>
+    <div class="row">
+      <input id="code" inputmode="numeric" autocomplete="off" placeholder="The 6-digit code on the TV" maxlength="6">
+      <button class="primary">Join</button>
+    </div>
+  </form>
+
+  <div id="message"></div>
+
+  <section id="picker" hidden>
+    <div class="card">
+      <h2>On stage</h2>
+      <p id="now" class="dim"></p>
+      <h2>Up next</h2>
+      <ol id="queue"></ol>
+    </div>
+    <input id="search" type="search" placeholder="Song, artist or album" autocomplete="off" spellcheck="false">
+    <ul id="songs"></ul>
+  </section>
+</main>

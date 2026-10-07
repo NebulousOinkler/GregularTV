@@ -1,0 +1,27 @@
+:root { --bg: #160a26; --card: #241238; --line: #3d2459; --text: #fff; --dim: #c9b8dc; --accent: #ff2fd0; --accent-2: #2ff3ff;
+  --bad: #ff6b6b; --good: #5fd068; }
+* { box-sizing: border-box; }
+body { margin: 0; background: radial-gradient(ellipse at 20% 0%, #4a1450, transparent 60%), var(--bg); color: var(--text);
+  font: 17px/1.4 "Arial Rounded MT Bold", -apple-system, system-ui, sans-serif; min-height: 100vh; }
+main { max-width: 640px; margin: 0 auto; padding: 16px; }
+h1 { font-size: 1.8rem; margin: 8px 0 4px; color: var(--accent); text-shadow: 0 0 12px rgba(255, 47, 208, 0.6); }
+h2 { font-size: 1rem; margin: 8px 0 4px; color: var(--accent-2); text-transform: uppercase; letter-spacing: 0.08em; }
+.dim { color: var(--dim); font-size: 0.9rem; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px; margin: 12px 0; }
+.row { display: flex; gap: 8px; }
+input, button { font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+input { flex: 1; min-width: 0; width: 100%; }
+button { cursor: pointer; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #1a0b1f; font-weight: 700; }
+ol { margin: 4px 0 0; padding-left: 22px; }
+ul { list-style: none; margin: 12px 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.song { display: flex; align-items: center; gap: 10px; width: 100%; text-align: left; background: var(--card); min-height: 56px; }
+.song span.text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.song .title { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.song .credit { color: var(--dim); font-size: 0.85rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.badge { font-size: 0.75rem; padding: 2px 8px; border-radius: 999px; background: var(--accent-2); color: #10091a; white-space: nowrap; }
+.badge.quiet { background: none; border: 1px solid var(--dim); color: var(--dim); }
+.message { padding: 10px 12px; border-radius: 10px; margin: 8px 0; }
+.message.bad { background: color-mix(in srgb, var(--bad) 25%, transparent); }
+.message.good { background: color-mix(in srgb, var(--good) 25%, transparent); }
+[hidden] { display: none !important; }

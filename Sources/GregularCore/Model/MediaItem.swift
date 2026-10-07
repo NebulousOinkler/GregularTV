@@ -1,19 +1,23 @@
 import Foundation
 
-/// One playable item (an episode, a movie, or a plain video such as a
-/// commercial), as a `MediaLibrary` provides it.
+/// One playable item (an episode, a movie, a plain video such as a
+/// commercial, a song or a music video), as a `MediaLibrary` provides it.
 ///
 /// Held in memory only. It's never written to disk (see PLAN.md §3).
 public struct MediaItem: Sendable, Hashable, Identifiable {
     /// What sort of item it is. The raw values are the names `channels.json`
     /// uses in `itemTypes`. A `MediaLibrary` maps its server's own types to
-    /// these (music would add kinds here, such as a song).
+    /// these. Only `MediaLibrary.fetchCollection(named:kinds:)` gives songs and
+    /// music videos, so channels never see them.
     public enum Kind: String, Sendable, Codable, CaseIterable {
         case episode = "Episode"
         case movie = "Movie"
         /// A plain video, such as a commercial in a "Home Videos" library.
         /// Regular channels never see these; only gap fillers use them.
         case video = "Video"
+        /// A sound file.
+        case song = "Audio"
+        case musicVideo = "MusicVideo"
     }
 
     public let id: String
@@ -33,6 +37,19 @@ public struct MediaItem: Sendable, Hashable, Identifiable {
     /// because servers such as Jellyfin rarely set genres on individual episodes.
     public let genres: [String]
     public let tags: [String]
+    /// For songs and music videos: who performs it, and the album it's on.
+    public let artists: [String]
+    public let album: String?
+    /// The folders it's in within its library, outermost first, for
+    /// libraries arranged by folder (empty when it's at the top, or the
+    /// server doesn't say).
+    public let folders: [String]
+    /// For songs: the server has lyrics for it (`LyricsSource`).
+    public let hasLyrics: Bool
+    /// The kind of file, as the server names it, such as "mp4" or
+    /// "mov,mp4,m4a" (several when the server can't tell them apart). Nil if
+    /// it doesn't say.
+    public let container: String?
 
     public init(
         id: String,
@@ -46,7 +63,12 @@ public struct MediaItem: Sendable, Hashable, Identifiable {
         productionYear: Int? = nil,
         premiereDate: Date? = nil,
         genres: [String] = [],
-        tags: [String] = []
+        tags: [String] = [],
+        artists: [String] = [],
+        album: String? = nil,
+        folders: [String] = [],
+        hasLyrics: Bool = false,
+        container: String? = nil
     ) {
         self.id = id
         self.kind = kind
@@ -60,6 +82,11 @@ public struct MediaItem: Sendable, Hashable, Identifiable {
         self.premiereDate = premiereDate
         self.genres = genres
         self.tags = tags
+        self.artists = artists
+        self.album = album
+        self.folders = folders
+        self.hasLyrics = hasLyrics
+        self.container = container
     }
 }
 

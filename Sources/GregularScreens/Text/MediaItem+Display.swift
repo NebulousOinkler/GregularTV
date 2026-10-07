@@ -6,7 +6,7 @@ extension MediaItem {
         seriesName ?? name
     }
 
-    /// "S2 E30 · Climax" for episodes, "1999" for movies.
+    /// "S2 E30 · Climax" for episodes, "1999" for movies, who performs a song or music video.
     public var displaySubtitle: String? {
         switch kind {
         case .episode:
@@ -17,6 +17,8 @@ extension MediaItem {
             return productionYear.map(String.init)
         case .video:
             return nil
+        case .song, .musicVideo:
+            return artists.isEmpty ? nil : artists.joined(separator: ", ")
         }
     }
 }
