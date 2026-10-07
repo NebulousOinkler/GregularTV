@@ -34,6 +34,7 @@ import JavaScriptKit
     private let fullScreen: El
     private let now: NowPanel
     private let lineup = El("section", "lineup").attribute("aria-label", "All channels")
+    private let lineupTitle = El("h2", "section-title", text: "On now")
     private let lineupRows: ChannelRows
     private let overlay = El("div", "overlay")
     /// What screen readers hear when the channel or programme changes.
@@ -92,7 +93,7 @@ import JavaScriptKit
         dim.hidden = true
         for case let deck as VideoDeck in player.decks { decks.append(deck.element) }
         stage.append(decks, cards, badge, numberEntry, stageBar, soundNote, curtain, dim)
-        lineup.append(El("h2", "section-title", text: "On now"))
+        lineup.append(lineupTitle)
         for (row, _) in lineupRows.rows { lineup.append(row) }
         element.append(stage, now.element, lineup, overlay, announcer)
 
@@ -243,7 +244,12 @@ import JavaScriptKit
         }
     }
 
+    /// The lineup under the picture, with the channels as they are now: a
+    /// new schedule code, or a channel added, rebuilds them.
     private func drawLineup() {
+        if lineupRows.show(surfer.channels) {
+            lineup.replaceChildren([lineupTitle] + lineupRows.rows.map(\.row))
+        }
         lineupRows.draw(at: lineupClock.now, current: player.schedule.channel.number)
     }
 
