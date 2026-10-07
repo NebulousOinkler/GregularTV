@@ -21,9 +21,15 @@ extension ChannelSurfer {
 
 extension JellyfinClient {
     /// A client for a server that doesn't exist, whose every reply comes from `transport`.
+    ///
+    /// Each client's server has a name of its own. AVFoundation waits longer
+    /// each time a name fails to resolve, about 3.5 s more a time up to 20 s,
+    /// so streams from one shared name would fail ever more slowly as the
+    /// tests went on, and a test expecting a quick failure would time out.
     static func testing(_ transport: any HTTPTransport) -> JellyfinClient {
-        JellyfinClient(credentials: Credentials(serverURL: URL(string: "https://tv.invalid")!, userID: "u", accessToken: "t", deviceID: "d-t"),
-                       identity: ClientIdentity(deviceID: "test", deviceName: "Apple TV"), formats: .appleTV, transport: transport)
+        let server = URL(string: "https://tv-\(UUID().uuidString.prefix(8).lowercased()).invalid")!
+        return JellyfinClient(credentials: Credentials(serverURL: server, userID: "u", accessToken: "t", deviceID: "d-t"),
+                              identity: ClientIdentity(deviceID: "test", deviceName: "Apple TV"), formats: .appleTV, transport: transport)
     }
 }
 
