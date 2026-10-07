@@ -222,6 +222,21 @@ struct ShuffledOrderPassesTests {
         #expect(Set(orders).count == 10)
     }
 
+    /// What closes one pass never opens the next: every index comes round
+    /// again at least half a pass after it last did, across many passes.
+    @Test(arguments: ShuffledOrderTests.counts)
+    func everyIndexWaitsAtLeastHalfAPass(count: Int) {
+        let passes = ShuffledOrder.Passes(count: count, seed: 3)
+        var last: [Int: Int] = [:]
+        var shortest = Int.max
+        for position in (-2 * count)..<(6 * count) {
+            let index = passes.index(at: position)
+            if let before = last[index] { shortest = min(shortest, position - before) }
+            last[index] = position
+        }
+        #expect(shortest >= max(1, count / 2), "came round again after \(shortest) of \(count)")
+    }
+
     @Test func oneItemJustRepeats() {
         let passes = ShuffledOrder.Passes(count: 1, seed: 3)
         #expect((-2..<5).map(passes.index(at:)).allSatisfy { $0 == 0 })

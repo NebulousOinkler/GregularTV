@@ -82,22 +82,28 @@ struct ScheduleAudit {
         }
     }
 
-    @Test func passesAreIndependent() {
-        // n = 4: the order of one pass and the next, 24 × 24 combinations.
-        let n = 4, samples = 576 * 50
-        var counts: [Int: Int] = [:]
-        func id(_ o: [Int]) -> Int { o.reduce(0) { $0 * 4 + $1 } }
-        for (i, code) in Self.codes(samples, salt: 99).enumerated() {
-            let passes = ShuffledOrder.Passes(count: n, seed: code.key(forChannelSeed: 5))
-            let pass = i % 700
-            let a = (0..<n).map { passes.index(at: pass * n + $0) }
-            let b = (0..<n).map { passes.index(at: (pass + 1) * n + $0) }
-            counts[id(a) * 1000 + id(b), default: 0] += 1
+    /// Consecutive passes share their halves (`ShuffledOrder.Passes`), so
+    /// they aren't independent: what this measures is the gap before an
+    /// item comes round again, shortest and average, against a pass's length.
+    @Test func howSoonAnItemComesRoundAgain() {
+        for n in [4, 12, 40, 450] {
+            var shortest = Int.max, total = 0, gaps = 0
+            for code in Self.codes(200, salt: 99) {
+                let passes = ShuffledOrder.Passes(count: n, seed: code.key(forChannelSeed: 5))
+                var last: [Int: Int] = [:]
+                for position in (700 * n)..<(704 * n) {
+                    let index = passes.index(at: position)
+                    if let before = last[index] {
+                        shortest = min(shortest, position - before)
+                        total += position - before
+                        gaps += 1
+                    }
+                    last[index] = position
+                }
+            }
+            Self.line(String(format: "consecutive passes n=%d: an item comes round again after %d at the soonest, %.1f on average (a pass is %d)",
+                             n, shortest, Double(total) / Double(gaps), n))
         }
-        let values = Array(counts.values) + [Int](repeating: 0, count: 576 - counts.count)
-        let x = Self.chiSquare(values, expected: Double(samples) / 576)
-        Self.line(String(format: "consecutive passes n=4: %d of 576 pairs seen, chi2/df=%.3f p=%.3f",
-                         counts.count, x / 575, Self.pValue(chiSquare: x, df: 575)))
     }
 
     // MARK: 2. Through the strategy and the engine
