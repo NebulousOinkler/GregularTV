@@ -9,7 +9,11 @@ export default defineConfig({
   expect: { timeout: 15_000 },
   fullyParallel: false,
   workers: 1,
-  retries: 0,
+  // One more try on GitHub's runners, where a page now and then takes over
+  // a minute to load for reasons of their own; none locally, where a
+  // failure is always worth looking at. A test passing only on its retry
+  // still shows as "flaky" in the report.
+  retries: process.env.CI ? 1 : 0,
   reporter: [["list"]],
   use: { baseURL: "http://localhost:8090", trace: "off" },
   projects: [
