@@ -33,8 +33,10 @@ struct ScheduleRulesTests {
     }
 
     @Test func aShowMayFollowItselfWithAnotherEpisode() throws {
+        // Random Shuffle, over every episode: Shuffled Shows gives each show one
+        // turn a pass, and passes meet so that two shows simply alternate.
         let shows = Fixtures.series("A", seasons: 2, episodes: 10) + Fixtures.series("B", seasons: 2, episodes: 10)
-        let programmes = try fortnight(shows, strategy: ShuffledShows.id)
+        let programmes = try fortnight(shows, strategy: RandomShuffle.id)
         let pairs = Array(zip(programmes, programmes.dropFirst()))
         #expect(pairs.contains { $0.item.seriesKey == $1.item.seriesKey }, "Allowed, and it happens")
         #expect(pairs.allSatisfy { $0.item.id != $1.item.id }, "Never the same episode")

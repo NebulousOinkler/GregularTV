@@ -150,7 +150,7 @@ struct ChannelPlayerDeckTests {
         ChannelPlayer.transcodeHeadStart = 0   // play a re-encode at once
         defer { ChannelPlayer.transcodeHeadStart = headStart }
         for reencodes in [true, false] {
-            let streams = FakeStreams(converting: reencodes ? ["m1"] : [])
+            let streams = FakeStreams(converting: reencodes ? ["m1", "m2", "m3"] : [])   // whichever film is on
             let player = try Fixture.surfer(streams: streams).player
             player.start()
             let deck = try await Fixture.playingDeck(player)

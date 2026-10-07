@@ -4,8 +4,9 @@
 ///
 /// - A pass plays every show or movie on the channel once, in its own
 ///   shuffle (`ShuffledOrder.Passes`, seeded by the channel's key from the
-///   `ScheduleCode`). Where passes meet, a show may follow itself with its
-///   next episode; a movie never follows itself (`NoProgrammeTwiceInARow`).
+///   `ScheduleCode`). Every pass opens with the same half of the shows, so
+///   each comes round again at least half a pass after its last turn, and
+///   the show that closed a pass never opens the next.
 /// - On pass `k`, a show plays its episode `k` (wrapping at its last
 ///   episode). So within one run (a day) a show's episodes only go
 ///   forwards, except that after its final episode it cycles back to the

@@ -328,7 +328,9 @@ Channels can also be made on the Apple TV, in Settings (custom channels, §9c).
 **The shuffle (`ShuffledOrder`):** a shuffled order of `0..<N`, readable at any position.
 - **Up to 10 items:** a seeded Fisher–Yates shuffle, worked out in full. Every order is exactly as likely.
 - **More than 10:** `LazyPermutation`, a 12-round Feistel network with cycle-walking, which reads any position without building the order.
-- **`ShuffledOrder.Passes`:** a new shuffle for each pass through the items (pass `⌊position / N⌋`), seeded by the key and the pass number. Passes are independent, so about one pass in N opens with the item that closed the pass before. What may follow what there is up to the sequence rules (§9c): the same movie or episode is held back until something else has aired, while a show may follow itself with its next episode.
+- **`ShuffledOrder.Passes`:** a new shuffle for each pass through the items (pass `⌊position / N⌋`), seeded by the key and the pass number, with every pass split the same way: one half of the items (picked once from the key) is shuffled into its first half, the rest into its second. So what closed one pass never opens the next, and every item comes round again at least half a pass (`⌊N/2⌋` positions) after it last did. Each pass on its own is still an even shuffle (a random half first, each half in a random order), but consecutive passes share their halves.
+  - **Why (2026-10-07):** passes used to be independent, so an item near the end of one pass could come straight back early in the next. The schedule audit showed it: over 30 days, the Movies channel (450 films, about 10 a day) aired 303 films but only 258 different ones. With halves it's 294, and a show coming back within 6 slots fell by a third (1,550 to 1,025 over every channel and 3 codes).
+  - **Within a run**, what may follow what is still up to the sequence rules (§9c): the same movie or episode is held back until something else has aired, while a show may follow itself with its next episode.
 
 **Why it replaced the derangement (2026-09-28):** the first version ported `random_derangement.py` as `LazyDerangement`: step through `(a·x + b) mod p` for a prime `p > N`, keeping values below `N`. Testing it with many codes showed:
 - `b` only moves the starting point, so a channel had just `p − 1` different show loops (12 on a 12-show channel), whatever the code.
@@ -341,7 +343,7 @@ A Feistel network has none of those limits, but with 4 rounds it was uneven over
 - **Show IDs:** each show or movie on a channel gets a numeric ID, its index among the channel's series sorted by title.
 - **Order:** each pass plays every show once, in that pass's shuffle. On pass `k`, a show plays its episode `k`, wrapping round, so each show advances one episode per pass.
 - **Episodes only go forwards within a run.** The one exception: after a show's final episode, its next appearance cycles back to the pilot (its first available episode). Movies are exempt.
-- **Spacing:** a show's next episode comes after N shows on average. Within a pass there's always another show in between; where two passes meet, a show may follow itself with its next episode.
+- **Spacing:** a show's next episode comes after N shows on average, and never fewer than ⌊N/2⌋ (the passes' halves). Where two passes meet, the show that closed one never opens the next, so on a channel of two shows they simply alternate.
 - **Other strategies:** Random Shuffle uses `ShuffledOrder.Passes` over every item; Series Round Robin uses one `ShuffledOrder` for its fixed turn order.
 
 **The schedule code (`ScheduleCode`):**

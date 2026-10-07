@@ -110,6 +110,7 @@ Sixteen channels ship in `channels.json`. Channels 1–9 are themes that mix TV 
 
 The line-up adapts to the library you connect to, with nothing to set:
 - **A themed channel only appears if it has variety:** enough different programmes to fill a day with no series coming round more than about once a day, and no film more than about once every three days. A small library shows fewer channels; Gregular and Movies are always on.
+- **Everything comes round once before anything comes round twice.** Each channel goes through its shows and films in passes, every one once a pass, in a new shuffle each pass. Every pass opens with the same half of them, in a new order, and closes with the other half, so whatever ended one pass is at least half a pass from coming back: on a film channel with 450 films, about three weeks.
 - **Each mixed channel asks for a share of airtime for films** (`"films": 0.35` is 35%), and the library can move it: a channel with few series fills the rest with films, and one with few films fills it with TV. The series and the films each keep their own shuffle. See PLAN.md §9.
 
 Each channel's day starts at midnight Pacific (3 AM Eastern), daylight saving and all: that's where one day's shuffle meets the next, so the odd programme from the evening can come round again soon after. Programmes play right up to the end of the day; whatever time a day can't fill is a break just after it starts, before its first programme, which on a film channel can run long. The day boundary is one setting, `DayBoundary.standard` (in GregularCore).
