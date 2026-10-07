@@ -241,6 +241,69 @@ struct JellyfinPlaybackTests {
         }
     }
 
+    /// Apple TV's own player is fussy about H.264 and HEVC beyond their
+    /// names: Jellyfin hears which profiles and tags it plays.
+    @Test func appleTVSaysWhatItsPlayerIsFussyAbout() async throws {
+        mock.on("POST", "/Items/abc/PlaybackInfo") { request in
+            let profile = request.jsonBody["DeviceProfile"] as? [String: Any]
+            let codecs = profile?["CodecProfiles"] as? [[String: Any]] ?? []
+            let conditions = Dictionary(uniqueKeysWithValues: codecs.map { codec in
+                (codec["Codec"] as! String, (codec["Conditions"] as! [[String: Any]]).map { "\($0["Property"]!)=\($0["Value"]!)" })
+            })
+            #expect(conditions["hevc"] == ["VideoProfile=main|main 10", "VideoCodecTag=hvc1|dvh1"])
+            let h264 = try #require(conditions["h264"]?.first)
+            #expect(h264.hasPrefix("VideoProfile=high|main|") && !h264.contains("high 10"))
+            #expect(codecs.allSatisfy { $0["Type"] as? String == "Video" })
+            let all = codecs.flatMap { $0["Conditions"] as! [[String: Any]] }
+            #expect(all.allSatisfy { $0["Condition"] as? String == "EqualsAny" && $0["IsRequired"] as? Bool == false })
+            return (200, #"{ "MediaSources": [{ "Id": "s", "SupportsDirectPlay": true }] }"#)
+        }
+        _ = try await JellyfinFixtures.client(mock).playbackSource(for: "abc")
+    }
+
+    /// A file Apple TV's own player can't play as it is, but VLC can, plays
+    /// in VLC as it is: the server only sends the file.
+    @Test func aFileOnlyTheFallbackPlaysAsItIsGoesToIt() async throws {
+        mock.on("POST", "/Items/abc/PlaybackInfo") { request in
+            let profile = request.jsonBody["DeviceProfile"] as? [String: Any]
+            guard (profile?["Name"] as? String)?.contains("VLC") == true else {
+                return (200, #"{ "MediaSources": [{ "Id": "src1", "Container": "mkv", "SupportsDirectPlay": false, "TranscodingUrl": "/videos/abc/master.m3u8?x=1" }], "PlaySessionId": "own" }"#)
+            }
+            // Any container: none is named at all.
+            let direct = profile?["DirectPlayProfiles"] as? [[String: Any]] ?? []
+            #expect(direct.count == 1 && direct.first?["Container"] == nil)
+            #expect((direct.first?["AudioCodec"] as? String)?.contains("dts") == true)
+            return (200, #"{ "MediaSources": [{ "Id": "src1", "Container": "mkv", "SupportsDirectPlay": true }], "PlaySessionId": "vlc" }"#)
+        }
+        let source = try await JellyfinFixtures.client(mock, fallback: .vlcOnAppleTV).playbackSource(for: "abc")
+
+        #expect(source.player == .fallback && source.method == .directPlay)
+        #expect(source.url.path == "/Videos/abc/stream.mkv")
+        #expect(source.playSessionID == "vlc")
+        #expect(source.mediaStream.player == .fallback && source.mediaStream.delivery == .original)
+        #expect(source.mediaStream.sessionID == nil, "Nothing for the server to stop or keep going")
+    }
+
+    /// When the fallback can't play it as it is either (over the quality
+    /// cap, say), the server converts it for Apple TV's own player. A file
+    /// Apple TV plays as it is is never asked about twice.
+    @Test func otherwiseTheOwnPlayerKeepsIt() async throws {
+        mock.on("POST", "/Items/abc/PlaybackInfo", json: """
+            { "MediaSources": [{ "Id": "src1", "Container": "mkv", "SupportsDirectPlay": false,
+              "TranscodingUrl": "/videos/abc/master.m3u8?TranscodeReasons=ContainerBitrateExceedsLimit" }], "PlaySessionId": "ps" }
+            """)
+        mock.on("POST", "/Items/mp4/PlaybackInfo", json: #"{ "MediaSources": [{ "Id": "mp4", "Container": "mp4", "SupportsDirectPlay": true }] }"#)
+        let client = JellyfinFixtures.client(mock, fallback: .vlcOnAppleTV)
+
+        let converted = try await client.playbackSource(for: "abc")
+        #expect(converted.player == .builtIn && converted.method == .hls && converted.playSessionID == "ps")
+        #expect(mock.requests.count == 2, "Asked about each player")
+
+        let direct = try await client.playbackSource(for: "mp4")
+        #expect(direct.player == .builtIn && direct.method == .directPlay)
+        #expect(mock.requests.count == 3, "Asked only about Apple TV's own player")
+    }
+
     @Test func stopTranscodingTargetsThisDeviceAndSession() async throws {
         mock.on("DELETE", "/Videos/ActiveEncodings", status: 204)
         try await JellyfinFixtures.client(mock).stopTranscoding(playSessionID: "ps1")

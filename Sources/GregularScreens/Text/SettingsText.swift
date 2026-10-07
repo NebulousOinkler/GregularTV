@@ -71,6 +71,15 @@ public enum SettingsText {
     public static let diagnosticsNote = "Adds a technical line to the info banner: quality, whether the server is transcoding and why, "
         + "buffering, and how far behind live playback is. Useful when something isn't playing well."
 
+    // MARK: Picture (Apple TV)
+
+    public static let picture = "Picture"
+    public static let matchFrameRate = "Match frame rate"
+    public static let matchFrameRateNote = "Switches the TV to each programme's frame rate and dynamic range, so films play "
+        + "without judder. The screen may go dark for a moment when it changes, such as between a programme and the commercials."
+    public static let matchContentIsOff = "Match Content is off in this Apple TV's Settings (Video and Audio), "
+        + "so the TV won't switch until it's turned on there."
+
     // MARK: Server
 
     public static let server = "Server"

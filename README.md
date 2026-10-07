@@ -11,7 +11,7 @@ This is mostly AI coded. Why does this exist? I wanted a better shuffle algorith
 
 Version 1.2. All seven milestones in [PLAN.md](PLAN.md) are done. The core package handles scheduling, the Jellyfin client and privacy, and the tvOS app has a main page of your servers (several at once), sign-in, live channels, surfing, a six-hour guide, quality settings, commercial breaks (including mid-roll breaks in films) from a Jellyfin library named `Commercials` (see PLAN.md §9a), your own channels, and programmes at set times, made on the editing page.
 
-Open `App/GregularTV.xcodeproj` in Xcode and run the **GregularTV** scheme on an Apple TV simulator or device. Requires tvOS 17 or later and Jellyfin 10.9 or later.
+Open `App/GregularTV.xcodeproj` in Xcode and run the **GregularTV** scheme on an Apple TV simulator or device. Requires tvOS 18 or later and Jellyfin 10.9 or later.
 
 The web version (`Web/`) runs the same schedule, sign-in and screen logic, compiled to WebAssembly, in Chrome, Edge, Safari and Firefox, on phones first and up to TVs: see *The web version*, below.
 
@@ -169,7 +169,7 @@ Every programme starts on the half hour. The time from its end to the next half 
 - **At most 20 minutes of commercials in one break.** A longer break (after an episode that ends well before the half hour, a short film, or at the end of a day) is blank after that, with the "Up next" card, and the programme still starts on time.
 - A gap of a minute or less gets no commercials. When a clip ends, the next only starts if at least half of it will play before the last 15 seconds; otherwise the rest of the break is blank. A clip still playing then is cut off.
 - The last 15 seconds of every break with commercials are the **station card**, like a TV station's ident: "You're watching" the channel, the Gregular wordmark with its colour bars hopping to a short marimba tune, and what's up next. The last commercial fades out quickly into it, then the card fades to black and the programme fades in. With commercials off (or none in the library), breaks keep the plain "Up next" card, with no music.
-- Every clip plays: one the device can't play as it is (for example, a video codec the Apple TV can't play) is converted by Jellyfin, as a programme would be. There's no bitrate cap for commercials, so the quality setting never makes one re-encode. **MP4, H.264/AAC** plays as it is everywhere, costing the server nothing; keep the bitrate modest if you watch over a slow remote connection.
+- Every clip plays: one the device can't play as it is (for example, a video codec the Apple TV can't play) is converted by Jellyfin, as a programme would be. There's no bitrate cap for commercials, so the quality setting never makes one re-encode. **MP4, 8-bit H.264/AAC** plays as it is everywhere, costing the server nothing; keep the bitrate modest if you watch over a slow remote connection.
 - The screen is blank during any unfilled time, with an "Up next" card showing when the next programme starts, or during a film's mid-roll, a "Now playing" card saying when it's back.
 - It's always clear when the programme is over: while commercials play, a small **Commercial break · Back at 9:30 PM** badge sits in the top corner (the banner comes and goes as usual). The channel list shows **Up next: …** with **Commercial break · starts 9:30 PM**, and the guide draws each programme's break as a darker tail on its block.
 - **Settings › Commercials › Play commercials** turns them off: every break, mid-rolls included, is blank. Programme times don't change, so you stay in step with everyone on the same schedule code.
@@ -196,7 +196,7 @@ A light tap anywhere on the pad, edges included, only brings up the banner; only
 | Slide left | Channel list; Select tunes. Slide right, Menu, or 15 s idle closes it and stays on the current channel. Play/Pause opens Settings |
 | Light touch (a click touches the pad too) | Show the info banner (clock, progress, time in). Again while showing: switch between end time and time left |
 | Menu (or Back ‹) | If the banner is up, hide it. Otherwise the programme guide, six hours ahead, scrolling sideways; Select on a programme tunes to its channel, **Resume Live TV** (top row) goes back to the channel, and 60 s idle closes it. In the guide, Menu first moves up to Resume Live TV (highlighted, not pressed); Menu again goes up to the main page, with the channel playing on behind it (a click goes straight back). On the main page, Menu goes to the Home screen |
-| Click and hold | Settings: streaming quality, trouble with this programme (step down quality, 720p, standard), schedule code, your channels and set times, the editing page, commercials, diagnostics, and the server (All Servers, Sign Out). In the guide, it's the button next to Resume Live TV. Close with Menu, Play/Pause or Done |
+| Click and hold | Settings: streaming quality, trouble with this programme (step down quality, 720p, standard), schedule code, your channels and set times, the editing page, commercials, match frame rate, diagnostics, and the server (All Servers, Sign Out). In the guide, it's the button next to Resume Live TV. Close with Menu, Play/Pause or Done |
 | Play/Pause | Pause; press again to jump back to live |
 | Digits (keyboard only) | Type a channel number |
 
@@ -239,7 +239,7 @@ TEST_RUNNER_SHOTS_DIR=/path/to/shots scripts/test-app.sh walkthrough
 
 **Auto quality** plays the original file, with no bitrate cap, until playback has trouble on the connection (a failure, a stall, or falling a minute behind live). Only then does it measure the connection and cap the bitrate, because a cap below a file's own bitrate makes Jellyfin re-encode it, which a small server such as a Raspberry Pi can't do in real time. **Subtitles are off**: the app asks Jellyfin for none, so it never burns them into the video (another full re-encode). A subtitle track inside a file that plays as-is follows the Apple TV's own Subtitles setting.
 
-**When Jellyfin can't re-encode fast enough** (a slow server converting a file the Apple TV can't play as-is), a programme that fails or stalls is retried with less work: 720p, then a step lower on each further failure, for that programme only (Settings shows it as the programme's fix). A programme Jellyfin would re-encode isn't started with under 3 minutes left; the screen shows "Up next" instead, so the server isn't asked for an expensive transcode for a minute of video.
+**When Jellyfin can't re-encode fast enough** (a slow server converting a file the Apple TV can't play as-is), a programme that fails, stalls or falls a minute behind live is retried with less work: 720p, then a step lower on each further failure, for that programme only (Settings shows it as the programme's fix). A programme Jellyfin would re-encode isn't started with under 3 minutes left; the screen shows "Up next" instead, so the server isn't asked for an expensive transcode for a minute of video.
 
 ## Where to edit things
 
@@ -247,7 +247,7 @@ TEST_RUNNER_SHOTS_DIR=/path/to/shots scripts/test-app.sh walkthrough
 |---|---|
 | Understand how the code is split | Four parts: the logic (`Sources/GregularCore`), the Jellyfin connection (`Sources/GregularJellyfin`), what the screens do (`Sources/GregularScreens`) and Apple TV itself (`App/`); see `Package.swift` and PLAN.md §4 |
 | Change what the screens do or say (banner, cards, overlays, fades) | `WatchModel` in `Sources/GregularScreens/Watch/WatchModel.swift`; the Apple TV views in `App/GregularTV` only draw it |
-| Play video some other way | Implement `PlayerDeck` (`Sources/GregularScreens/Player/PlayerDeck.swift`), as `AVPlayerDeck` does for Apple TV and `VideoDeck` (`Web/Sources/GregularWeb/Player`) for the web |
+| Play video some other way | Implement `PlayerDeck` (`Sources/GregularScreens/Player/PlayerDeck.swift`), as `TVDeck` does for Apple TV and `VideoDeck` (`Web/Sources/GregularWeb/Player`) for the web |
 | Change the web version's look | `Web/public/app.css` (its design tokens are at the top; phones first, larger screens in the media queries at the end) |
 | Change what the web version's screens show | `Web/Sources/GregularWeb` (pages in `Pages/`, live TV in `Watch/`); the words come from GregularScreens, as on Apple TV |
 | Change the keys on the web | `KeyboardControls` in `Sources/GregularScreens/Remote/KeyboardControls.swift` (which remote button each key presses) |
@@ -299,7 +299,7 @@ Gregular TV is built to know as little as possible about your Jellyfin server, a
 |---|---|---|
 | For each server you're signed in to: its address, access token and user ID, the one watched last first | Keychain, this device only (excluded from backups and iCloud) | To reconnect without signing in again, and to list your servers on the main page |
 | A random device ID for each sign-in | Keychain, with the sign-in | Jellyfin requires one. Each sign-in has its own, so two servers can't tell they're talking to the same Apple TV |
-| Last channel number, streaming quality, schedule code, the diagnostics, commercials and editing-page switches | App preferences | Client settings; no server data |
+| Last channel number, streaming quality, schedule code, the diagnostics, commercials, editing-page and frame-rate switches | App preferences | Client settings; no server data |
 | Your custom channels, packed as short codes | App preferences | What you typed or picked: a name, a number, and the genres, series, tags and years in its rule |
 | Your set times, packed as short codes | App preferences | What you typed or picked: a channel number, the series or film names, the times and days, and your time zone |
 
@@ -314,10 +314,10 @@ Gregular TV is built to know as little as possible about your Jellyfin server, a
 **What Jellyfin can still see:** a sign-in in its activity log, this Apple TV (named just "Apple TV") in its device list, and the stream requests themselves, as for any client. Those say which programme each stream is, since the server has to know what to send, and its logs may keep them. Stream addresses carry the sign-in as `ApiKey`, as with every Jellyfin client, so they can also appear in a reverse proxy's logs. Before signing in (checking an address), and when the main page asks a server its name, the app sends nothing about this device.
 
 **Enforced, not just promised:**
-- **Network:** all the app's own requests go through one ephemeral `URLSession`, with no disk cache and no cookies. Video itself is fetched by Apple's player (AVFoundation) from the stream addresses your server gives, which always point back at your server.
+- **Network:** all the app's own requests go through one ephemeral `URLSession`, with no disk cache and no cookies. Video itself is fetched by Apple's player (AVFoundation), or VLC for a file Apple's can't play as it is, from the stream addresses your server gives, which always point back at your server.
 - **Privacy check:** [`scripts/privacy-check.sh`](scripts/privacy-check.sh) fails the app build, and `swift test`, if code outside the three allowed files uses anything that persists or leaks data. That covers `UserDefaults`, files, Core Data and SwiftData, caches, cookies, the Keychain, iCloud storage, and system logging (`Logger`, `os_log`, `NSLog`, `print`).
-- **Tests:** they check that no playback-reporting endpoint is ever called, that sign-out clears credentials even when the server is unreachable, and that preferences hold only the client settings and the custom channel and set-times codes.
-- **No third-party code:** no analytics or crash reporting, only Apple frameworks. The app sends Apple nothing itself; only tvOS's own *Share Analytics* setting (the device owner's choice) sends crash reports.
+- **Tests:** they check that no playback-reporting endpoint is ever called (the one call near them is the transcode keep-alive, which names only the play session the server made for a stream), that sign-out clears credentials even when the server is unreachable, and that preferences hold only the client settings and the custom channel and set-times codes.
+- **No third-party analytics or crash reporting.** The one library that isn't Apple's is VLC ([libVLC](https://www.videolan.org/vlc/libvlc.html), through [SwiftVLC](https://github.com/harflabs/SwiftVLC)), which plays files Apple's player can't play as they are; it fetches only the stream it's given, and keeps nothing. The app sends Apple nothing itself; only tvOS's own *Share Analytics* setting (the device owner's choice) sends crash reports.
 - **Privacy manifest:** `PrivacyInfo.xcprivacy` declares the same to Apple: no tracking, no data collected.
 - **Artwork:** the app icon and Top Shelf image are drawn by [`scripts/make-artwork.swift`](scripts/make-artwork.swift), never taken from your server.
 

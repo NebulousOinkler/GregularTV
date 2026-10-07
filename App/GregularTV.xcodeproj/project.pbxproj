@@ -10,6 +10,7 @@
 		5DC6E38EC18FAA932A196971 /* GregularCore in Frameworks */ = {isa = PBXBuildFile; productRef = 39239ABE91B67D192800D71C /* GregularCore */; };
 		A1C0DE5E0000000000000003 /* GregularScreens in Frameworks */ = {isa = PBXBuildFile; productRef = A1C0DE5E0000000000000004 /* GregularScreens */; };
 		A1C0DE5E0000000000000005 /* GregularKeychain in Frameworks */ = {isa = PBXBuildFile; productRef = A1C0DE5E0000000000000006 /* GregularKeychain */; };
+		B1D0C0DE0000000000000001 /* SwiftVLC in Frameworks */ = {isa = PBXBuildFile; productRef = B1D0C0DE0000000000000002 /* SwiftVLC */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -78,6 +79,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				5DC6E38EC18FAA932A196971 /* GregularCore in Frameworks */,
+				B1D0C0DE0000000000000001 /* SwiftVLC in Frameworks */,
 				A1C0DE5E0000000000000003 /* GregularScreens in Frameworks */,
 				A1C0DE5E0000000000000005 /* GregularKeychain in Frameworks */,
 			);
@@ -145,6 +147,7 @@
 				39239ABE91B67D192800D71C /* GregularCore */,
 				A1C0DE5E0000000000000004 /* GregularScreens */,
 				A1C0DE5E0000000000000006 /* GregularKeychain */,
+				B1D0C0DE0000000000000002 /* SwiftVLC */,
 			);
 			productName = GregularTV;
 			productReference = 81918909E83595C8F4212CCC /* GregularTV.app */;
@@ -227,6 +230,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				DCE6DCD9CBEDFFC71950EF11 /* XCLocalSwiftPackageReference ".." */,
+				B1D0C0DE0000000000000003 /* XCRemoteSwiftPackageReference "SwiftVLC" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 86024CAD1E83101D97359D73 /* Products */;
@@ -514,7 +518,7 @@
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 6.0;
-				TVOS_DEPLOYMENT_TARGET = 17.0;
+				TVOS_DEPLOYMENT_TARGET = 18.0;
 			};
 			name = Debug;
 		};
@@ -574,7 +578,7 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 6.0;
-				TVOS_DEPLOYMENT_TARGET = 17.0;
+				TVOS_DEPLOYMENT_TARGET = 18.0;
 				VALIDATE_PRODUCT = YES;
 			};
 			name = Release;
@@ -627,6 +631,17 @@
 		};
 /* End XCLocalSwiftPackageReference section */
 
+/* Begin XCRemoteSwiftPackageReference section */
+		B1D0C0DE0000000000000003 /* XCRemoteSwiftPackageReference "SwiftVLC" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/harflabs/SwiftVLC";
+			requirement = {
+				kind = exactVersion;
+				version = 1.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
 /* Begin XCSwiftPackageProductDependency section */
 		39239ABE91B67D192800D71C /* GregularCore */ = {
 			isa = XCSwiftPackageProductDependency;
@@ -639,6 +654,11 @@
 		A1C0DE5E0000000000000006 /* GregularKeychain */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = GregularKeychain;
+		};
+		B1D0C0DE0000000000000002 /* SwiftVLC */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = B1D0C0DE0000000000000003 /* XCRemoteSwiftPackageReference "SwiftVLC" */;
+			productName = SwiftVLC;
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

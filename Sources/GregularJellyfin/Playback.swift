@@ -16,13 +16,17 @@ public struct PlaybackSource: Sendable, Equatable {
 
     public let url: URL
     public let method: Method
+    /// The device's own player, or its fallback, which plays this file as
+    /// it is where the device's own would need it converted.
+    public let player: MediaStream.Player
     /// Pass to `JellyfinClient.stopTranscoding` when leaving this item, so
     /// the server stops the transcode straight away rather than timing it out.
     public let playSessionID: String?
 
-    public init(url: URL, method: Method, playSessionID: String?) {
+    public init(url: URL, method: Method, player: MediaStream.Player = .builtIn, playSessionID: String?) {
         self.url = url
         self.method = method
+        self.player = player
         self.playSessionID = playSessionID
     }
 
@@ -54,6 +58,7 @@ public struct PlaybackSource: Sendable, Equatable {
     public var mediaStream: MediaStream {
         MediaStream(url: url,
                     delivery: method == .directPlay ? .original : .converted,
+                    player: player,
                     reencodes: reencodesVideo,
                     conversionReasons: transcodeReasons.map(Self.plainWords),
                     sessionID: method == .hls ? playSessionID : nil)
@@ -64,7 +69,8 @@ public struct PlaybackSource: Sendable, Equatable {
 /// Jellyfin uses this to decide between direct play and transcoding.
 struct DeviceProfile: Encodable {
     struct DirectPlayProfile: Encodable {
-        let container: String
+        /// Nil for any container.
+        let container: String?
         /// "Video", or "Audio" for sound files.
         let type: String
         let videoCodec: String?
@@ -85,6 +91,31 @@ struct DeviceProfile: Encodable {
         let breakOnNonKeyFrames = true
     }
 
+    /// `PlayableFormats.CodecLimit`: what one video codec must be, beyond
+    /// its name, to play as it is (or be copied into a stream).
+    struct CodecProfile: Encodable {
+        struct Condition: Encodable {
+            let condition = "EqualsAny"
+            /// "VideoProfile" or "VideoCodecTag".
+            let property: String
+            /// The values allowed, separated by "|".
+            let value: String
+            /// A file whose value isn't known passes.
+            let isRequired = false
+        }
+
+        let type = "Video"
+        let codec: String
+        let conditions: [Condition]
+
+        init(_ limit: PlayableFormats.CodecLimit) {
+            codec = limit.codec
+            conditions = [limit.profiles.map { Condition(property: "VideoProfile", value: $0.joined(separator: "|")) },
+                          limit.tags.map { Condition(property: "VideoCodecTag", value: $0.joined(separator: "|")) }]
+                .compactMap { $0 }
+        }
+    }
+
     struct SubtitleProfile: Encodable {
         let format: String
         let method = "External"
@@ -95,6 +126,7 @@ struct DeviceProfile: Encodable {
     let maxStaticBitrate: Int
     let directPlayProfiles: [DirectPlayProfile]
     let transcodingProfiles: [TranscodingProfile]
+    let codecProfiles: [CodecProfile]
     /// Every subtitle format is declared as "External", meaning the client
     /// fetches it separately. The app never does, so no subtitles show, and
     /// Jellyfin has no reason to *burn* them into the video. Burning in
@@ -114,7 +146,8 @@ struct DeviceProfile: Encodable {
         name = "\(ClientIdentity.clientName) (\(formats.name))"
         maxStreamingBitrate = maxBitrate
         maxStaticBitrate = maxBitrate
-        let video = DirectPlayProfile(container: formats.containers.joined(separator: ","), type: "Video",
+        let containers = formats.containers.isEmpty ? nil : formats.containers.joined(separator: ",")
+        let video = DirectPlayProfile(container: containers, type: "Video",
                                       videoCodec: formats.videoCodecs.joined(separator: ","),
                                       audioCodec: formats.audioCodecs.joined(separator: ","))
         let audio = DirectPlayProfile(container: formats.audioFileContainers.joined(separator: ","), type: "Audio",
@@ -123,6 +156,7 @@ struct DeviceProfile: Encodable {
         transcodingProfiles = [TranscodingProfile(videoCodec: formats.convertedVideoCodecs.joined(separator: ","),
                                                   audioCodec: formats.convertedAudioCodecs.joined(separator: ","),
                                                   maxAudioChannels: String(formats.mostAudioChannels))]
+        codecProfiles = formats.codecLimits.map(CodecProfile.init)
     }
 }
 

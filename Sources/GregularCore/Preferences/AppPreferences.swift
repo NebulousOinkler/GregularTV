@@ -12,8 +12,8 @@ extension UserDefaults: PreferenceStorage {}
 
 /// The app's only use of `UserDefaults` (or the platform's
 /// `PreferenceStorage`). It holds client preferences (last
-/// channel, streaming quality, schedule code, the diagnostics, commercials
-/// and editing-page switches, and the viewer's custom channels and set times) and **never**
+/// channel, streaming quality, schedule code, the diagnostics, commercials,
+/// editing-page and frame-rate switches, and the viewer's custom channels and set times) and **never**
 /// anything fetched from the server (PLAN.md §3). Custom channels and set
 /// times are kept as their codes: what the viewer typed or picked (names,
 /// numbers, times, and perhaps a genre, series or tag name), nothing more.
@@ -27,6 +27,7 @@ public struct AppPreferences: @unchecked Sendable {
         static let customChannels = "customChannels"
         static let setTimes = "setTimes"
         static let allowsEditingPage = "allowsEditingPage"
+        static let matchesFrameRate = "matchesFrameRate"
     }
 
     private let defaults: any PreferenceStorage
@@ -72,6 +73,13 @@ public struct AppPreferences: @unchecked Sendable {
     public var setTimes: [SetTimes] {
         get { (defaults.object(forKey: Key.setTimes) as? [String] ?? []).compactMap(SetTimes.init(code:)) }
         nonmutating set { defaults.set(newValue.map(\.code), forKey: Key.setTimes) }
+    }
+
+    /// "Match frame rate" in Settings (Apple TV): whether the TV switches to
+    /// what's on screen's frame rate and dynamic range. Off by default.
+    public var matchesFrameRate: Bool {
+        get { defaults.object(forKey: Key.matchesFrameRate) as? Bool ?? false }
+        nonmutating set { defaults.set(newValue, forKey: Key.matchesFrameRate) }
     }
 
     /// "Edit from a phone or computer" in Settings: whether Settings offers
