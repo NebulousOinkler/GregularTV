@@ -40,6 +40,17 @@ extension Credentials {
     /// Which sign-in this is: the server and the user. Signing in again to
     /// the same server as the same user replaces it.
     public var signInID: String { "\(serverURL.absoluteString)|\(userID)" }
+
+    /// The sign-ins in `data`, a JSON list as a store saves them. Each is
+    /// read on its own, so one that can't be read (another version's, or a
+    /// damaged one) is left out without losing the rest.
+    public static func list(from data: Data) -> [Credentials] {
+        struct Entry: Decodable {
+            let credentials: Credentials?
+            init(from decoder: any Decoder) throws { credentials = try? Credentials(from: decoder) }
+        }
+        return ((try? JSONDecoder().decode([Entry].self, from: data)) ?? []).compactMap(\.credentials)
+    }
 }
 
 /// Where a platform keeps the sign-ins between launches, one per server

@@ -108,6 +108,7 @@ jellyfin_tv/
 │  │  ├─ Sources/BasicSources.swift # all, genre, series, years, tag
 │  │  └─ ChannelNavigator.swift     # channel up/down, typed numbers
 │  ├─ Guide/GuideWindow.swift       # the guide's time window and cells
+│  ├─ Network/LocalNetwork.swift    # which addresses are on the home network (plain http, the local pages)
 │  ├─ Playback/StreamingQuality.swift  # quality caps, Auto's bitrate rule, step-down ladder
 │  ├─ Preferences/AppPreferences.swift # the only UserDefaults: client settings and custom channel codes
 │  └─ Resources/channels.json       # the channel line-up
@@ -147,7 +148,7 @@ jellyfin_tv/
    ├─ Login/          LoginView (draws LoginModel)
    ├─ Player/         WatchView (draws WatchModel), TVDeck (PlayerDeck on AVQueuePlayer, and VLC per item),
    │                  VLCItem, DeckSurface, VideoSurface, FrameRateMatching, ChannelListView, SettingsView, SettingsRows, BreakStyle
-   ├─ Editing/        EditingServer (serves EditingPage on the home network), EditingPageView (address and code)
+   ├─ Editing/        EditingPageView (address and code); Shared/LocalPageServer serves LocalPage on the home network
    ├─ Remote/         RemoteControls+SwiftUI (attaches the tables), RemoteGestures (clicks, slides, touches)
    ├─ Guide/          GuideView (scrolling EPG grid)
    └─ GregularTVTests/  app-hosted tests (Keychain, player on AVFoundation, commercials, surfing, remote)
@@ -369,6 +370,7 @@ A Feistel network has none of those limits, but with 4 rounds it was uneven over
 | `ExclusiveProgrammesOnlyAtSetTimes` | cover | A set programme marked `exclusive` only airs at its set times: its other airings get a stand-in. |
 | `FixedTimesAreValid` | channel check | Set times need a time zone, and no two may share a time on a day they both air. |
 | `CustomChannelNumbers` | line-up check | Custom channels use 20 to 99, and no two channels share a number. |
+| `CustomChannelsMakeSense` | line-up check | A custom channel has a name of at most 60 characters and at most 20 conditions, each naming something (years from 1 to 9999), however it arrived. |
 | `SetTimesNeedTheirChannel` | line-up check | Set times belong to a channel in the line-up, one set per channel. |
 
 **How the sequence rules are kept.** Streams go through `RuledStream`: an item a rule rejects waits and airs as soon as it may, so nothing is dropped and the order moves as little as possible. Three places need more than that, and each is handled without chaining one run to the next:

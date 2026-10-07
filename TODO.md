@@ -8,17 +8,17 @@
    - **Slides and a light touch on a real remote's touch surface.** XCUIRemote can't slide or touch on Apple TV, so these were only tried with the letter keys (`w`/`a`/`s`/`d`, `t`). Try them on an Apple TV, or with the simulator's own Siri Remote window.
 
 5. **The editing page on a real Apple TV.** In the simulator, Network's `acceptLocalOnly` refused every connection, so the app checks the caller's address itself (`EditingPage.isLocal`). On a device, check that a phone on the same Wi-Fi reaches the address shown, whether tvOS asks for local-network permission the first time (the usage text is set), and that the page stops when its screen closes.
-6. **The web version on gregular.tv.** Built (WEB_PLAN.md, README *The web version*). Left to do:
-   - **The hosting steps marked (you)** in WEB_PLAN.md, *Hosting at gregular.tv*: the domain, Cloudflare, and the `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` secrets in GitHub.
-   - **Try it against a real server:** an https Jellyfin server in Chrome, Safari and Firefox, on a phone and a computer; an http one on the home network in Chrome (allow local network access when asked). Note any programme that won't play, with *Show playback diagnostics* on.
-   - **The first CI run** of `.github/workflows/web.yml` (macOS runner): it installs the toolchain each time; if it's slow, cache `~/Library/Developer/Toolchains`.
+6. **The web version on gregular.tv.** Built, hosted and deployed by CI from main (WEB_PLAN.md, README *The web version*). Left to do:
+   - **Try it against a real server:** an https Jellyfin server in Chrome, Safari and Firefox, on a phone and a computer; an http one on the home network in Chrome (allow local network access when asked). Note any programme that won't play, with *Show playback diagnostics* on. (Safari on a phone works, 2026-10-07; a company proxy can block it, see AUDIT.md.)
+   - **Faster CI:** each run installs the toolchain again (about 17 minutes in all); cache `~/Library/Developer/Toolchains` if that matters.
    - **Smaller download:** 12.4 MB compressed, mostly Foundation's ICU data. Worth revisiting if the Swift WebAssembly SDK gains a way to trim it.
+7. **The security and privacy audit** (AUDIT.md): its findings, to work through.
 
 ## Done
-
 
 1. **Custom channels made on the Apple TV**, with a preview, channel codes for sharing them, and custom channels saved as their codes (privacy option (a)). See README.md, *Your own channels*, and PLAN.md §9c.
 2. **Programmes at set times ("appointment viewing")**, in `channels.json` and in Settings for any channel, laid over the shared schedule so households sharing a schedule code stay in step, and shared by set-times code. See README.md, *Programmes at set times*, and PLAN.md §9c.
 3. **A main page of servers, and Menu.** The app opens on the servers signed in to (several, in one Keychain item, the one watched last first; names asked live, never stored), with Add a Server and Sign Out of each. Schedule code, channels and set times are shared by every server. Menu steps live TV → guide → Resume Live TV (top of the guide, next to Settings) → main page → Home screen, and the channel plays on behind the main page so going back is instant. See README.md, *The main page and your servers*, and `RemoteControls`.
+4. **gregular.tv hosted and deployed** (2026-10-07): the domain, Cloudflare, its secrets in GitHub, and CI deploying each push to main.
 
 The special rules both needed, with the rule that the same movie never airs twice in a row, are in one registry, `ScheduleRules` (PLAN.md §9c).

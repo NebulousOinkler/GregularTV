@@ -18,10 +18,7 @@ public struct DemoCredentials: CredentialStore {
     }
 
     public static func fromLaunchArguments() -> DemoCredentials? {
-        let arguments = ProcessInfo.processInfo.arguments
-        guard let index = arguments.firstIndex(of: "-demoServer"), index + 1 < arguments.count,
-              let url = URL(string: arguments[index + 1]) else { return nil }
-        return DemoCredentials(server: url)
+        DebugOptions.argument(after: "-demoServer").flatMap(URL.init(string:)).map(DemoCredentials.init(server:))
     }
 
     public func allCredentials() -> [Credentials] { [credentials] }

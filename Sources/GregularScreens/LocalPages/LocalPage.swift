@@ -10,7 +10,8 @@ import Observation
 ///
 /// **What it guards against.** Anything on the home network can reach the
 /// port while it's open, so:
-/// - only connections from the home network are read (`isLocal`);
+/// - only connections from the home network are read (`LocalNetwork`:
+///   private, link-local and loopback addresses);
 /// - every request for data needs the one-time `code` shown on the TV,
 ///   compared in constant time. A device that gets it wrong
 ///   `mostWrongCodes` times is refused, and after `mostWrongCodesInAll`
@@ -89,27 +90,6 @@ public final class LocalPage {
             return .json(LocalPageFailure("That isn't the code on the Apple TV."), status: 401)
         }
         return nil
-    }
-
-    /// Whether a connection from `address` (as text, IPv4 or IPv6) comes from
-    /// the home network: a private, link-local or loopback address. Anything
-    /// else is refused before it's read.
-    public nonisolated static func isLocal(_ address: String) -> Bool {
-        var text = address.lowercased()
-        if let zone = text.firstIndex(of: "%") { text = String(text[..<zone]) }   // fe80::1%en0
-        if text.hasPrefix("::ffff:") { text = String(text.dropFirst(7)) }       // IPv4 mapped into IPv6
-        let parts = text.split(separator: ".", omittingEmptySubsequences: false).compactMap { UInt8($0) }
-        if parts.count == 4 {
-            switch (parts[0], parts[1]) {
-            case (10, _), (127, _), (192, 168), (169, 254): return true
-            case (172, 16...31): return true
-            default: return false
-            }
-        }
-        guard text.contains(":") else { return false }
-        if text == "::1" { return true }
-        let first = UInt16(text.split(separator: ":", omittingEmptySubsequences: false).first.flatMap { UInt16($0, radix: 16) } ?? 0)
-        return first & 0xFE00 == 0xFC00 || first & 0xFFC0 == 0xFE80   // fc00::/7 unique local, fe80::/10 link-local
     }
 
     /// Compares in time that doesn't depend on where they differ.

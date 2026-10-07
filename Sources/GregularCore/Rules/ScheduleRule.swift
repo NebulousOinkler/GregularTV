@@ -36,6 +36,7 @@ public enum ScheduleRules {
             ExclusiveProgrammesOnlyAtSetTimes.self,
             FixedTimesAreValid.self,
             CustomChannelNumbers.self,
+            CustomChannelsMakeSense.self,
             SetTimesNeedTheirChannel.self,
             // ← add new rules here
         ]
@@ -115,7 +116,7 @@ public protocol ChannelRule: ScheduleRule {
 /// What a `LineupRule` checks: the bundled channels, and what the viewer added.
 public struct LineupAdditions: Sendable {
     public let bundled: [Channel]
-    public let custom: [Channel]
+    public let custom: [CustomChannel]
     public let setTimes: [SetTimes]
 }
 

@@ -38,7 +38,7 @@ public struct KeychainStore: CredentialStore {
 
     public func allCredentials() -> [Credentials] {
         let saved = if let data = read(Account.signIns) {
-            Self.decodeEach(data)
+            Credentials.list(from: data)
         } else {
             // The one sign-in an earlier version kept, if any.
             read(Account.credentials).flatMap { try? JSONDecoder().decode(Credentials.self, from: $0) }.map { [$0] } ?? []
@@ -69,16 +69,6 @@ public struct KeychainStore: CredentialStore {
         // Moved into the list, each sign-in with its device ID.
         try delete(account: Account.credentials)
         try delete(account: Account.sharedDeviceID)
-    }
-
-    /// Each sign-in in the list on its own, so one that can't be read
-    /// doesn't lose the rest.
-    private static func decodeEach(_ data: Data) -> [Credentials] {
-        struct Entry: Decodable {
-            let credentials: Credentials?
-            init(from decoder: any Decoder) throws { credentials = try? Credentials(from: decoder) }
-        }
-        return ((try? JSONDecoder().decode([Entry].self, from: data)) ?? []).compactMap(\.credentials)
     }
 
     /// The device ID sign-ins shared before each had its own.

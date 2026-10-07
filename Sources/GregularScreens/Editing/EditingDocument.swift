@@ -142,22 +142,17 @@ extension EditingDocument.ChannelEntry {
         case "both": kinds = [.episode, .movie]
         default: throw EditingDocument.Problem(description: "Channel \(number): \"plays\" is \"episodes\", \"movies\" or \"both\".")
         }
-        let trimmed = name.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty else { throw EditingDocument.Problem(description: "Channel \(number) needs a name.") }
-        guard trimmed.count <= CustomChannel.longestName else {
-            throw EditingDocument.Problem(description: "Channel \(number): keep the name to \(CustomChannel.longestName) characters.")
-        }
         var conditions: [CustomChannel.Rule.Condition] = []
         for (mode, entries) in [(CustomChannel.Rule.Mode.anyOf, rule.anyOf), (.allOf, rule.allOf), (.noneOf, rule.noneOf)] {
             for entry in entries ?? [] {
                 conditions.append(.init(mode, try entry.match(onChannel: number)))
             }
         }
-        guard conditions.count <= CustomChannel.Rule.mostConditions else {
-            throw EditingDocument.Problem(description: "Channel \(number) has more than \(CustomChannel.Rule.mostConditions) conditions.")
-        }
-        return CustomChannel(number: number, name: trimmed, kinds: kinds, rule: CustomChannel.Rule(conditions),
-                             halfHourSlots: halfHourSlots ?? true, commercials: commercials ?? true)
+        let channel = CustomChannel(number: number, name: name.trimmingCharacters(in: .whitespaces), kinds: kinds,
+                                    rule: CustomChannel.Rule(conditions), halfHourSlots: halfHourSlots ?? true,
+                                    commercials: commercials ?? true)
+        if let problem = channel.problems.first { throw EditingDocument.Problem(description: problem) }
+        return channel
     }
 }
 
@@ -177,19 +172,6 @@ extension EditingDocument.MatchEntry {
                      years.map { CustomChannel.Rule.Match.years(from: $0.from, to: $0.to) }].compactMap { $0 }
         guard named.count == 1, let match = named.first else {
             throw EditingDocument.Problem(description: "Channel \(number): each condition is one \"genre\", \"series\", \"tag\" or \"years\".")
-        }
-        if case .years(let from, let to) = match {
-            guard from != nil || to != nil else {
-                throw EditingDocument.Problem(description: "Channel \(number): \"years\" needs a \"from\", a \"to\", or both.")
-            }
-            if let from, let to, from > to {
-                throw EditingDocument.Problem(description: "Channel \(number): the first year comes after the last.")
-            }
-            guard [from, to].allSatisfy({ ($0 ?? 1) > 0 && ($0 ?? 1) < 10_000 }) else {
-                throw EditingDocument.Problem(description: "Channel \(number): years are from 1 to 9999.")
-            }
-        } else if match.label.trimmingCharacters(in: .whitespaces).isEmpty {
-            throw EditingDocument.Problem(description: "Channel \(number): a condition names nothing.")
         }
         return match
     }

@@ -90,7 +90,7 @@ public struct HTTPResponse: Sendable, Equatable {
         let reason = [200: "OK", 400: "Bad Request", 401: "Unauthorized", 403: "Forbidden", 404: "Not Found",
                       405: "Method Not Allowed", 408: "Request Timeout", 413: "Content Too Large",
                       422: "Unprocessable Content", 423: "Locked", 431: "Request Header Fields Too Large",
-                      501: "Not Implemented"][status] ?? "Error"
+                      501: "Not Implemented", 503: "Service Unavailable"][status] ?? "Error"
         let head = [
             "HTTP/1.1 \(status) \(reason)",
             "Content-Type: \(contentType)",

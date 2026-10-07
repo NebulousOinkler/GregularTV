@@ -104,6 +104,20 @@ struct CustomChannelTests {
         #expect(throws: ChannelLineup.LoadError.self) { try ChannelLineup.bundled().adding([CustomChannel(number: number, name: "X")]) }
     }
 
+    /// However a channel arrives (a crafted code here), it's checked as the editing page checks it.
+    @Test(arguments: [
+        (CustomChannel(number: 30, name: "  "), "Channel 30 needs a name."),
+        (CustomChannel(number: 30, name: String(repeating: "x", count: 61)), "Channel 30: keep the name to 60 characters."),
+        (CustomChannel(number: 30, name: "A", rule: .genre(" ")), "Channel 30: a condition names nothing."),
+        (CustomChannel(number: 30, name: "A", rule: .years(from: 2000, to: 1990)), "Channel 30: the first year comes after the last."),
+        (CustomChannel(number: 30, name: "A", rule: .years(from: 12_000, to: nil)), "Channel 30: years are from 1 to 9999."),
+    ])
+    func channelsThatDontMakeSenseAreRejected(channel: CustomChannel, problem: String) throws {
+        let read = try #require(CustomChannel(code: channel.code))
+        #expect(read.problems.first == problem)
+        #expect(throws: ChannelLineup.LoadError.invalidChannel(problem)) { try ChannelLineup.bundled().adding([read]) }
+    }
+
     @Test func takenNumbersAreRejected() throws {
         let lineup = try ChannelLineup(channels: [Fixtures.channel(number: 25)])
         #expect(throws: ChannelLineup.LoadError.self) { try lineup.adding([CustomChannel(number: 25, name: "X")]) }

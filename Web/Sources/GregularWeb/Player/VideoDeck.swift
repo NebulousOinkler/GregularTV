@@ -284,9 +284,7 @@ import Observation
         _ = JSObject.global.clearTimeout!(loadTimer)
         _ = hls?.destroy!()
         hls = nil
-        _ = video.object.pause!()
-        _ = video.object.removeAttribute!("src")
-        _ = video.object.load!()
+        video.emptyVideo()
         item?.slot = nil
         item = nil
         waitingReason = nil
@@ -296,17 +294,7 @@ import Observation
 
     func play() {
         guard item != nil else { return }
-        let promise = video.object.play!()
-        // Browsers refuse sound until the viewer has clicked: play muted, and say so.
-        _ = promise.object?.catch!(JSOneshotClosure { [weak self] arguments in
-            MainActor.assumeIsolated {
-                guard let self, arguments.first?.object?.name.string == "NotAllowedError" else { return }
-                SoundUnlock.needed()
-                self.video.object.muted = .boolean(true)
-                _ = self.video.object.play!()
-            }
-            return .undefined
-        })
+        SoundUnlock.play(video)
     }
 
     func pause() {
@@ -358,30 +346,6 @@ import Observation
         guard isCurrent else { return }
         _ = video.object.pause!()
         onEnded?()
-    }
-}
-
-/// Browsers won't play sound until the viewer has interacted with the page.
-/// When a video had to start muted, the watch screen says "Click for sound";
-/// the next click or key turns sound on everywhere.
-@MainActor @Observable final class SoundUnlock {
-    static let shared = SoundUnlock()
-    private(set) var isNeeded = false
-
-    static var isMuted: Bool { shared.isNeeded }
-
-    static func needed() {
-        shared.isNeeded = true
-    }
-
-    /// Called from a click or key press: sound is allowed now.
-    static func unlock() {
-        guard shared.isNeeded else { return }
-        shared.isNeeded = false
-        let videos = DOM.document.querySelectorAll!("video.current, video.song-video").object!
-        for index in 0..<Int(videos.length.number ?? 0) {
-            videos[index].muted = .boolean(false)
-        }
     }
 }
 

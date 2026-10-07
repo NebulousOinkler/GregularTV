@@ -23,8 +23,7 @@ public final class BrowserCredentialStore: CredentialStore, @unchecked Sendable 
     /// version's, or a damaged one) is left out.
     @MainActor public static func load() async -> BrowserCredentialStore {
         let text = try? await vault.load!().promised().string
-        let saved = text.flatMap { try? JSONDecoder().decode([Lossy].self, from: Data($0.utf8)) } ?? []
-        return BrowserCredentialStore(credentials: saved.compactMap(\.credentials))
+        return BrowserCredentialStore(credentials: text.map { Credentials.list(from: Data($0.utf8)) } ?? [])
     }
 
     public func allCredentials() -> [Credentials] { credentials }
@@ -64,12 +63,4 @@ public final class BrowserCredentialStore: CredentialStore, @unchecked Sendable 
     }
 
     @MainActor private static var vault: JSObject { JSObject.global.gregularVault.object! }
-
-    /// One saved sign-in, or nil if it can't be read.
-    private struct Lossy: Decodable {
-        let credentials: Credentials?
-        init(from decoder: any Decoder) throws {
-            credentials = try? Credentials(from: decoder)
-        }
-    }
 }

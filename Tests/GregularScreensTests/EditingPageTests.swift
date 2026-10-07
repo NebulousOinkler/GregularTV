@@ -83,16 +83,6 @@ struct EditingPageTests {
         #expect(LocalPage.editing(app: app(), hosts: []).code.count == 6)
     }
 
-    @Test func onlyTheHomeNetworkMayConnect() {
-        for local in ["192.168.1.20", "10.0.0.5", "172.16.0.1", "172.31.255.255", "169.254.3.4", "127.0.0.1",
-                      "::1", "fe80::1%en0", "fd12:3456::1", "::ffff:192.168.1.20"] {
-            #expect(LocalPage.isLocal(local), "\(local)")
-        }
-        for remote in ["8.8.8.8", "172.32.0.1", "100.64.0.1", "2001:4860::8888", "::ffff:8.8.8.8", "", "example.com"] {
-            #expect(!LocalPage.isLocal(remote), "\(remote)")
-        }
-    }
-
     // MARK: Saving
 
     static let document = """

@@ -18,6 +18,19 @@ public enum JellyfinError: Error, Equatable, Sendable {
     case noPlayableSource(itemID: String)
 }
 
+extension JellyfinError {
+    /// Throws what an HTTP `status` means, unless it's a success: every
+    /// reply from a server is read this way, whoever fetched it.
+    public static func check(status: Int) throws {
+        switch status {
+        case 200..<300: return
+        case 401: throw JellyfinError.unauthorized
+        case 403: throw JellyfinError.forbidden
+        default: throw JellyfinError.httpStatus(status)
+        }
+    }
+}
+
 extension JellyfinError: MediaServiceFailure {
     public var isSessionExpired: Bool { self == .unauthorized }
 
@@ -107,12 +120,8 @@ struct JellyfinAPI: Sendable {
         guard reply.url == request.url || TransportRules.allowsRedirect(from: request.url, to: reply.url)
         else { throw JellyfinError.invalidResponse }
         guard reply.body.count <= request.largestResponse else { throw JellyfinError.responseTooLarge }
-        switch reply.status {
-        case 200..<300: return reply.body
-        case 401: throw JellyfinError.unauthorized
-        case 403: throw JellyfinError.forbidden
-        default: throw JellyfinError.httpStatus(reply.status)
-        }
+        try JellyfinError.check(status: reply.status)
+        return reply.body
     }
 
     private func decode<Response: Decodable>(_ data: Data) throws -> Response {
