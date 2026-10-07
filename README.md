@@ -98,7 +98,7 @@ The browser layer's own tests (`Web/Tests`) run in Node:
 scripts/test-web.sh browser
 ```
 
-**Deploying** is automatic: `.github/workflows/web.yml` builds, checks and tests every push, deploys main to gregular.tv on Cloudflare, and gives each pull request a preview address. Setting up the domain and Cloudflare is in [WEB_PLAN.md](WEB_PLAN.md), *Hosting at gregular.tv*.
+**Deploying** is automatic: `.github/workflows/web.yml` runs only on main: each push to it is built, checked, tested and deployed to gregular.tv on Cloudflare. Other branches are tested locally with `scripts/test-web.sh`. Setting up the domain and Cloudflare is in [WEB_PLAN.md](WEB_PLAN.md), *Hosting at gregular.tv*.
 
 ## Schedule code
 

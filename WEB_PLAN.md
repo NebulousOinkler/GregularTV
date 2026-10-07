@@ -116,7 +116,7 @@ Steps marked **(you)** need the owner's accounts, payment or tokens. **(Claude)*
 5. **(Claude, in phase 5) Deployment files.**
    - A `wrangler.jsonc` with `assets: { directory: "Web/dist", not_found_handling: "single-page-application" }`, no worker script, and observability off.
    - A GitHub Actions workflow that runs on every push to main. It installs the swift.org toolchain and the WebAssembly SDK, builds the site, runs the tests and runs `npx wrangler deploy`.
-   - Pull requests get preview addresses.
+   - Only main runs it: other branches and pull requests are tested locally (`scripts/test-web.sh`), with no previews.
 6. **(you) Connect the domain.**
    - In Workers & Pages › gregular-tv › Settings › Domains & Routes, add `gregular.tv` and `www.gregular.tv`.
    - Under Rules, add a 301 redirect from `www.gregular.tv/*` to `https://gregular.tv/${1}`.
