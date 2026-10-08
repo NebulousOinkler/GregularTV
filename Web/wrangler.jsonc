@@ -16,11 +16,9 @@
   // Served at gregular.tv only: this file, not the dashboard, says where.
   // No workers.dev address and no preview URLs, so there's one copy of the
   // site, at one origin (with its own storage), and no old version stays up.
-  // www.gregular.tv redirects to gregular.tv (a rule in Cloudflare, WEB_PLAN.md).
-  "routes": [
-    { "pattern": "gregular.tv", "custom_domain": true },
-    { "pattern": "www.gregular.tv", "custom_domain": true }
-  ],
+  // Only gregular.tv: www.gregular.tv has a DNS record of its own and a
+  // redirect rule to gregular.tv (WEB_PLAN.md), so it's not the Worker's.
+  "routes": [{ "pattern": "gregular.tv", "custom_domain": true }],
   "workers_dev": false,
   "preview_urls": false
 }

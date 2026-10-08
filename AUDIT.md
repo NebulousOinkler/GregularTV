@@ -112,8 +112,7 @@ What held up well:
 - **Where:** `Web/wrangler.jsonc`.
 - **Resolved:**
   - `workers_dev` and `preview_urls` are off.
-  - gregular.tv and www.gregular.tv are declared as the Worker's custom domains in the file. The file, not the dashboard, says where the site is, so a deploy keeps both domains.
-  - **Check after the next deploy** that both domains still answer. This can't be tried before deploying.
+  - gregular.tv is declared as the Worker's custom domain in the file, so the file, not the dashboard, says where the site is. www.gregular.tv stays a DNS record of its own with a redirect rule. Declaring it too failed the first deploy (2026-10-07: Cloudflare won't make a custom domain where a DNS record exists).
 
 ### L7. gregular.tv didn't send HSTS itself — resolved
 - **Where:** `Web/public/_headers`.

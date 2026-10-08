@@ -119,7 +119,7 @@ Steps marked **(you)** need the owner's accounts, payment or tokens. **(Claude)*
    - A GitHub Actions workflow that runs on every push to main, in two jobs. `build`, with no secrets, installs the swift.org toolchain (its installer's signature checked) and the WebAssembly SDK and binaryen (checksums checked), builds the site and runs the tests. `deploy` publishes what `build` made with Wrangler, at the version `Web/package-lock.json` pins, and only it sees the token. Actions are pinned to commits.
    - Only main runs it: other branches and pull requests are tested locally (`scripts/test-web.sh`), with no previews.
 6. **(you) Connect the domain.**
-   - `Web/wrangler.jsonc` names `gregular.tv` and `www.gregular.tv` as the Worker's custom domains, so each deploy keeps them; the workers.dev address and preview URLs are off.
+   - `Web/wrangler.jsonc` names `gregular.tv` as the Worker's custom domain, so each deploy keeps it; the workers.dev address and preview URLs are off. `www.gregular.tv` stays a DNS record of its own, which only the redirect rule below uses (a custom domain can't be added where a DNS record exists).
    - Under Rules, add a 301 redirect from `www.gregular.tv/*` to `https://gregular.tv/${1}`.
 7. **(you) Set up HTTPS** under SSL/TLS:
    - Always Use HTTPS on, minimum TLS 1.2, TLS 1.3 on.
