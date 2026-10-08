@@ -76,6 +76,8 @@ final class FakeSongServer: LyricsSource, OriginalFiles, @unchecked Sendable {
         Data(url.lastPathComponent.utf8)
     }
 
+    func checkDownload(_ url: URL) throws {}
+
     func lyrics(for itemID: String) async throws -> SyncedLyrics? {
         lock.withLock { asked.append(itemID) }
         return lyrics[itemID]

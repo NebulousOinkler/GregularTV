@@ -111,14 +111,15 @@ Steps marked **(you)** need the owner's accounts, payment or tokens. **(Claude)*
    - `TXT gregular.tv "v=spf1 -all"`
    - `TXT _dmarc.gregular.tv "v=DMARC1; p=reject; sp=reject; adkim=s; aspf=s"`
 4. **(you) Let GitHub deploy.**
-   - Create a Cloudflare API token from the "Edit Cloudflare Workers" template, limited to the account.
+   - Create a Cloudflare API token from the "Edit Cloudflare Workers" template, limited to the account and the gregular.tv zone.
    - In the GitHub repo, add two secrets: `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
+   - To approve each deploy before it goes live, add yourself as a required reviewer of the `gregular.tv` environment (Settings › Environments), which the workflow's deploy job uses.
 5. **(Claude, in phase 5) Deployment files.**
    - A `wrangler.jsonc` with `assets: { directory: "Web/dist", not_found_handling: "single-page-application" }`, no worker script, and observability off.
-   - A GitHub Actions workflow that runs on every push to main. It installs the swift.org toolchain and the WebAssembly SDK, builds the site, runs the tests and runs `npx wrangler deploy`.
+   - A GitHub Actions workflow that runs on every push to main, in two jobs. `build`, with no secrets, installs the swift.org toolchain (its installer's signature checked) and the WebAssembly SDK and binaryen (checksums checked), builds the site and runs the tests. `deploy` publishes what `build` made with Wrangler, at the version `Web/package-lock.json` pins, and only it sees the token. Actions are pinned to commits.
    - Only main runs it: other branches and pull requests are tested locally (`scripts/test-web.sh`), with no previews.
 6. **(you) Connect the domain.**
-   - In Workers & Pages › gregular-tv › Settings › Domains & Routes, add `gregular.tv` and `www.gregular.tv`.
+   - `Web/wrangler.jsonc` names `gregular.tv` and `www.gregular.tv` as the Worker's custom domains, so each deploy keeps them; the workers.dev address and preview URLs are off.
    - Under Rules, add a 301 redirect from `www.gregular.tv/*` to `https://gregular.tv/${1}`.
 7. **(you) Set up HTTPS** under SSL/TLS:
    - Always Use HTTPS on, minimum TLS 1.2, TLS 1.3 on.

@@ -113,6 +113,22 @@ test("keeps the sign-in encrypted, and none of it in local storage", async ({ pa
   expect(vault.text).not.toContain("accessToken");
 });
 
+test("a sign-in not remembered lasts only until the page closes", async ({ page }) => {
+  await page.goto("/");
+  await page.getByLabel("Server address").fill(server);
+  await page.getByRole("button", { name: "Connect" }).click();
+  const remember = page.getByRole("switch", { name: /Remember me on this browser/ });
+  await expect(remember).toHaveAttribute("aria-checked", "true");
+  await remember.click();
+  await expect(remember).toHaveAttribute("aria-checked", "false");
+  await page.getByLabel("Username").fill("tester");
+  await page.getByLabel("Password").fill("not-a-real-password");
+  await page.getByRole("button", { name: "Sign In" }).click();
+  await expect(page.locator(".now .channel-number")).not.toBeEmpty();
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Connect to your server" })).toBeVisible();
+});
+
 test("the keyboard works the remote's tables", async ({ page }) => {
   await signIn(page);
   const number = page.locator(".now .channel-number");

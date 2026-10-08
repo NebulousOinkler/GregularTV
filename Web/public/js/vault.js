@@ -1,9 +1,12 @@
 // The sign-ins, kept encrypted in this browser (GregularBrowser's
 // BrowserCredentialStore). The key is an AES-GCM key made here by WebCrypto
 // and kept in IndexedDB as non-extractable: script on this page can use it,
-// but it can never be read out, so a copy of the browser's files alone
-// doesn't give the sign-ins away. (Script running on the page could still
-// use them; the Content Security Policy in _headers is what stops that.)
+// but can't read it out. That keeps the sign-ins from being read as they
+// are, nothing more: the browser keeps the key in the same profile, so
+// anyone with a copy of the profile's files can decrypt them. Sign-ins not
+// remembered ("Remember me on this browser" off) are never written here.
+// (Script running on the page could also use them; the Content Security
+// Policy in _headers is what stops that.)
 //
 // The only IndexedDB use in the app (scripts/privacy-check.sh).
 

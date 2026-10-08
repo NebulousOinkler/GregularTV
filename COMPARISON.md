@@ -6,8 +6,8 @@
 
 | | Gregular TV | Tunarr |
 |---|---|---|
-| What it is | An Apple TV app | A server (Docker or a binary) with a web interface |
-| Where channels play | On the Apple TV running the app | Anywhere that can play its streams: Plex or Jellyfin Live TV, IPTV apps (UHF on Apple TV, TiviMate, VLC), a web player |
+| What it is | An Apple TV app, and the same app in a web browser (gregular.tv) | A server (Docker or a binary) with a web interface |
+| Where channels play | On the Apple TV running the app, or in a browser on a phone, tablet or computer | Anywhere that can play its streams: Plex or Jellyfin Live TV, IPTV apps (UHF on Apple TV, TiviMate, VLC), a web player |
 | Sources | One Jellyfin server | Plex, Jellyfin, Emby and local folders, mixed |
 | How a channel is defined | A rule (genre, series, years, tag, or everything) and a strategy. The schedule is worked out from the clock and a seed, so it never needs saving or rebuilding | A line-up you build in the web editor, by hand or with the scheduling tools. It's saved and loops |
 | Video | Jellyfin plays the file as it is where it can, and transcodes only what the Apple TV can't play | Always re-encoded with FFmpeg, so programmes from different files join seamlessly |
@@ -15,10 +15,10 @@
 
 ## What Tunarr has that Gregular TV doesn't
 
-1. **Watching on any device.** Tunarr channels play on phones, tablets, computers, Android TV, Fire TV, Roku, smart TVs and the web, through Plex or Jellyfin Live TV or an IPTV app. Gregular TV only plays on an Apple TV.
+1. **Watching on any device.** Tunarr channels play on phones, tablets, computers, Android TV, Fire TV, Roku, smart TVs and the web, through Plex or Jellyfin Live TV or an IPTV app. Gregular TV plays on an Apple TV and in a web browser (gregular.tv), but not in IPTV apps, or on Android TV, Fire TV, Roku or smart TVs except through a browser.
 2. **Subtitles and audio language.** Tunarr sets the subtitle and audio-language preferences for each channel. Gregular TV never shows subtitles: it asks Jellyfin for none, to avoid burning them into the picture, which would force a full transcode. It plays each file's default audio track.
 3. **Recording (DVR).** Through Plex or Jellyfin Live TV, a Tunarr channel can be recorded like an antenna channel. Gregular TV can't record.
-4. **More than one library server, and other kinds.** Tunarr mixes Plex, Jellyfin, Emby and local folders on one channel. Gregular TV uses one Jellyfin server; a servers page is on [TODO.md](TODO.md).
+4. **More than one library server, and other kinds.** Tunarr mixes Plex, Jellyfin, Emby and local folders on one channel. Gregular TV watches one Jellyfin server at a time, though it can be signed in to several.
 5. **A full channel editor.** Tunarr's editor works in a web browser:
    - drag-and-drop line-ups;
    - search, filter and sort across every library;
@@ -98,6 +98,6 @@
 
 Tunarr is the more powerful and flexible **channel station**. It suits someone who will run a server, wants to watch on many devices, needs subtitles or recording, or wants to hand-craft channels in detail.
 
-Gregular TV is a **set-top box** for one Apple TV. Nothing needs hosting or maintaining, it plays at original quality, it remembers nothing about you, and households can share channels by code. Its biggest gaps for a viewer are subtitles and audio-track choice. After those come only one server, and simpler scheduling and filler.
+Gregular TV is a **set-top box** for an Apple TV, or a browser. Nothing needs hosting or maintaining, it plays at original quality, it remembers nothing about you, and households can share the same channels by schedule code and a channels document. Its biggest gaps for a viewer are subtitles and audio-track choice. After those come one server at a time, and simpler scheduling and filler.
 
 Sources: Tunarr's [README](https://github.com/chrisbenincasa/tunarr), [documentation](https://tunarr.com/) (scheduling, time slots, channels, filler, filler selection, smart collections, clients, FAQ) and [v2026.9.0 release notes](https://github.com/chrisbenincasa/tunarr/releases/tag/v2026.9.0).

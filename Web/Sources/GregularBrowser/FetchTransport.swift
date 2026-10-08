@@ -141,7 +141,8 @@ public enum BrowserNetwork {
 
         public var errorDescription: String? {
             "Couldn't reach your server from this browser. Check the address, and that the server is switched on. "
-                + "A server on plain http:// works only in Chrome or Edge, on your home network."
+                + "A server on plain http:// works only in Chrome or Edge, on your home network. "
+                + "On a work or school network, or a VPN, its proxy may be blocking it: try another network."
         }
     }
 }

@@ -50,7 +50,7 @@ public struct JellyfinClient: Sendable {
     public func syncedLyrics(for itemID: String) async throws -> SyncedLyrics? {
         let lyrics: LyricsDTO
         do {
-            lyrics = try await api.get("/Audio/\(itemID)/Lyrics")
+            lyrics = try await api.get("/Audio/\(JellyfinAPI.segment(itemID))/Lyrics")
         } catch JellyfinError.httpStatus(404) {
             return nil
         }
@@ -65,7 +65,7 @@ public struct JellyfinClient: Sendable {
     /// rule against playing files from plain http doesn't apply (`PlayableFormats.playsFilesOnlyOverHTTPS`).
     public func originalFileURL(of item: MediaItem) async throws -> URL? {
         let info: PlaybackInfoResponse = try await api.post(
-            "/Items/\(item.id)/PlaybackInfo",
+            "/Items/\(JellyfinAPI.segment(item.id))/PlaybackInfo",
             query: [
                 URLQueryItem(name: "userId", value: credentials.userID),
                 URLQueryItem(name: "mediaSourceId", value: item.id),
@@ -112,7 +112,7 @@ public struct JellyfinClient: Sendable {
         for itemID: String, formats: PlayableFormats, maxBitrate: Int
     ) async throws -> (info: PlaybackInfoResponse, source: PlaybackInfoResponse.MediaSource) {
         let info: PlaybackInfoResponse = try await api.post(
-            "/Items/\(itemID)/PlaybackInfo",
+            "/Items/\(JellyfinAPI.segment(itemID))/PlaybackInfo",
             query: [
                 URLQueryItem(name: "userId", value: credentials.userID),
                 URLQueryItem(name: "maxStreamingBitrate", value: String(maxBitrate)),
@@ -200,7 +200,8 @@ public struct JellyfinClient: Sendable {
             URLQueryItem(name: "ApiKey", value: credentials.accessToken),
         ]
         if let playSessionID { query.append(URLQueryItem(name: "PlaySessionId", value: playSessionID)) }
-        return api.url((isSong ? "/Audio/" : "/Videos/") + "\(itemID)/stream" + (container.map { ".\($0)" } ?? ""), query: query)
+        let file = "stream" + (container.map { "." + JellyfinAPI.segment($0) } ?? "")
+        return api.url((isSong ? "/Audio/" : "/Videos/") + "\(JellyfinAPI.segment(itemID))/" + file, query: query)
     }
 
     /// Jellyfin returns `TranscodingUrl` as a server-relative path. Prefix the
@@ -241,6 +242,10 @@ extension JellyfinClient: OriginalFiles {
     /// Only from this server, through its transport and rules.
     public func download(_ url: URL, mostBytes: Int) async throws -> Data {
         try await api.file(url, largest: mostBytes)
+    }
+
+    public func checkDownload(_ url: URL) throws {
+        try api.checkOwnFile(url)
     }
 }
 

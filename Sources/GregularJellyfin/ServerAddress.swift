@@ -26,10 +26,14 @@ public enum ServerAddress {
         }
     }
 
-    /// Whether `host` names something on the local network: `localhost`, an
-    /// unqualified name (`jellyfin`), a `.local` or `.home.arpa` name, or a
-    /// loopback, private or link-local address (`LocalNetwork`, which reads
-    /// only the plain dotted form of an IPv4 address as local).
+    /// Whether `host` names something on the local network: `localhost`, a
+    /// `.local` or `.home.arpa` name, or a loopback, private or link-local
+    /// address (`LocalNetwork`, which reads only the plain dotted form of an
+    /// IPv4 address as local).
+    ///
+    /// Not a one-word name (`nas`): a network's DNS can add its own domain
+    /// to one (`nas.office.example.com`) and reach a host somewhere else, and
+    /// a password sent there over plain http would cross networks unencrypted.
     public static func isOnLocalNetwork(_ host: String) -> Bool {
         let host = host.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
         // Anything made only of numbers is an address, in some form, as is anything with a colon (IPv6).
@@ -37,7 +41,7 @@ public enum ServerAddress {
         if host.contains(":") || labels.allSatisfy({ label in !label.isEmpty && (label.allSatisfy(\.isNumber) || label.hasPrefix("0x")) }) {
             return LocalNetwork.contains(address: host)
         }
-        return host == "localhost" || !host.contains(".") || host.hasSuffix(".local") || host.hasSuffix(".home.arpa")
+        return host == "localhost" || host.hasSuffix(".local") || host.hasSuffix(".home.arpa")
     }
 
     /// Turns what the user typed into a server base URL.

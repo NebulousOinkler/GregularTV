@@ -1,3 +1,4 @@
+import GregularBrowser
 import GregularScreens
 import JavaScriptKit
 
@@ -33,6 +34,8 @@ import JavaScriptKit
     }
 
     func close() {
+        // Only a sign-in made here takes the page's choice of remembering it.
+        WebApp.signIns?.rememberNextSignIn(nil)
         (redraws + stepRedraws).forEach { $0.stop() }
         // A Quick Connect code approved after this signs nothing in.
         model.stop()
@@ -140,9 +143,30 @@ import JavaScriptKit
             ]),
             note,
             El("div", "sign-in-ways", [passwordForm, quickConnect]),
+            rememberSwitch(),
             El("div", "buttons", [El.button("Use a different server", "quiet") { [model] in model.changeServer() }]),
         ]
     }
+
+    /// "Remember me on this browser", on unless turned off: off, the sign-in
+    /// lasts until the page closes and is never written to the browser
+    /// (`BrowserCredentialStore`). Not in demo mode, which keeps nothing anyway.
+    private func rememberSwitch() -> El {
+        guard let store = WebApp.signIns else { return El("div") }
+        var remember = true
+        store.rememberNextSignIn(remember)
+        let row = Parts.toggle(Self.rememberTitle, detail: Self.rememberDetail, on: remember) {}
+        row.on("click") { _ in
+            remember.toggle()
+            store.rememberNextSignIn(remember)
+            row.attribute("aria-checked", remember ? "true" : "false")
+        }
+        return El("div", "card remember", [row])
+    }
+
+    static let rememberTitle = "Remember me on this browser"
+    static let rememberDetail = "Turn off on a computer others use: you'll sign in again each time you open Gregular TV, "
+        + "and your sign-in to this server isn't kept here."
 
     private func administratorStep(serverName: String) -> [El] {
         [

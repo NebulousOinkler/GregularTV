@@ -175,6 +175,10 @@ import Observation
 
     init() {
         video.attribute("playsinline", "").attribute("preload", "auto").attribute("disableremoteplayback", "")
+        // A file the browser fetches itself (direct play, or HLS without
+        // hls.js) goes as the app's own requests do: no cookies or other
+        // credentials for the server.
+        video.attribute("crossorigin", "anonymous")
         video.object.muted = .boolean(true)
         video.on("waiting") { [weak self] _ in self?.waitingReason = "filling buffer" }
         video.on("stalled") { [weak self] _ in self?.waitingReason = "network stalled" }

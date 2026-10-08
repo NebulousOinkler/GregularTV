@@ -12,14 +12,19 @@ import JavaScriptKit
     let video = El("video", "song-video")
     var onFinish: (() -> Void)?
     private var objectURL: String?
+    /// Throws unless a file may be fetched from the server, as on Apple TV
+    /// (`SpecialModeSession.checkFile`).
+    private let check: (URL) throws -> Void
 
-    init() {
+    init(check: @escaping (URL) throws -> Void) {
+        self.check = check
         video.attribute("playsinline", "").attribute("preload", "auto").attribute("disableremoteplayback", "")
         video.on("ended") { [weak self] _ in self?.onFinish?() }
     }
 
     func load(_ url: URL, mostBytes: Int) async throws -> any SongFile {
-        BrowserSong(blob: try await WholeFile.fetch(url, mostBytes: mostBytes))
+        try check(url)
+        return BrowserSong(blob: try await WholeFile.fetch(url, mostBytes: mostBytes))
     }
 
     func cue(_ file: any SongFile) {

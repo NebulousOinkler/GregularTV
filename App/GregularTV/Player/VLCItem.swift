@@ -15,9 +15,18 @@ import SwiftVLC
 /// they're made again until they've taken.
 @MainActor final class VLCItem: Identifiable {
     let player = SwiftVLC.Player(instance: VLCItem.vlc)
-    /// libVLC, set up once, with its messages off: like the rest of the app,
-    /// it logs nothing (`scripts/privacy-check.sh`).
-    private static let vlc = (try? VLCInstance(arguments: VLCInstance.defaultArguments + ["--quiet"])) ?? .shared
+    /// libVLC, set up once (`arguments`).
+    ///
+    /// Its https is Apple's (SwiftVLC's libVLC uses its SecureTransport
+    /// module), so certificates are checked against the system's trust. It
+    /// never asks the viewer anything: the app gives libVLC no dialog
+    /// handler, so where VLC would ask whether to accept a certificate that
+    /// fails, the answer is no and the stream fails, as the app's own
+    /// requests do. (That libVLC has no Lua, so no scripts run on what it reads.)
+    private static let vlc = (try? VLCInstance(arguments: arguments)) ?? .shared
+    /// Its messages off: like the rest of the app, it logs nothing
+    /// (`scripts/privacy-check.sh`). `VLCSetupTests` checks libVLC takes them.
+    static let arguments = VLCInstance.defaultArguments + ["--quiet"]
     let url: URL
     /// Where it starts and stops, in seconds into the file.
     let start: TimeInterval

@@ -269,10 +269,12 @@ struct JellyfinPlaybackTests {
             guard (profile?["Name"] as? String)?.contains("VLC") == true else {
                 return (200, #"{ "MediaSources": [{ "Id": "src1", "Container": "mkv", "SupportsDirectPlay": false, "TranscodingUrl": "/videos/abc/master.m3u8?x=1" }], "PlaySessionId": "own" }"#)
             }
-            // Any container: none is named at all.
+            // The common containers and codecs, not the rarest.
             let direct = profile?["DirectPlayProfiles"] as? [[String: Any]] ?? []
-            #expect(direct.count == 1 && direct.first?["Container"] == nil)
+            let containers = (direct.first?["Container"] as? String)?.split(separator: ",") ?? []
+            #expect(direct.count == 1 && containers.contains("mkv") && containers.contains("avi") && !containers.contains("rm"))
             #expect((direct.first?["AudioCodec"] as? String)?.contains("dts") == true)
+            #expect((direct.first?["VideoCodec"] as? String)?.contains("h261") == false)
             return (200, #"{ "MediaSources": [{ "Id": "src1", "Container": "mkv", "SupportsDirectPlay": true }], "PlaySessionId": "vlc" }"#)
         }
         let source = try await JellyfinFixtures.client(mock, fallback: .vlcOnAppleTV).playbackSource(for: "abc")
@@ -282,6 +284,15 @@ struct JellyfinPlaybackTests {
         #expect(source.playSessionID == "vlc")
         #expect(source.mediaStream.player == .fallback && source.mediaStream.delivery == .original)
         #expect(source.mediaStream.sessionID == nil, "Nothing for the server to stop or keep going")
+    }
+
+    /// An ID from the server goes into a path as one part of it, whatever it holds.
+    @Test func anOddItemIDStaysInItsPlace() async throws {
+        mock.on("POST", "/PlaybackInfo", json: #"{ "MediaSources": [{ "Id": "src1", "Container": "mp4/../x", "SupportsDirectPlay": true }] }"#)
+        let source = try await JellyfinFixtures.client(mock).playbackSource(for: "../Users/me?x#y")
+        let asked = try #require(mock.requests.first?.url.absoluteString)
+        #expect(asked.hasPrefix("http://tv.local:8096/Items/%2E%2E%2FUsers%2Fme%3Fx%23y/PlaybackInfo?"))
+        #expect(source.url.absoluteString.hasPrefix("http://tv.local:8096/Videos/%2E%2E%2FUsers%2Fme%3Fx%23y/stream.mp4%2F%2E%2E%2Fx?"))
     }
 
     /// When the fallback can't play it as it is either (over the quality

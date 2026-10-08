@@ -12,7 +12,7 @@
    - **Try it against a real server:** an https Jellyfin server in Chrome, Safari and Firefox, on a phone and a computer; an http one on the home network in Chrome (allow local network access when asked). Note any programme that won't play, with *Show playback diagnostics* on. (Safari on a phone works, 2026-10-07; a company proxy can block it, see AUDIT.md.)
    - **Faster CI:** each run installs the toolchain again (about 17 minutes in all); cache `~/Library/Developer/Toolchains` if that matters.
    - **Smaller download:** 12.4 MB compressed, mostly Foundation's ICU data. Worth revisiting if the Swift WebAssembly SDK gains a way to trim it.
-7. **The security and privacy audit** (AUDIT.md): its findings, to work through.
+7. **After each Jellyfin upgrade:** the checks in README.md, *Debug options* (*After upgrading Jellyfin*).
 
 ## Done
 

@@ -14,7 +14,9 @@ struct TransportConformanceTests {
     @Test(arguments: [
         ("https://tv.example/a", "https://tv.example/b", true),
         ("https://tv.example:8920/a", "https://TV.example:8920/b", true),
-        ("http://tv.local:8096/a", "https://tv.local:8920/a", true),     // up to https on the same host
+        ("http://tv.local:8096/a", "https://tv.local:8920/a", true),     // up to https on the same host: Jellyfin's port,
+        ("http://tv.local/a", "https://tv.local/a", true),               // or the standard one
+        ("http://tv.local:8096/a", "https://tv.local:9443/a", false),    // but no other
         ("https://tv.example/a", "http://tv.example/a", false),          // never down to http
         ("https://tv.example/a", "https://other.example/a", false),
         ("https://tv.example/a", "https://tv.example.other.example/a", false),

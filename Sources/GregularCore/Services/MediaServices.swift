@@ -32,8 +32,14 @@ public protocol OriginalFiles: Sendable {
 
     /// The whole of an `originalFile(of:)`, in memory (never on disk), for
     /// a platform whose player can't fetch it whole itself. Throws if it's
-    /// larger than `mostBytes`.
+    /// larger than `mostBytes`, or if `checkDownload(_:)` would.
     func download(_ url: URL, mostBytes: Int) async throws -> Data
+
+    /// Throws unless `url` is a file this server may send as one of its
+    /// own, by the rules every request follows: what `download(_:mostBytes:)`
+    /// checks first, for a platform that fetches the file some other way
+    /// (a browser, into its own memory).
+    func checkDownload(_ url: URL) throws
 }
 
 /// Turns a scheduled item into something a player can play.

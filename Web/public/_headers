@@ -7,7 +7,10 @@
 # the channel editor framed only by this site; nothing else at all.
 # Trusted Types: script URLs only through the policy in js/main.js, which
 # allows only this page's own blob: workers (hls.js's).
+# Strict-Transport-Security: once seen, the browser only ever asks for
+# gregular.tv over https, for a year (ignored over plain http, as locally).
 /*
+  Strict-Transport-Security: max-age=31536000
   Content-Security-Policy: default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self'; font-src 'self'; media-src 'self' https: http: blob:; connect-src 'self' https: http:; worker-src 'self' blob:; frame-src 'self'; frame-ancestors 'self'; base-uri 'none'; form-action 'none'; manifest-src 'self'; require-trusted-types-for 'script'; trusted-types default
   Referrer-Policy: no-referrer
   X-Content-Type-Options: nosniff

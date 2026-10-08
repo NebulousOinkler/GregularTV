@@ -126,7 +126,11 @@ struct SpecialLibraryTests {
         for elsewhere in ["http://other.local:8096/Audio/s1/stream.mp3", "https://tv.local:8096/Audio/s1/stream.mp3",
                           "http://tv.local:9000/Audio/s1/stream.mp3"] {
             await #expect(throws: JellyfinError.invalidResponse) { try await client.download(URL(string: elsewhere)!, mostBytes: 5000) }
+            #expect(throws: JellyfinError.invalidResponse, "A browser fetching it itself checks the same") {
+                try client.checkDownload(URL(string: elsewhere)!)
+            }
         }
+        try client.checkDownload(song)
         #expect(mock.requests.count == 2, "Nothing sent anywhere else")
     }
 
