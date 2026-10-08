@@ -18,6 +18,19 @@ public enum JellyfinError: Error, Equatable, Sendable {
     case noPlayableSource(itemID: String)
 }
 
+extension JellyfinError {
+    /// Throws what an HTTP `status` means, unless it's a success: every
+    /// reply from a server is read this way, whoever fetched it.
+    public static func check(status: Int) throws {
+        switch status {
+        case 200..<300: return
+        case 401: throw JellyfinError.unauthorized
+        case 403: throw JellyfinError.forbidden
+        default: throw JellyfinError.httpStatus(status)
+        }
+    }
+}
+
 extension JellyfinError: MediaServiceFailure {
     public var isSessionExpired: Bool { self == .unauthorized }
 
@@ -27,7 +40,8 @@ extension JellyfinError: MediaServiceFailure {
         case .forbidden: "Your Jellyfin account isn't allowed to do this. It may be disabled, or limited by its parental controls."
         case .httpStatus(let code): "The Jellyfin server returned an error (HTTP \(code))."
         case .invalidResponse: "The server didn't respond like a Jellyfin server."
-        case .insecureAddress: "Plain http only works on your home network. For an address on the internet, use https."
+        case .insecureAddress: "Plain http only works on your home network, at an address like 192.168.1.5 or a name like nas.local. "
+            + "Anywhere else, use https."
         case .responseTooLarge: "The server sent far more than expected, so the app stopped it."
         case .quickConnectDisabled: "Quick Connect is turned off on this server. Sign in with a password instead."
         case .noPlayableSource: "Jellyfin couldn't provide a playable stream for this programme."
@@ -61,19 +75,41 @@ struct JellyfinAPI: Sendable {
         _ = try await send(method, path, query: query, body: body.map { try JellyfinJSON.encoder().encode($0) })
     }
 
-    /// `server` + `path`, keeping any reverse-proxy sub-path on the server URL.
+    /// `server` + `path`, keeping any reverse-proxy sub-path on the server
+    /// URL. `path` goes in as it's written, so any part of it from elsewhere
+    /// (an item's ID) must come through `segment(_:)`.
     func url(_ path: String, query: [URLQueryItem] = []) -> URL {
+        // The server's URL was made from parts (`ServerAddress.normalize`), so it has
+        // components; with a path of plain characters and escaped segments, so does the result.
         var components = URLComponents(url: server, resolvingAgainstBaseURL: false)!
-        components.path += path
+        components.percentEncodedPath += path
         components.queryItems = query.isEmpty ? nil : query
         return components.url!
     }
 
+    /// `text` as one part of a path, such as an item's ID: everything but
+    /// ASCII letters, digits, `-` and `_` escaped, slashes and dots
+    /// included, so a server's odd ID can neither reach another path nor
+    /// make a URL that can't be built.
+    static func segment(_ text: String) -> String {
+        text.addingPercentEncoding(withAllowedCharacters: segmentCharacters) ?? ""
+    }
+
+    private static let segmentCharacters = CharacterSet(charactersIn: "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_")
+
     /// A whole file from this server, such as a song's (`url` must be one
     /// of its own, as `url(_:query:)` makes), of at most `largest` bytes.
     func file(_ url: URL, largest: Int) async throws -> Data {
-        guard isOnThisServer(url) else { throw JellyfinError.invalidResponse }
+        try checkOwnFile(url)
         return try await send(ServerRequest(url: url, largestResponse: largest), anonymous: false)
+    }
+
+    /// Throws unless `url` may be fetched as one of this server's own
+    /// files: the server is one the app may talk to (`ServerAddress.isAllowed`),
+    /// and `url` is on it.
+    func checkOwnFile(_ url: URL) throws {
+        guard ServerAddress.isAllowed(server) else { throw JellyfinError.insecureAddress }
+        guard isOnThisServer(url) else { throw JellyfinError.invalidResponse }
     }
 
     /// Same scheme, host and port, under any reverse-proxy sub-path.
@@ -107,12 +143,8 @@ struct JellyfinAPI: Sendable {
         guard reply.url == request.url || TransportRules.allowsRedirect(from: request.url, to: reply.url)
         else { throw JellyfinError.invalidResponse }
         guard reply.body.count <= request.largestResponse else { throw JellyfinError.responseTooLarge }
-        switch reply.status {
-        case 200..<300: return reply.body
-        case 401: throw JellyfinError.unauthorized
-        case 403: throw JellyfinError.forbidden
-        default: throw JellyfinError.httpStatus(reply.status)
-        }
+        try JellyfinError.check(status: reply.status)
+        return reply.body
     }
 
     private func decode<Response: Decodable>(_ data: Data) throws -> Response {

@@ -13,11 +13,7 @@ public enum WholeFile {
     /// cancelled (which stops the fetch).
     @MainActor public static func fetch(_ url: URL, mostBytes: Int) async throws -> JSObject {
         let (response, controller) = try await FetchTransport.start(ServerRequest(url: url, largestResponse: mostBytes))
-        switch Int(response.status.number ?? 0) {
-        case 200..<300: break
-        case 401: throw JellyfinError.unauthorized
-        case let status: throw JellyfinError.httpStatus(status)
-        }
+        try JellyfinError.check(status: Int(response.status.number ?? 0))
         let chunks = JSObject.global.Array.function!.new()
         try await FetchTransport.read(response, largest: mostBytes, abortingWith: controller) { chunk in
             _ = chunks.push!(chunk)

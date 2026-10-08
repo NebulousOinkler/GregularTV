@@ -101,6 +101,13 @@ import JavaScriptKit
         _ = object.remove!()
     }
 
+    /// Stops a `<video>` and lets go of what it was playing.
+    func emptyVideo() {
+        _ = object.pause!()
+        _ = object.removeAttribute!("src")
+        _ = object.load!()
+    }
+
     func focus() {
         _ = object.focus!()
     }

@@ -26,12 +26,23 @@ struct SetTimesNeedTheirChannel: LineupRule {
     static let summary = "Set times belong to a channel in the line-up, one set per channel."
 
     func problems(with additions: LineupAdditions) -> [String] {
-        let numbers = Set((additions.bundled + additions.custom).map(\.number))
+        let numbers = Set(additions.bundled.map(\.number) + additions.custom.map(\.number))
         var seen = Set<Int>()
         return additions.setTimes.compactMap { setTimes in
             if !numbers.contains(setTimes.channelNumber) { return "There's no channel \(setTimes.channelNumber) for these set times." }
             if !seen.insert(setTimes.channelNumber).inserted { return "Channel \(setTimes.channelNumber) already has set times." }
             return nil
         }
+    }
+}
+
+/// Custom channels make sense however they arrived (the editing page, a
+/// saved code), so a crafted one can't slip past (`CustomChannel.problems`).
+struct CustomChannelsMakeSense: LineupRule {
+    static let id = "custom-channels-make-sense"
+    static let summary = "Custom channels have a name of at most \(CustomChannel.longestName) characters, and at most \(CustomChannel.Rule.mostConditions) conditions, each naming something."
+
+    func problems(with additions: LineupAdditions) -> [String] {
+        additions.custom.flatMap(\.problems)
     }
 }

@@ -64,7 +64,8 @@ public enum TransportRules {
 
     /// Whether a redirect from `from` to `to` may be followed: only to the
     /// same server, with the same scheme, host and port, or from `http` to
-    /// `https` on the same host. Anything else stops at the redirect, which
+    /// `https` on the same host, at the standard port or Jellyfin's
+    /// (`upgradePorts`). Anything else stops at the redirect, which
     /// the caller sees as an error. (URLSession drops `Authorization` on a
     /// redirect to another host by itself, but it sends the body again, so a
     /// sign-in's password would go with it; other HTTP stacks may not even
@@ -72,9 +73,13 @@ public enum TransportRules {
     public static func allowsRedirect(from: URL, to: URL) -> Bool {
         guard let host = from.host()?.lowercased(), host == to.host()?.lowercased(),
               let fromScheme = from.scheme?.lowercased(), let toScheme = to.scheme?.lowercased() else { return false }
-        if fromScheme == "http" && toScheme == "https" { return true }
+        if fromScheme == "http" && toScheme == "https" { return port(of: to).map(upgradePorts.contains) ?? false }
         return fromScheme == toScheme && port(of: from) == port(of: to)
     }
+
+    /// The ports an upgrade from http to https may go to: the standard one,
+    /// and Jellyfin's own (its "Require HTTPS" sends plain http there).
+    static let upgradePorts: Set<Int> = [443, 8920]
 
     private static func port(of url: URL) -> Int? {
         url.port ?? (url.scheme?.lowercased() == "https" ? 443 : 80)

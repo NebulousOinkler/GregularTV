@@ -2,21 +2,15 @@
 // Karaoke's song picker (SongPickerHTML), after local-page.js: guests add
 // songs to the queue on the TV from a phone on the home network, with the
 // code shown on the TV. It sees only the songs' names.
-let code = "";
 let songs = [];
 const shown = 200; // songs listed at once; search narrows them down
 
 async function api(path, body) {
-  const { status, data } = await askAppleTV(body === undefined ? "GET" : "POST", path,
-                                             body === undefined ? undefined : JSON.stringify(body), code);
-  if (status === 401 || status === 423) { $("picker").hidden = true; $("connect").hidden = false; }
-  if (status < 200 || status >= 300) throw new Error(data.error || ("The Apple TV said " + status + "."));
-  return data;
+  const text = body === undefined ? undefined : JSON.stringify(body);
+  return answered(await askAppleTV(body === undefined ? "GET" : "POST", path, text), "picker", "Apple TV");
 }
 
-$("connect").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  code = $("code").value.trim();
+onCode(async () => {
   try {
     const data = await api("/api/songs");
     songs = data.songs;

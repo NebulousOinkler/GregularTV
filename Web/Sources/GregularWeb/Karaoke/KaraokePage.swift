@@ -12,7 +12,7 @@ import JavaScriptKit
 @MainActor final class KaraokePage: Page, KeyTarget {
     let element = El("main", "karaoke")
     private let model: KaraokeModel
-    private let player = SongPlayer()
+    private let player: SongPlayer
     private let stage: KaraokeStageView
     private let menus = El("div", "k-menus")
     private let notice = El("div", "k-notice").attribute("role", "status").attribute("aria-live", "polite")
@@ -31,6 +31,7 @@ import JavaScriptKit
     private var lastState: KaraokeStage.State = .idle
 
     init(session: SpecialModeSession) {
+        player = SongPlayer(check: session.checkFile)
         model = KaraokeModel(session: session, deck: player)
         stage = KaraokeStageView(model: model, player: player, pulseTarget: element)
         encore.hidden = true

@@ -99,19 +99,23 @@ public struct PlayableFormats: Sendable, Equatable {
         audioFileCodecs: ["mp3", "aac", "alac", "flac", "pcm_s16le", "pcm_s24le"])
 
     /// VLC on Apple TV, the fallback for a file Apple TV's own player can't
-    /// play as it is: VLC plays almost any file as it is (as Swiftfin's
-    /// does), so the server only sends it, with no conversion. Any
-    /// container. Not AV1: no Apple TV decodes it in hardware.
+    /// play as it is: VLC plays it as it is (as Swiftfin's does), so the
+    /// server only sends it, with no conversion. Not AV1: no Apple TV decodes
+    /// it in hardware.
+    ///
+    /// Only the containers and codecs a video library really holds. VLC
+    /// reads whatever it's sent, and the rarer a format, the less its reader
+    /// has been tested, so anything rarer is converted by the server for
+    /// Apple TV's own player instead.
     public static let vlcOnAppleTV = PlayableFormats(
         name: "tvOS VLC",
-        containers: [],
-        videoCodecs: ["h264", "hevc", "mpeg4", "mpeg2video", "mpeg1video", "vc1", "vp8", "vp9", "h263", "h261",
-                      "msmpeg4v1", "msmpeg4v2", "msmpeg4v3", "wmv1", "wmv2", "wmv3", "mjpeg", "theora", "prores",
-                      "dv", "dirac", "ffv1", "flv1"],
+        containers: ["mkv", "webm", "avi", "ts", "mpegts", "m2ts", "mp4", "m4v", "mov", "wmv", "asf", "mpeg", "mpg",
+                     "vob", "flv", "ogv", "ogg", "3gp"],
+        videoCodecs: ["h264", "hevc", "mpeg4", "mpeg2video", "mpeg1video", "vc1", "vp8", "vp9", "msmpeg4v3",
+                      "wmv1", "wmv2", "wmv3", "mjpeg", "theora", "prores", "dv"],
         audioCodecs: ["aac", "ac3", "eac3", "alac", "flac", "mp3", "mp2", "mp1", "dts", "opus", "vorbis",
-                      "amr_nb", "amr_wb", "nellymoser", "speex", "wavpack", "wmalossless", "wmapro", "wmav1", "wmav2",
-                      "pcm_alaw", "pcm_mulaw", "pcm_bluray", "pcm_dvd", "pcm_s16be", "pcm_s16le", "pcm_s24be",
-                      "pcm_s24le", "pcm_u8"],
+                      "wmalossless", "wmapro", "wmav1", "wmav2", "pcm_alaw", "pcm_mulaw", "pcm_bluray", "pcm_dvd",
+                      "pcm_s16be", "pcm_s16le", "pcm_s24be", "pcm_s24le", "pcm_u8"],
         convertedVideoCodecs: ["h264"],
         convertedAudioCodecs: ["aac"],
         mostAudioChannels: 8)

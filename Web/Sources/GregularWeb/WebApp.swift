@@ -46,7 +46,7 @@ import JavaScriptKit
     private static var root: Root?
     private static var app: AppModel?
     /// The sign-ins saved in this browser (none in demo mode).
-    private static var signIns: BrowserCredentialStore?
+    private(set) static var signIns: BrowserCredentialStore?
     private static let preferences = BrowserPreferences()
 
     /// Signs out of every server (so their sign-ins stop working there too),

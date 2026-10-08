@@ -24,16 +24,18 @@ struct ServerAddressTests {
     }
 
     @Test(arguments: [
-        ("localhost", true), ("jellyfin", true), ("tv.local", true), ("nas.home.arpa", true),
+        ("localhost", true), ("tv.local", true), ("nas.home.arpa", true),
+        // One-word names: a network's DNS may add its own domain and reach somewhere else.
+        ("jellyfin", false), ("nas", false), ("local", false),
         ("127.0.0.1", true), ("10.1.2.3", true), ("172.16.0.1", true), ("172.31.255.255", true), ("192.168.1.5", true),
-        ("169.254.10.10", true), ("[::1]", true), ("fe80::1", true), ("fd12:3456::1", true), ("nas", true), ("0.0.0.0", false),
+        ("169.254.10.10", true), ("[::1]", true), ("fe80::1", true), ("fd12:3456::1", true), ("0.0.0.0", false),
         ("tv.example.net", false), ("8.8.8.8", false), ("172.32.0.1", false), ("100.128.0.1", false),
         // Other ways to write an address, which a resolver reads as a public one:
         ("134744072", false), ("0x08080808", false), ("010.8.8.8", false), ("0172.16.0.1", false), ("8.8.2056", false),
         ("0x0a.1.1.1", false), ("10.1.1.256", false), ("١٠.1.1.1", false),
         // Carrier-grade NAT: Tailscale, but also internet providers' own networks.
         ("100.101.102.103", false), ("100.64.0.1", false),
-        ("192.168.1.5.example.net", false), ("2001:db8::1", false), ("local", true), ("evil.local.example.com", false),
+        ("192.168.1.5.example.net", false), ("2001:db8::1", false), ("evil.local.example.com", false),
     ])
     func localNetwork(host: String, local: Bool) {
         #expect(ServerAddress.isOnLocalNetwork(host) == local)

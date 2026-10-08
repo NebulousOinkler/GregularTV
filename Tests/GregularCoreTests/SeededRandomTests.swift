@@ -34,14 +34,6 @@ struct SeededRandomTests {
         #expect(seen.count == 6)
     }
 
-    @Test func doubleIsInUnitInterval() {
-        var rng = SeededRandom(seed: 7)
-        for _ in 0..<1_000 {
-            let v = rng.double()
-            #expect(v >= 0 && v < 1)
-        }
-    }
-
     @Test func shuffleIsAPermutation() {
         var rng = SeededRandom(seed: 1)
         let input = Array(0..<50)

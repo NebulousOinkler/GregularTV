@@ -31,11 +31,14 @@ public enum DebugOptions {
 
     private static var arguments: [String] { ProcessInfo.processInfo.arguments }
 
-    /// `-breakEndTest late`: commercials joined mid-way start from their beginning.
-    static var startsCommercialsLate: Bool {
-        guard let flag = arguments.firstIndex(of: "-breakEndTest"), flag + 1 < arguments.count else { return false }
-        return arguments[flag + 1] == "late"
+    /// The launch argument after `flag` (`-openSettings editingPage`), if any.
+    static func argument(after flag: String) -> String? {
+        guard let index = arguments.firstIndex(of: flag), index + 1 < arguments.count else { return nil }
+        return arguments[index + 1]
     }
+
+    /// `-breakEndTest late`: commercials joined mid-way start from their beginning.
+    static var startsCommercialsLate: Bool { argument(after: "-breakEndTest") == "late" }
 
     /// The screen `-openChannelList`, `-openGuide` or `-openSettings` asks for.
     static var screenOnLaunch: WatchModel.Screen? {
@@ -46,12 +49,7 @@ public enum DebugOptions {
 
     /// `-openSettings editingPage`: Settings opens the editing page's screen
     /// too (whether or not the switch is on), so it can be tried without the remote.
-    public static var opensEditingPage: Bool { settingsEditor == "editingPage" }
-
-    private static var settingsEditor: String? {
-        guard let flag = arguments.firstIndex(of: "-openSettings"), flag + 1 < arguments.count else { return nil }
-        return arguments[flag + 1]
-    }
+    public static var opensEditingPage: Bool { argument(after: "-openSettings") == "editingPage" }
 
     static func apply(to channels: [ChannelSchedule], items: [MediaItem], fillerPool: [MediaItem]) -> [ChannelSchedule] {
         if arguments.contains("-breakEndTest") {

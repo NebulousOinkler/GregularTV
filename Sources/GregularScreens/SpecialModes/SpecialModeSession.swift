@@ -30,6 +30,13 @@ import GregularCore
         try await media.download(url, mostBytes: mostBytes)
     }
 
+    /// Throws unless `url` is a file the server may send as one of its own
+    /// (`OriginalFiles.checkDownload`), for a platform's player that fetches
+    /// it whole some other way.
+    public func checkFile(_ url: URL) throws {
+        try media.checkDownload(url)
+    }
+
     /// Leaves the mode, back to live TV.
     public func exit() {
         onExit(self)

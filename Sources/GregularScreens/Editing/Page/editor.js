@@ -5,7 +5,6 @@
 // the code shown on the TV with every request; or the web version opens it
 // inside itself, as `host`, which answers it directly: no network, no code.
 const host = window.parent !== window ? window.parent.gregularEditor : undefined;
-let code = "";
 let state = null;
 let doc = null;
 let dirty = false;
@@ -15,27 +14,14 @@ function changed() { dirty = true; $("dirty").textContent = "Not saved yet."; $(
 async function api(path, body) {
   const method = body === undefined ? "GET" : "POST";
   const text = body === undefined ? undefined : JSON.stringify(body);
-  let status;
+  if (!host) return answered(await askAppleTV(method, path, text), "editor", "Apple TV");
+  const reply = await host.request(method, path, text ?? "");
   let data = {};
-  if (host) {
-    const reply = await host.request(method, path, text ?? "");
-    status = reply.status;
-    try { data = JSON.parse(reply.body); } catch (e) {}
-  } else {
-    ({ status, data } = await askAppleTV(method, path, text, code));
-  }
-  if (status === 401 || status === 423) {
-    $("editor").hidden = true; $("connect").hidden = false;
-  }
-  if (status < 200 || status >= 300) throw new Error(data.error || ("The " + (host ? "app" : "Apple TV") + " said " + status + "."));
-  return data;
+  try { data = JSON.parse(reply.body); } catch (e) {}
+  return answered({ status: reply.status, data }, "editor", "app");
 }
 
-$("connect").addEventListener("submit", async (event) => {
-  event.preventDefault();
-  code = $("code").value.trim();
-  await load();
-});
+onCode(load);
 
 async function load() {
   try {

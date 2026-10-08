@@ -105,6 +105,35 @@ public struct CustomChannel: Sendable, Hashable {
     }
 }
 
+extension CustomChannel {
+    /// What's wrong with this channel, in plain words, or nothing: a name
+    /// that's empty or longer than `longestName`, more than
+    /// `Rule.mostConditions` conditions, or a condition that names nothing
+    /// (years must be from 1 to 9999, the first no later than the last).
+    public var problems: [String] {
+        let name = name.trimmingCharacters(in: .whitespaces)
+        var problems: [String] = []
+        if name.isEmpty { problems.append("Channel \(number) needs a name.") }
+        if name.count > Self.longestName { problems.append("Channel \(number): keep the name to \(Self.longestName) characters.") }
+        if rule.conditions.count > Rule.mostConditions {
+            problems.append("Channel \(number) has more than \(Rule.mostConditions) conditions.")
+        }
+        for condition in rule.conditions {
+            switch condition.match {
+            case .genre(let text), .series(let text), .tag(let text):
+                if text.trimmingCharacters(in: .whitespaces).isEmpty { problems.append("Channel \(number): a condition names nothing.") }
+            case .years(nil, nil):
+                problems.append("Channel \(number): \"years\" needs a \"from\", a \"to\", or both.")
+            case .years(let from?, let to?) where from > to:
+                problems.append("Channel \(number): the first year comes after the last.")
+            case .years(let from, let to):
+                if ![from, to].allSatisfy({ (1...9999).contains($0 ?? 1) }) { problems.append("Channel \(number): years are from 1 to 9999.") }
+            }
+        }
+        return problems
+    }
+}
+
 extension CustomChannel.Rule {
     /// As a line-up source: all of the "all of" conditions, any of the "any
     /// of" ones, and not any of the "none of" ones (`CombinedSources`).

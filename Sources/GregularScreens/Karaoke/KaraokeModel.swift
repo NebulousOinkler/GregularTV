@@ -134,8 +134,6 @@ public final class KaraokeModel {
 
     /// The menu on screen; nil for the stage.
     public var place: Place? { places.last }
-    /// The stage, with a song on it, is on screen.
-    public var isOnStage: Bool { places.isEmpty && stage.state != .idle }
     /// Nothing queued, and no menus: the attract screen.
     public var isAttract: Bool { places.isEmpty && stage.state == .idle }
     /// Whether `back()` goes anywhere: not from the theme boxes before a

@@ -51,11 +51,6 @@ public struct SeededRandom: Sendable {
         }
     }
 
-    /// A uniformly distributed value in `0.0..<1.0`.
-    public mutating func double() -> Double {
-        Double(next() >> 11) * 0x1.0p-53
-    }
-
     /// Shuffles `array` in place (Fisher–Yates).
     public mutating func shuffle<T>(_ array: inout [T]) {
         guard array.count > 1 else { return }

@@ -76,6 +76,8 @@ final class FakeSongServer: LyricsSource, OriginalFiles, @unchecked Sendable {
         Data(url.lastPathComponent.utf8)
     }
 
+    func checkDownload(_ url: URL) throws {}
+
     func lyrics(for itemID: String) async throws -> SyncedLyrics? {
         lock.withLock { asked.append(itemID) }
         return lyrics[itemID]
@@ -368,7 +370,7 @@ struct KaraokeModelTests {
         karaoke.queue(songs[2])
         #expect(karaoke.places.isEmpty && !karaoke.isAttract)
         try await waitUntil(2) { if case .ready = karaoke.stage.state { true } else { false } }
-        #expect(karaoke.isOnStage && karaoke.menuMusic == .neonDisco, "The tune plays on the title card")
+        #expect(karaoke.places.isEmpty && !karaoke.isAttract && karaoke.menuMusic == .neonDisco, "The tune plays on the title card")
         karaoke.perform(try #require(RemoteControls.karaokeStage[.playPause]))
         #expect(karaoke.menuMusic == nil, "And fades for the song")
 
@@ -380,7 +382,7 @@ struct KaraokeModelTests {
         #expect(karaoke.notice == KaraokeText.queued(songs[3], place: 1) && karaoke.places == [.home, .songs], "Queued: browsing carries on")
         karaoke.perform(try #require(RemoteControls.karaokeMenus[.menu]))
         karaoke.perform(try #require(RemoteControls.karaokeMenus[.menu]))
-        #expect(karaoke.isOnStage, "Back from the menu: the song")
+        #expect(karaoke.places.isEmpty && !karaoke.isAttract, "Back from the menu: the song")
     }
 
     @Test func withNothingQueuedTheStageIsTheAttractScreen() async throws {

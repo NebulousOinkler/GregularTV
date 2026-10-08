@@ -1,9 +1,10 @@
 {
   "name": "gregular-web-tests",
   "private": true,
-  "description": "Tools for testing the web version (scripts/test-web.sh). Nothing here is served.",
+  "description": "Tools for testing the web version (scripts/test-web.sh) and deploying it (Wrangler). Nothing here is served.",
   "type": "module",
   "devDependencies": {
-    "@playwright/test": "1.63.0"
+    "@playwright/test": "1.63.0",
+    "wrangler": "4.136.3"
   }
 }

@@ -27,8 +27,20 @@ function say(text, good) {
   if (text) box.append(el("div", { className: "message " + (good ? "good" : "bad"), text }));
 }
 
-/** Asks the Apple TV: `{ status, data }`, with `data` the reply's JSON (or {}). */
-async function askAppleTV(method, path, text, code) {
+/** The code shown on the TV, sent with every request. */
+let code = "";
+
+/** Takes the code from the form #connect each time it's sent, then runs `start`. */
+function onCode(start) {
+  $("connect").addEventListener("submit", async (event) => {
+    event.preventDefault();
+    code = $("code").value.trim();
+    await start();
+  });
+}
+
+/** Asks the Apple TV, with the code: `{ status, data }`, with `data` the reply's JSON (or {}). */
+async function askAppleTV(method, path, text) {
   const response = await fetch(path, {
     method,
     headers: { "X-Gregular-Code": code, "Content-Type": "application/json" },
@@ -38,4 +50,15 @@ async function askAppleTV(method, path, text, code) {
   let data = {};
   try { data = await response.json(); } catch (e) {}
   return { status: response.status, data };
+}
+
+/**
+ * A reply's data, or an error saying what `who` answered. A wrong code, or a
+ * page locked by too many (401, 423), shows the form #connect again in place
+ * of the element `page`.
+ */
+function answered({ status, data }, page, who) {
+  if (status === 401 || status === 423) { $(page).hidden = true; $("connect").hidden = false; }
+  if (status < 200 || status >= 300) throw new Error(data.error || ("The " + who + " said " + status + "."));
+  return data;
 }

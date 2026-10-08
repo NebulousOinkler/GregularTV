@@ -1,0 +1,9 @@
+// The Apple TV app's signing team, kept out of git: each developer has
+// their own. Put yours in App/Signing.local.xcconfig (git ignores it):
+//
+//     DEVELOPMENT_TEAM = ABCDE12345
+//
+// Choosing a team in Xcode's Signing & Capabilities writes it into the
+// project file instead; move it here before committing. Without one, the
+// app still builds and tests in the simulator.
+#include? "Signing.local.xcconfig"

@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import GregularCore
 import GregularScreens
 import Network
 import Observation
@@ -8,7 +9,7 @@ import Observation
 /// karaoke's song picker) while it's wanted: started when its screen or
 /// switch turns it on, stopped when it's off again.
 /// It only accepts connections from private, link-local or loopback
-/// addresses (`LocalPage.isLocal`), at most `mostConnections` at once,
+/// addresses (`LocalNetwork`), at most `mostConnections` at once,
 /// reads one request per connection, capped in size and time, and closes. (Network's own `acceptLocalOnly`
 /// isn't used: in the tvOS simulator it refused every connection, even
 /// from the same Mac.)
@@ -69,7 +70,7 @@ final class LocalPageServer {
         let queue = queue, open = open
         listener.newConnectionHandler = { [weak self] connection in
             guard case .hostPort(let host, _) = connection.endpoint, case let address = Self.text(of: host),
-                  LocalPage.isLocal(address), open.count < Self.mostConnections else {
+                  LocalNetwork.contains(address: address), open.count < Self.mostConnections else {
                 return connection.cancel()
             }
             open.count += 1

@@ -12,14 +12,19 @@ import JavaScriptKit
     let video = El("video", "song-video")
     var onFinish: (() -> Void)?
     private var objectURL: String?
+    /// Throws unless a file may be fetched from the server, as on Apple TV
+    /// (`SpecialModeSession.checkFile`).
+    private let check: (URL) throws -> Void
 
-    init() {
+    init(check: @escaping (URL) throws -> Void) {
+        self.check = check
         video.attribute("playsinline", "").attribute("preload", "auto").attribute("disableremoteplayback", "")
         video.on("ended") { [weak self] _ in self?.onFinish?() }
     }
 
     func load(_ url: URL, mostBytes: Int) async throws -> any SongFile {
-        BrowserSong(blob: try await WholeFile.fetch(url, mostBytes: mostBytes))
+        try check(url)
+        return BrowserSong(blob: try await WholeFile.fetch(url, mostBytes: mostBytes))
     }
 
     func cue(_ file: any SongFile) {
@@ -32,17 +37,7 @@ import JavaScriptKit
     }
 
     func play() {
-        let promise = video.object.play!()
-        // A browser that still wants a click first: play without sound, and say so.
-        _ = promise.object?.catch!(JSOneshotClosure { [weak self] arguments in
-            MainActor.assumeIsolated {
-                guard let self, arguments.first?.object?.name.string == "NotAllowedError" else { return }
-                SoundUnlock.needed()
-                self.video.object.muted = .boolean(true)
-                _ = self.video.object.play!()
-            }
-            return .undefined
-        })
+        SoundUnlock.play(video)
     }
 
     func pause() {
@@ -54,9 +49,7 @@ import JavaScriptKit
     }
 
     func clear() {
-        _ = video.object.pause!()
-        _ = video.object.removeAttribute!("src")
-        _ = video.object.load!()
+        video.emptyVideo()
         if let objectURL { _ = JSObject.global.URL.function!.revokeObjectURL!(objectURL) }
         objectURL = nil
     }

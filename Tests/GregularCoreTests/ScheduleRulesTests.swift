@@ -13,7 +13,7 @@ struct ScheduleRulesTests {
         #expect(ScheduleRules.rules(of: (any PinRule).self).count == 1)
         #expect(ScheduleRules.rules(of: (any CoverRule).self).count == 1)
         #expect(ScheduleRules.rules(of: (any ChannelRule).self).count == 1)
-        #expect(ScheduleRules.rules(of: (any LineupRule).self).count == 2)
+        #expect(ScheduleRules.rules(of: (any LineupRule).self).count == 3)
     }
 
     /// Two weeks of whole programmes, across many runs.
