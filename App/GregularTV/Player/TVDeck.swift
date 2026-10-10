@@ -7,8 +7,9 @@ import Observation
 /// through here, and `DeckSurface` shows it.
 ///
 /// Each item plays on the player its stream says (`MediaStream.Player`):
-/// Apple TV's own, an `AVQueuePlayer`, or VLC (`VLCItem`) for a file only
-/// VLC plays as it is. A VLC item has a VLC player of its own, so it opens
+/// VLC (`VLCItem`), or Apple TV's own, an `AVQueuePlayer` (which
+/// `ChannelPlayer` chooses: programmes VLC first, commercials Apple TV's
+/// own first). A VLC item has a VLC player of its own, so it opens
 /// and buffers, paused, while the item before it plays, as a queued
 /// AVFoundation item does.
 ///
@@ -71,7 +72,7 @@ import Observation
             }
             if let bufferAhead { item.preferredForwardBufferDuration = bufferAhead }
             return Item(.av(item))
-        case .fallback:
+        case .addOn:
             return Item(.vlc(VLCItem(url: url, from: start, to: end)))
         }
     }

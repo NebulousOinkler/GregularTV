@@ -16,8 +16,7 @@ public struct PlaybackSource: Sendable, Equatable {
 
     public let url: URL
     public let method: Method
-    /// The device's own player, or its fallback, which plays this file as
-    /// it is where the device's own would need it converted.
+    /// The device's own player, or the add-on player it has (VLC on Apple TV).
     public let player: MediaStream.Player
     /// Pass to `JellyfinClient.stopTranscoding` when leaving this item, so
     /// the server stops the transcode straight away rather than timing it out.
@@ -91,12 +90,12 @@ struct DeviceProfile: Encodable {
         let breakOnNonKeyFrames = true
     }
 
-    /// `PlayableFormats.CodecLimit`: what one video codec must be, beyond
+    /// `PlayableFormats.CodecLimit`: what a video codec must be, beyond
     /// its name, to play as it is (or be copied into a stream).
     struct CodecProfile: Encodable {
         struct Condition: Encodable {
             let condition = "EqualsAny"
-            /// "VideoProfile" or "VideoCodecTag".
+            /// "VideoProfile", "VideoCodecTag" or "VideoRangeType".
             let property: String
             /// The values allowed, separated by "|".
             let value: String
@@ -105,14 +104,14 @@ struct DeviceProfile: Encodable {
         }
 
         let type = "Video"
-        let codec: String
+        /// Left out for every codec.
+        let codec: String?
         let conditions: [Condition]
 
         init(_ limit: PlayableFormats.CodecLimit) {
             codec = limit.codec
-            conditions = [limit.profiles.map { Condition(property: "VideoProfile", value: $0.joined(separator: "|")) },
-                          limit.tags.map { Condition(property: "VideoCodecTag", value: $0.joined(separator: "|")) }]
-                .compactMap { $0 }
+            conditions = [("VideoProfile", limit.profiles), ("VideoCodecTag", limit.tags), ("VideoRangeType", limit.ranges)]
+                .compactMap { property, values in values.map { Condition(property: property, value: $0.joined(separator: "|")) } }
         }
     }
 

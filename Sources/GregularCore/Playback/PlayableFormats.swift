@@ -37,19 +37,24 @@ public struct PlayableFormats: Sendable, Equatable {
         return container.lowercased().split(separator: ",").contains { playable.contains(String($0)) }
     }
 
-    /// The forms of one video codec a player plays as it is.
+    /// The forms of a video codec a player plays as it is.
     public struct CodecLimit: Sendable, Equatable {
-        public let codec: String
+        /// The codec, or nil for every codec.
+        public let codec: String?
         /// Its profiles the player plays, such as "high", or nil for any.
         public let profiles: [String]?
         /// The tags (in the file) the player plays it under, such as "hvc1",
         /// or nil for any. A file with another tag is repackaged, not re-encoded.
         public let tags: [String]?
+        /// The picture ranges the player shows as they are, as media servers
+        /// name them (such as "SDR" or "HDR10"), or nil for any.
+        public let ranges: [String]?
 
-        public init(codec: String, profiles: [String]? = nil, tags: [String]? = nil) {
+        public init(codec: String?, profiles: [String]? = nil, tags: [String]? = nil, ranges: [String]? = nil) {
             self.codec = codec
             self.profiles = profiles
             self.tags = tags
+            self.ranges = ranges
         }
 
         /// 8-bit H.264, which Apple TV and every browser decode: 10-bit (High 10),
@@ -62,6 +67,10 @@ public struct PlayableFormats: Sendable, Equatable {
         public static func hevc(tags: [String]? = nil) -> CodecLimit {
             CodecLimit(codec: "hevc", profiles: ["main", "main 10"], tags: tags)
         }
+
+        /// Standard-range pictures only, in any codec: HDR10, HLG and Dolby
+        /// Vision are left to a player that shows them as they are.
+        public static let standardRange = CodecLimit(codec: nil, ranges: ["SDR"])
     }
 
     public init(name: String, containers: [String], videoCodecs: [String], audioCodecs: [String],
@@ -98,10 +107,15 @@ public struct PlayableFormats: Sendable, Equatable {
         audioFileContainers: ["mp3", "m4a", "mp4", "aac", "flac", "wav"],
         audioFileCodecs: ["mp3", "aac", "alac", "flac", "pcm_s16le", "pcm_s24le"])
 
-    /// VLC on Apple TV, the fallback for a file Apple TV's own player can't
-    /// play as it is: VLC plays it as it is (as Swiftfin's does), so the
-    /// server only sends it, with no conversion. Not AV1: no Apple TV decodes
-    /// it in hardware.
+    /// VLC on Apple TV, the player every programme it can take goes to
+    /// first, even one Apple TV's own player plays too: it plays the file
+    /// as it is (as Swiftfin's does), so the server only sends it. Apple
+    /// TV's own player takes the rest, anything VLC fails on, and
+    /// commercials first (`ChannelPlayer`).
+    ///
+    /// Not AV1: no Apple TV decodes it in hardware. Standard-range pictures
+    /// only: VLC shows HDR10 and Dolby Vision without HDR (the TV stays in
+    /// standard range), where Apple TV's own player shows them as they are.
     ///
     /// Only the containers and codecs a video library really holds. VLC
     /// reads whatever it's sent, and the rarer a format, the less its reader
@@ -116,6 +130,7 @@ public struct PlayableFormats: Sendable, Equatable {
         audioCodecs: ["aac", "ac3", "eac3", "alac", "flac", "mp3", "mp2", "mp1", "dts", "opus", "vorbis",
                       "wmalossless", "wmapro", "wmav1", "wmav2", "pcm_alaw", "pcm_mulaw", "pcm_bluray", "pcm_dvd",
                       "pcm_s16be", "pcm_s16le", "pcm_s24be", "pcm_s24le", "pcm_u8"],
+        codecLimits: [.standardRange],
         convertedVideoCodecs: ["h264"],
         convertedAudioCodecs: ["aac"],
         mostAudioChannels: 8)

@@ -55,13 +55,71 @@ struct ChannelPlayerDeckTests {
         player.stop()
     }
 
-    /// A stream the device's own player can't play, but its fallback can,
-    /// is queued for the fallback.
+    /// A stream for the device's add-on player is queued for it.
     @Test func theDeckPlaysEachStreamOnThePlayerItSays() async throws {
-        let player = try Fixture.surfer(streams: FakeStreams(player: .fallback)).player
+        let player = try Fixture.surfer(streams: FakeStreams(players: [.builtIn, .addOn])).player
         player.tune()
         let deck = try await Fixture.playingDeck(player)
-        #expect(deck.queue.first?.player == .fallback)
+        #expect(deck.queue.first?.player == .addOn)
+        player.stop()
+    }
+
+    /// A programme goes to the add-on player first. When that fails, it's
+    /// tried again at once on the device's own player, with no failure
+    /// shown; the next programme goes back to the add-on player.
+    @Test func whatTheAddOnPlayerFailsOnPlaysOnTheBuiltInOne() async throws {
+        let streams = FakeStreams(players: [.builtIn, .addOn])
+        // The next programme is asked for 30 seconds before this one ends: a few seconds from now.
+        let player = try Fixture.surfer(elapsed: 3600 - 38, streams: streams).player
+        player.start()
+        let deck = try await Fixture.playingDeck(player)
+        let failed = try #require(deck.queue.first)
+        #expect(failed.player == .addOn)
+        failed.hasFailed = true
+        try await waitUntil(3) { deck.queue.first.map { $0 !== failed && $0.player == .builtIn } ?? false }
+        #expect(!player.status.isFailed && streams.playersAsked == [[.addOn, .builtIn], [.builtIn]])
+        #expect(player.streamDescription?.contains("second-choice player") == true)
+
+        // The next programme, queued before this one ends, is the add-on player's again.
+        try await waitUntil(15) { streams.playersAsked.count == 3 }
+        #expect(streams.playersAsked.last == [.addOn, .builtIn])
+        player.stop()
+    }
+
+    /// A commercial goes to the device's own player first, which goes from
+    /// clip to clip by itself, so a break doesn't open an add-on player for
+    /// each. When that fails, the add-on player has it at once.
+    @Test func aCommercialTriesTheBuiltInPlayerFirst() async throws {
+        let film = MediaItem(id: "m1", kind: .movie, name: "Film", duration: 50 * 60)
+        let ads = (1...5).map { MediaItem(id: "ad\($0)", kind: .video, name: "Ad \($0)", duration: 60) }
+        // 10 seconds into the break after the film: the next clip is asked for 20 seconds from now.
+        let channels = try ChannelSchedule.testing([1], epoch: Date.now.addingTimeInterval(-(50 * 60 + 10)), padTo: 60,
+                                                   items: [film], ads: ads)
+        let streams = FakeStreams(players: [.builtIn, .addOn])
+        let surfer = ChannelSurfer(channels: channels, startingWith: channels[0], streams: streams,
+                                   preferences: AppPreferences.testing(), decks: FakeDeck.pair())
+        let player = surfer.player
+        player.start()
+        let deck = try await Fixture.playingDeck(player)
+        let failed = try #require(deck.queue.first)
+        #expect(player.airing?.isFiller == true && failed.player == .builtIn)
+        #expect(streams.playersAsked.first == [.builtIn, .addOn])
+        failed.hasFailed = true
+        try await waitUntil(3) { deck.queue.first.map { $0 !== failed && $0.player == .addOn } ?? false }
+        #expect(!player.status.isFailed && streams.playersAsked.contains([.addOn]))
+        player.stop()
+    }
+
+    /// With only its own player, there's nothing to switch to: a failure
+    /// is a failure, retried after a pause.
+    @Test func withOnePlayerAFailureIsRetriedAsBefore() async throws {
+        let streams = FakeStreams()
+        let player = try Fixture.surfer(streams: streams).player
+        player.start()
+        let deck = try await Fixture.playingDeck(player)
+        deck.queue.first?.hasFailed = true
+        try await waitUntil(3) { player.status.isFailed }
+        #expect(streams.playersAsked == [[.builtIn]])
         player.stop()
     }
 

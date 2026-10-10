@@ -70,14 +70,14 @@ What held up well:
   - Signing out revokes the token.
   - The README now says plainly that logs hold the token: keep them private, and sign out or remove the device to cancel it.
 
-### M5. The VLC fallback parsed almost any file — resolved
+### M5. VLC parsed almost any file — resolved
 - **Where:** `VLCItem`, `PlayableFormats.vlcOnAppleTV`, SwiftVLC 1.0.0 (exact version, pinned revision).
 - **Resolved:**
   - VLC is offered only common containers (MKV, WebM, AVI, MPEG-TS, MP4/MOV, WMV/ASF, MPEG, VOB, FLV, Ogg, 3GP) and the codecs a video library really holds. The rarest readers (H.261, H.263, Dirac, FLV1, MS-MPEG4 v1/v2, Nellymoser, Speex, AMR, WavPack) are dropped, so those files are converted by the server instead.
   - SwiftVLC's libVLC has no Lua, which was checked in the binary, so it runs no scripts on what it reads.
   - A test (`VLCSetupTests`) checks libVLC accepts the app's arguments (`--quiet`). Without that, it would silently start with its defaults, which log. The test caught that `--no-lua` isn't an option in this build.
   - **Certificates:** libVLC's TLS is its SecureTransport module, so certificates are checked against Apple's trust store. The app gives libVLC no dialog handler, so where VLC would ask "Accept certificate temporarily", the answer is no and the stream fails. This is documented in `VLCItem`.
-  - Keeping SwiftVLC current stays a maintenance task.
+  - Keeping SwiftVLC current stays a maintenance task. It matters more now that VLC plays first on Apple TV: it reads every file on its list, not just those AVFoundation can't play.
 
 ## Low
 

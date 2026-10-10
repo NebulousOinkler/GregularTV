@@ -15,16 +15,16 @@ public struct JellyfinClient: Sendable {
     public let credentials: Credentials
     /// What this device can play, for Jellyfin to choose between the file as it is and a conversion.
     public let formats: PlayableFormats
-    /// What the device's fallback player can play as it is, if it has one
-    /// (`MediaStream.Player.fallback`).
-    public let fallbackFormats: PlayableFormats?
+    /// What the device's add-on player plays as it is, if it has one
+    /// (`MediaStream.Player.addOn`).
+    public let addOnFormats: PlayableFormats?
     private let api: JellyfinAPI
 
     public init(credentials: Credentials, identity: ClientIdentity, formats: PlayableFormats,
-                fallbackFormats: PlayableFormats? = nil, transport: any HTTPTransport) {
+                addOnFormats: PlayableFormats? = nil, transport: any HTTPTransport) {
         self.credentials = credentials
         self.formats = formats
-        self.fallbackFormats = fallbackFormats
+        self.addOnFormats = addOnFormats
         api = JellyfinAPI(server: credentials.serverURL, identity: identity,
                           token: credentials.accessToken, transport: transport)
     }
@@ -77,31 +77,52 @@ public struct JellyfinClient: Sendable {
         return directPlayURL(itemID: item.id, source: source, playSessionID: nil, isSong: item.kind == .song)
     }
 
+    /// The device's players: its own, and the add-on if it has one.
+    public var players: [MediaStream.Player] {
+        addOnFormats == nil ? [.builtIn] : [.builtIn, .addOn]
+    }
+
     /// Asks Jellyfin how to play an item on this device, and returns the URL.
     ///
-    /// The device's own player plays the file as it is if it can. If it
-    /// can't, but the fallback player (`fallbackFormats`) can, the fallback
-    /// plays it as it is, so the server only sends the file. Otherwise the
-    /// server converts it for the device's own player.
-    /// - Parameter maxBitrate: the quality cap in bits per second (see `StreamingQuality`).
+    /// The first of `players` that plays the file as it is plays it so (the
+    /// add-on player only if the device has one). If none can, the server
+    /// converts it for the device's own player.
+    /// - Parameters:
+    ///   - maxBitrate: the quality cap in bits per second (see `StreamingQuality`).
+    ///   - players: the players to ask about, in order. A player the
+    ///     device hasn't got is skipped.
     public func playbackSource(
-        for itemID: String, maxBitrate: Int = StreamingQuality.maximumBitrate
+        for itemID: String, maxBitrate: Int = StreamingQuality.maximumBitrate,
+        players: [MediaStream.Player] = [.addOn, .builtIn]
     ) async throws -> PlaybackSource {
-        let (info, source) = try await playbackInfo(for: itemID, formats: formats, maxBitrate: maxBitrate)
-        if source.supportsDirectPlay {
-            return PlaybackSource(url: directPlayURL(itemID: itemID, source: source, playSessionID: info.playSessionId, isSong: false),
-                                  method: .directPlay, playSessionID: info.playSessionId)
+        var ownAnswer: (info: PlaybackInfoResponse, source: PlaybackInfoResponse.MediaSource)?
+        for player in players {
+            switch player {
+            case .addOn:
+                guard let addOnFormats,
+                      let answer = try? await playbackInfo(for: itemID, formats: addOnFormats, maxBitrate: maxBitrate),
+                      answer.source.supportsDirectPlay else { continue }
+                return directPlay(itemID, answer, on: .addOn)
+            case .builtIn:
+                let answer = try await playbackInfo(for: itemID, formats: formats, maxBitrate: maxBitrate)
+                if answer.source.supportsDirectPlay { return directPlay(itemID, answer, on: .builtIn) }
+                ownAnswer = answer
+            }
         }
-        if let fallbackFormats,
-           let fallback = try? await playbackInfo(for: itemID, formats: fallbackFormats, maxBitrate: maxBitrate),
-           fallback.source.supportsDirectPlay {
-            return PlaybackSource(url: directPlayURL(itemID: itemID, source: fallback.source, playSessionID: fallback.info.playSessionId, isSong: false),
-                                  method: .directPlay, player: .fallback, playSessionID: fallback.info.playSessionId)
+        let (info, source) = if let ownAnswer { ownAnswer } else {
+            try await playbackInfo(for: itemID, formats: formats, maxBitrate: maxBitrate)
         }
         if let transcodingURL = source.transcodingUrl, let url = serverRelativeURL(transcodingURL) {
             return PlaybackSource(url: url, method: .hls, playSessionID: info.playSessionId)
         }
         throw JellyfinError.noPlayableSource(itemID: itemID)
+    }
+
+    /// The original file of `itemID`, as `answer` has it, on `player`.
+    private func directPlay(_ itemID: String, _ answer: (info: PlaybackInfoResponse, source: PlaybackInfoResponse.MediaSource),
+                            on player: MediaStream.Player) -> PlaybackSource {
+        PlaybackSource(url: directPlayURL(itemID: itemID, source: answer.source, playSessionID: answer.info.playSessionId, isSong: false),
+                       method: .directPlay, player: player, playSessionID: answer.info.playSessionId)
     }
 
     /// What Jellyfin says about playing an item on a player that plays
@@ -250,8 +271,8 @@ extension JellyfinClient: OriginalFiles {
 }
 
 extension JellyfinClient: StreamSource {
-    public func stream(for itemID: String, maxBitrate: Int) async throws -> MediaStream {
-        try await playbackSource(for: itemID, maxBitrate: maxBitrate).mediaStream
+    public func stream(for itemID: String, maxBitrate: Int, players: [MediaStream.Player]) async throws -> MediaStream {
+        try await playbackSource(for: itemID, maxBitrate: maxBitrate, players: players).mediaStream
     }
 
     public func release(_ stream: MediaStream) async {

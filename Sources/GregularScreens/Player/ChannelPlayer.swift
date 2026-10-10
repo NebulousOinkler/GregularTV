@@ -48,8 +48,14 @@ import Observation
 ///   it holds (`StreamSource.keepAlive`): on screen, queued next, or
 ///   buffering behind a break. Not while paused, which can last hours:
 ///   resuming jumps to live, which the server can start afresh.
-/// - **Which player:** a stream says whether the device's own player or its
-///   fallback plays it (`MediaStream.player`), and the deck plays it there.
+/// - **Which player:** where the device has an add-on player (VLC on Apple
+///   TV), programmes go to it first, and commercials to the device's own
+///   player first, which goes straight from one clip to the next with no
+///   add-on player to open for each (`players(for:)`). A stream says which
+///   plays it (`MediaStream.player`), and the deck plays it there. When the
+///   first choice fails on an airing (it can't play it, the connection
+///   drops, or it stalls), the airing is tried again at once without it,
+///   for that airing only.
 /// - **Stalls:** if video hasn't moved for 30 s (for example, the server
 ///   can't transcode fast enough), it's treated as a failure and retried.
 /// - **Head start for re-encoding:** tuning into a programme the server has to
@@ -196,6 +202,9 @@ public final class ChannelPlayer {
     private var isPreparingNext = false
     /// The programme a fix applies to, and the cap it's playing at.
     private var fixedProgramme: (airing: Airing, cap: Int)?
+    /// The airing its first-choice player last failed on: it plays on its
+    /// second choice instead, every part of it (`players(for:)`).
+    private var firstChoiceFailed: Airing?
     /// When the current fixed programme started buffering, for stepping down again.
     private var bufferingSince: Date?
     /// The programme after the current commercial break, buffering in
@@ -233,6 +242,8 @@ public final class ChannelPlayer {
         let description: String
         /// The bitrate cap it was asked for.
         let cap: Int
+        /// The player it's on.
+        let player: MediaStream.Player
         /// The server re-encodes it, so tuning in mid-programme gets a head start.
         let reencodes: Bool
         /// Why the server converts it, if it does (for diagnostics).
@@ -702,9 +713,11 @@ public final class ChannelPlayer {
     }
 
     private func load(_ airing: Airing) async throws -> LoadedAiring {
-        let (source, cap) = airing.isFiller ? try await commercialSource(for: airing.item)
-                                            : try await programmeSource(for: airing)
-        let method = source.delivery == .original ? "direct play" : "streamed by the server"
+        let order = players(for: airing)
+        let (source, cap) = airing.isFiller ? try await commercialSource(for: airing.item, players: order)
+                                            : try await programmeSource(for: airing, players: order)
+        let method = (source.delivery == .original ? "direct play" : "streamed by the server")
+            + (isOnSecondChoice(airing) ? " · second-choice player, as the first failed" : "")
         let label = airing.isFiller ? "Commercial"
             : fixedProgramme.map({ $0.airing.isSameProgramme(as: airing) }) == true ? "This programme only"
             : quality == .auto ? "Auto" : quality.label
@@ -722,24 +735,40 @@ public final class ChannelPlayer {
                             unreleased: source,
                             description: "\(label) · up to \(Self.mbps(cap)) · \(method)",
                             cap: cap,
+                            player: source.player,
                             reencodes: source.reencodes,
                             conversionReasons: reasons)
     }
 
     /// Programmes use the viewer's quality setting, or the programme fix's cap.
-    private func programmeSource(for airing: Airing) async throws -> (MediaStream, cap: Int) {
+    private func programmeSource(for airing: Airing, players: [MediaStream.Player]) async throws -> (MediaStream, cap: Int) {
         let fixedCap = fixedProgramme.flatMap { $0.airing.isSameProgramme(as: airing) ? $0.cap : nil }
         let cap = if let fixedCap { fixedCap } else { await maxBitrate() }
-        return (try await streams.stream(for: airing.item.id, maxBitrate: cap), cap)
+        return (try await streams.stream(for: airing.item.id, maxBitrate: cap, players: players), cap)
     }
 
     /// Commercials never start a speed test, and are asked for with no
     /// bitrate cap (the quality setting doesn't apply), so a clip is never
     /// re-encoded just for its bitrate. One the device can't play as it is
     /// is converted by the server, as a programme is.
-    private func commercialSource(for item: MediaItem) async throws -> (MediaStream, cap: Int) {
+    private func commercialSource(for item: MediaItem, players: [MediaStream.Player]) async throws -> (MediaStream, cap: Int) {
         let cap = StreamingQuality.maximumBitrate
-        return (try await streams.stream(for: item.id, maxBitrate: cap), cap)
+        return (try await streams.stream(for: item.id, maxBitrate: cap, players: players), cap)
+    }
+
+    /// The players to ask about for `airing`, in order, of the device's own:
+    /// for a commercial, the built-in player first, which goes from one clip
+    /// to the next by itself, so a break doesn't open an add-on player for
+    /// each; for anything else, the add-on player first. Without the first
+    /// once it has failed on the airing.
+    private func players(for airing: Airing) -> [MediaStream.Player] {
+        let order: [MediaStream.Player] = airing.isFiller ? [.builtIn, .addOn] : [.addOn, .builtIn]
+        let available = order.filter(streams.players.contains)
+        return isOnSecondChoice(airing) ? Array(available.dropFirst()) : available
+    }
+
+    private func isOnSecondChoice(_ airing: Airing) -> Bool {
+        firstChoiceFailed?.isSameProgramme(as: airing) ?? false
     }
 
     /// The bitrate cap for the current quality setting.
@@ -819,6 +848,13 @@ public final class ChannelPlayer {
             stop()
             onUnauthorized?()
             return
+        }
+        // Its first-choice player failed on it: straight back, on the second.
+        // Not a failure of the server's, so no backoff.
+        let order = players(for: airing)
+        if let current, current.airing == airing, !isOnSecondChoice(airing), order.count > 1, current.player == order[0] {
+            firstChoiceFailed = airing
+            return tune()
         }
         let failedReencode = current.map { $0.airing == airing && $0.reencodes && !airing.isFiller } ?? false
         let failedCap = current?.cap
