@@ -66,36 +66,50 @@ import Testing
 /// A server that plays everything as the original file, except the items
 /// in `converting`, which it re-encodes, and (with `streaming`) everything
 /// else, which it repackages; each stream it serves itself is in a session
-/// of its own. Its speed test says `measured`. It records the cap each
-/// stream was asked for, and each stream it was told is still wanted.
+/// of its own. The device has `players`, each of which plays every original
+/// file, except those in `addOnOnly`, which only the add-on player does
+/// (any other has them repackaged). Its speed test says `measured`. It records the cap each stream was
+/// asked for, the players asked about for it, and each stream it was told
+/// is still wanted.
 final class FakeStreams: StreamSource, @unchecked Sendable {
     private let lock = NSLock()
     private let measured: Int
     private let converting: Set<String>
     private let streaming: Bool
-    private let player: MediaStream.Player
+    private let addOnOnly: Set<String>
+    let players: [MediaStream.Player]
     private var asked: [Int] = []
+    private var orders: [[MediaStream.Player]] = []
     private var tests = 0
     private var kept: [String] = []
 
-    init(measured: Int = 50_000_000, converting: Set<String> = [], streaming: Bool = false, player: MediaStream.Player = .builtIn) {
+    init(measured: Int = 50_000_000, converting: Set<String> = [], streaming: Bool = false,
+         players: [MediaStream.Player] = [.builtIn], addOnOnly: Set<String> = []) {
         self.measured = measured
         self.converting = converting
         self.streaming = streaming
-        self.player = player
+        self.addOnOnly = addOnOnly
+        self.players = players
     }
 
     var caps: [Int] { lock.withLock { asked } }
+    /// For each stream asked for, the players asked about, in order.
+    var playersAsked: [[MediaStream.Player]] { lock.withLock { orders } }
     var speedTests: Int { lock.withLock { tests } }
     /// The sessions kept going, in order.
     var keptAlive: [String] { lock.withLock { kept } }
 
-    func stream(for itemID: String, maxBitrate: Int) async throws -> MediaStream {
-        lock.withLock { asked.append(maxBitrate) }
+    func stream(for itemID: String, maxBitrate: Int, players: [MediaStream.Player]) async throws -> MediaStream {
+        lock.withLock {
+            asked.append(maxBitrate)
+            orders.append(players)
+        }
         let url = URL(string: "https://tv.invalid/\(itemID)")!
         let reencodes = converting.contains(itemID)
-        let served = reencodes || streaming
-        return MediaStream(url: url, delivery: served ? .converted : .original, player: player, reencodes: reencodes,
+        let asItIs = players.first { $0 == .addOn || !addOnOnly.contains(itemID) }
+        let served = reencodes || streaming || asItIs == nil
+        return MediaStream(url: url, delivery: served ? .converted : .original, player: served ? .builtIn : asItIs ?? .builtIn,
+                           reencodes: reencodes,
                            sessionID: served ? "session-\(itemID)" : nil)
     }
     func release(_ stream: MediaStream) async {}

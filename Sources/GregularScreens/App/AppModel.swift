@@ -110,17 +110,18 @@ public final class AppModel {
     ///   - deviceName: the kind of device, as Jellyfin lists it, such as
     ///     "Apple TV" (never the name the user gave their device).
     ///   - formats: what the device's player can play.
-    ///   - fallbackFormats: what the device's fallback player can play as it
-    ///     is (VLC on Apple TV), for files its own player can't; nil if it has none.
+    ///   - addOnFormats: what the device's add-on player plays as it is (VLC
+    ///     on Apple TV), for files its own player can't, or when the viewer
+    ///     asks for it; nil if it has none.
     ///   - transport: the platform's network path (`HTTPTransport`).
     ///   - makeDecks: the two video decks for each channel player
     ///     (see `PlayerDeck`): AVFoundation on Apple TV.
     ///   - specialModes: the special modes the front end has screens for; none unless given.
-    public init(deviceName: String, formats: PlayableFormats, fallbackFormats: PlayableFormats? = nil,
+    public init(deviceName: String, formats: PlayableFormats, addOnFormats: PlayableFormats? = nil,
                 transport: any HTTPTransport, store: any CredentialStore,
                 preferences: AppPreferences, makeDecks: @escaping @MainActor () -> [any PlayerDeck],
                 specialModes: SpecialModeRegistry = SpecialModeRegistry()) {
-        access = ServerAccess(deviceName: deviceName, formats: formats, fallbackFormats: fallbackFormats, transport: transport)
+        access = ServerAccess(deviceName: deviceName, formats: formats, addOnFormats: addOnFormats, transport: transport)
         self.makeDecks = makeDecks
         self.specialModes = specialModes
         self.store = store
@@ -146,11 +147,11 @@ public final class AppModel {
     #if canImport(Darwin)
     /// On Apple platforms: requests go through URLSession, and preferences
     /// are kept in UserDefaults.
-    public convenience init(deviceName: String, formats: PlayableFormats, fallbackFormats: PlayableFormats? = nil,
+    public convenience init(deviceName: String, formats: PlayableFormats, addOnFormats: PlayableFormats? = nil,
                             store: any CredentialStore, preferences: AppPreferences = AppPreferences(),
                             makeDecks: @escaping @MainActor () -> [any PlayerDeck],
                             specialModes: SpecialModeRegistry = SpecialModeRegistry()) {
-        self.init(deviceName: deviceName, formats: formats, fallbackFormats: fallbackFormats,
+        self.init(deviceName: deviceName, formats: formats, addOnFormats: addOnFormats,
                   transport: URLSessionTransport.shared, store: store, preferences: preferences, makeDecks: makeDecks,
                   specialModes: specialModes)
     }

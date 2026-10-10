@@ -15,11 +15,11 @@ extension AppModel {
     static func forLaunch() -> AppModel {
         #if DEBUG
         if let demo = DemoCredentials.fromLaunchArguments() {
-            return AppModel(deviceName: deviceName, formats: .appleTV, fallbackFormats: .vlcOnAppleTV, store: demo,
+            return AppModel(deviceName: deviceName, formats: .appleTV, addOnFormats: .vlcOnAppleTV, store: demo,
                             makeDecks: TVDeck.pair, specialModes: SpecialModeViews.all.registry)
         }
         #endif
-        return AppModel(deviceName: deviceName, formats: .appleTV, fallbackFormats: .vlcOnAppleTV, store: KeychainStore(),
+        return AppModel(deviceName: deviceName, formats: .appleTV, addOnFormats: .vlcOnAppleTV, store: KeychainStore(),
                         makeDecks: TVDeck.pair, specialModes: SpecialModeViews.all.registry)
     }
 }

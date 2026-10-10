@@ -55,13 +55,65 @@ struct ChannelPlayerDeckTests {
         player.stop()
     }
 
-    /// A stream the device's own player can't play, but its fallback can,
-    /// is queued for the fallback.
+    /// A stream the device's own player can't play, but its add-on player
+    /// can, is queued for the add-on player, and Settings shows it on there.
     @Test func theDeckPlaysEachStreamOnThePlayerItSays() async throws {
-        let player = try Fixture.surfer(streams: FakeStreams(player: .fallback)).player
+        let streams = FakeStreams(players: [.builtIn, .addOn], addOnOnly: ["m1", "m2", "m3"])
+        let player = try Fixture.surfer(streams: streams).player
         player.tune()
         let deck = try await Fixture.playingDeck(player)
-        #expect(deck.queue.first?.player == .fallback)
+        #expect(deck.queue.first?.player == .addOn && streams.playersAsked == [[.builtIn, .addOn]])
+        #expect(player.programmeIsOnAddOn && !player.prefersAddOn)
+        #expect(!player.setPrefersAddOn(false), "Off only undoes asking: it stays on the add-on player")
+        player.stop()
+    }
+
+    /// *Play in VLC*: the programme on now restarts on the add-on player,
+    /// though the device's own plays it too; off, it goes back.
+    @Test func theViewerCanAskForTheAddOnPlayer() async throws {
+        let streams = FakeStreams(players: [.builtIn, .addOn])
+        let player = try Fixture.surfer(streams: streams).player
+        player.start()
+        var deck = try await Fixture.playingDeck(player)
+        #expect(deck.queue.first?.player == .builtIn && !player.programmeIsOnAddOn && player.hasAddOnPlayer)
+
+        #expect(player.setPrefersAddOn(true))
+        try await waitUntil(3) { (player.decks[player.activeIndex] as? FakeDeck)?.queue.first?.player == .addOn }
+        #expect(streams.playersAsked.last == [.addOn, .builtIn] && player.programmeIsOnAddOn && player.prefersAddOn)
+        #expect(!player.setPrefersAddOn(true), "Already on")
+
+        #expect(player.setPrefersAddOn(false))
+        try await waitUntil(3) { (player.decks[player.activeIndex] as? FakeDeck)?.queue.first?.player == .builtIn }
+        deck = try await Fixture.playingDeck(player)
+        #expect(deck.queue.first?.player == .builtIn && !player.programmeIsOnAddOn)
+
+        // Changing channel goes back to the usual choice.
+        #expect(player.setPrefersAddOn(true))
+        player.switchTo(player.schedule)
+        #expect(!player.prefersAddOn)
+        player.stop()
+    }
+
+    /// Asked for, a programme the add-on player can't play as it is stays
+    /// with the device's own player, and Settings says the switch is off.
+    @Test func whatTheAddOnPlayerCantPlayStaysPut() async throws {
+        let streams = FakeStreams(converting: ["m1", "m2", "m3"], players: [.builtIn, .addOn])
+        let player = try Fixture.surfer(streams: streams).player
+        player.start()
+        _ = try await Fixture.playingDeck(player)
+        #expect(player.setPrefersAddOn(true))
+        try await waitUntil(5) { streams.playersAsked.count == 2 && player.status == .playing }
+        let deck = try #require(player.decks[player.activeIndex] as? FakeDeck)
+        #expect(deck.queue.first?.player == .builtIn && player.prefersAddOn && !player.programmeIsOnAddOn)
+        player.stop()
+    }
+
+    /// A device with only its own player has nothing to switch to.
+    @Test func withOnePlayerThereIsNoAddOnToAskFor() async throws {
+        let player = try Fixture.surfer().player
+        player.tune()
+        _ = try await Fixture.playingDeck(player)
+        #expect(!player.hasAddOnPlayer && !player.setPrefersAddOn(true) && !player.programmeIsOnAddOn)
         player.stop()
     }
 

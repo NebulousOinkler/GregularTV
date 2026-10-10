@@ -42,6 +42,14 @@ struct SettingsView: View {
             if let programme = player.fixableProgramme?.item.displayTitle {
                 SettingsRows.section(SettingsText.trouble(with: programme), footer: [SettingsText.troubleNote]) {
                     ForEach(SettingsText.fixes, id: \.title) { fixRow($0.fix, $0.title, detail: $0.detail) }
+                    if player.hasAddOnPlayer {
+                        let isOn = player.programmeIsOnAddOn
+                        SettingsRows.row(SettingsText.playInVLC,
+                                         detail: SettingsText.playInVLCDetail(isOn: isOn, asked: player.prefersAddOn),
+                                         value: SettingsText.onOff(isOn)) {
+                            if player.setPrefersAddOn(!isOn) { dismiss() }
+                        }
+                    }
                 }
             }
 

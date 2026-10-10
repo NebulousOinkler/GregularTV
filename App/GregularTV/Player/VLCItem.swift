@@ -2,9 +2,10 @@ import Foundation
 import GregularScreens
 import SwiftVLC
 
-/// An item a `TVDeck` plays on VLC (`MediaStream.Player.fallback`): a file
+/// An item a `TVDeck` plays on VLC (`MediaStream.Player.addOn`): a file
 /// Apple TV's own player can't play as it is, which VLC plays as it is, so
-/// the server only sends the file.
+/// the server only sends the file; or one the viewer asked VLC to play
+/// (*Play in VLC*, in Settings).
 ///
 /// It has a VLC player of its own. It opens, paused, as soon as its picture
 /// is on screen (`DeckSurface`, even hidden behind another): VLC draws only

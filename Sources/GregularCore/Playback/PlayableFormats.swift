@@ -100,8 +100,9 @@ public struct PlayableFormats: Sendable, Equatable {
 
     /// VLC on Apple TV, the fallback for a file Apple TV's own player can't
     /// play as it is: VLC plays it as it is (as Swiftfin's does), so the
-    /// server only sends it, with no conversion. Not AV1: no Apple TV decodes
-    /// it in hardware.
+    /// server only sends it, with no conversion. It's asked about first for
+    /// a programme the viewer asks to play in VLC (Settings). Not AV1: no
+    /// Apple TV decodes it in hardware.
     ///
     /// Only the containers and codecs a video library really holds. VLC
     /// reads whatever it's sent, and the rarer a format, the less its reader
