@@ -4,7 +4,7 @@ import GregularCore
 /// One video player with its own picture on screen, playing a queue of
 /// items back to back. This is the only way `ChannelPlayer` touches actual
 /// video: Apple TV provides it with `AVQueuePlayer`, and VLC for the items
-/// its stream says the fallback player plays (`TVDeck` in the app); the
+/// its stream says the add-on player plays (`TVDeck` in the app); the
 /// web version with `<video>` elements.
 ///
 /// `ChannelPlayer` uses two decks: one on screen, and one behind it buffering
@@ -13,7 +13,7 @@ import GregularCore
     /// An item that plays `url` from `start` seconds into it and stops at
     /// `end`. It may be queued on either deck, but only on one.
     /// - Parameters:
-    ///   - player: the device's own player, or its fallback, as the stream says.
+    ///   - player: the device's own player, or its add-on player, as the stream says.
     ///   - bufferAhead: how far ahead to buffer, or nil for the default.
     func makeItem(url: URL, on player: MediaStream.Player, from start: TimeInterval, to end: TimeInterval,
                   bufferAhead: TimeInterval?) -> any PlayerItem

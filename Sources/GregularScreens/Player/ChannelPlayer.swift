@@ -49,7 +49,10 @@ import Observation
 ///   buffering behind a break. Not while paused, which can last hours:
 ///   resuming jumps to live, which the server can start afresh.
 /// - **Which player:** a stream says whether the device's own player or its
-///   fallback plays it (`MediaStream.player`), and the deck plays it there.
+///   add-on player plays it (`MediaStream.player`), and the deck plays it
+///   there. The device's own comes first, unless the viewer asks for the
+///   add-on player for the programme on now (`setPrefersAddOn(_:)`, *Play in
+///   VLC* on Apple TV).
 /// - **Stalls:** if video hasn't moved for 30 s (for example, the server
 ///   can't transcode fast enough), it's treated as a failure and retried.
 /// - **Head start for re-encoding:** tuning into a programme the server has to
@@ -163,6 +166,9 @@ public final class ChannelPlayer {
             if let airing, !airing.isFiller, let fixed = fixedProgramme, !fixed.airing.isSameProgramme(as: airing) {
                 clearProgrammeFix()
             }
+            if let airing, !airing.isFiller, let preferred = addOnFirst, !preferred.isSameProgramme(as: airing) {
+                addOnFirst = nil
+            }
         }
     }
     /// The fix in use for the programme on now.
@@ -196,6 +202,8 @@ public final class ChannelPlayer {
     private var isPreparingNext = false
     /// The programme a fix applies to, and the cap it's playing at.
     private var fixedProgramme: (airing: Airing, cap: Int)?
+    /// The programme the viewer asked the add-on player to play, every part of it.
+    private var addOnFirst: Airing?
     /// When the current fixed programme started buffering, for stepping down again.
     private var bufferingSince: Date?
     /// The programme after the current commercial break, buffering in
@@ -233,6 +241,8 @@ public final class ChannelPlayer {
         let description: String
         /// The bitrate cap it was asked for.
         let cap: Int
+        /// The player it's on.
+        let player: MediaStream.Player
         /// The server re-encodes it, so tuning in mid-programme gets a head start.
         let reencodes: Bool
         /// Why the server converts it, if it does (for diagnostics).
@@ -295,6 +305,7 @@ public final class ChannelPlayer {
         self.schedule = schedule
         consecutiveFailures = 0   // a new channel starts with the shortest retry wait
         clearProgrammeFix()
+        addOnFirst = nil
         tune()
     }
 
@@ -314,6 +325,38 @@ public final class ChannelPlayer {
         }
         programmeFix = fix
         tune()
+    }
+
+    /// The device has an add-on player (VLC on Apple TV) to offer.
+    public var hasAddOnPlayer: Bool { streams.players.contains(.addOn) }
+
+    /// The viewer asked for the programme on now on the add-on player.
+    public var prefersAddOn: Bool {
+        guard let programme = fixableProgramme, let addOnFirst else { return false }
+        return addOnFirst.isSameProgramme(as: programme)
+    }
+
+    /// The programme on now is on the add-on player: chosen for it, or
+    /// asked for and still loading.
+    public var programmeIsOnAddOn: Bool {
+        guard let programme = fixableProgramme else { return false }
+        if let current, current.airing.isSameProgramme(as: programme) { return current.player == .addOn }
+        return prefersAddOn
+    }
+
+    /// Asks for the programme on now on the add-on player first, or no
+    /// longer, and restarts it. On, a file the add-on player can't play as
+    /// it is stays with the device's own; off goes back to the usual choice,
+    /// which may be the add-on player all the same. Until the programme
+    /// ends, or the channel changes. False if nothing changes: no programme
+    /// on, no add-on player, or already so.
+    @discardableResult
+    public func setPrefersAddOn(_ on: Bool) -> Bool {
+        guard let programme = fixableProgramme, hasAddOnPlayer, on != prefersAddOn else { return false }
+        if on, programmeIsOnAddOn { return false }
+        addOnFirst = on ? programme : nil
+        tune()
+        return true
     }
 
     private func clearProgrammeFix() {
@@ -702,8 +745,9 @@ public final class ChannelPlayer {
     }
 
     private func load(_ airing: Airing) async throws -> LoadedAiring {
-        let (source, cap) = airing.isFiller ? try await commercialSource(for: airing.item)
-                                            : try await programmeSource(for: airing)
+        let order = players(for: airing)
+        let (source, cap) = airing.isFiller ? try await commercialSource(for: airing.item, players: order)
+                                            : try await programmeSource(for: airing, players: order)
         let method = source.delivery == .original ? "direct play" : "streamed by the server"
         let label = airing.isFiller ? "Commercial"
             : fixedProgramme.map({ $0.airing.isSameProgramme(as: airing) }) == true ? "This programme only"
@@ -722,24 +766,32 @@ public final class ChannelPlayer {
                             unreleased: source,
                             description: "\(label) · up to \(Self.mbps(cap)) · \(method)",
                             cap: cap,
+                            player: source.player,
                             reencodes: source.reencodes,
                             conversionReasons: reasons)
     }
 
     /// Programmes use the viewer's quality setting, or the programme fix's cap.
-    private func programmeSource(for airing: Airing) async throws -> (MediaStream, cap: Int) {
+    private func programmeSource(for airing: Airing, players: [MediaStream.Player]) async throws -> (MediaStream, cap: Int) {
         let fixedCap = fixedProgramme.flatMap { $0.airing.isSameProgramme(as: airing) ? $0.cap : nil }
         let cap = if let fixedCap { fixedCap } else { await maxBitrate() }
-        return (try await streams.stream(for: airing.item.id, maxBitrate: cap), cap)
+        return (try await streams.stream(for: airing.item.id, maxBitrate: cap, players: players), cap)
     }
 
     /// Commercials never start a speed test, and are asked for with no
     /// bitrate cap (the quality setting doesn't apply), so a clip is never
     /// re-encoded just for its bitrate. One the device can't play as it is
     /// is converted by the server, as a programme is.
-    private func commercialSource(for item: MediaItem) async throws -> (MediaStream, cap: Int) {
+    private func commercialSource(for item: MediaItem, players: [MediaStream.Player]) async throws -> (MediaStream, cap: Int) {
         let cap = StreamingQuality.maximumBitrate
-        return (try await streams.stream(for: item.id, maxBitrate: cap), cap)
+        return (try await streams.stream(for: item.id, maxBitrate: cap, players: players), cap)
+    }
+
+    /// The players to ask about for `airing`, in order: the device's own
+    /// first, unless the viewer asked for the add-on player for it.
+    private func players(for airing: Airing) -> [MediaStream.Player] {
+        let order: [MediaStream.Player] = addOnFirst?.isSameProgramme(as: airing) == true ? [.addOn, .builtIn] : [.builtIn, .addOn]
+        return order.filter(streams.players.contains)
     }
 
     /// The bitrate cap for the current quality setting.

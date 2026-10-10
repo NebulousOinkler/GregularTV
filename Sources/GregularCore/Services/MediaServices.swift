@@ -44,9 +44,13 @@ public protocol OriginalFiles: Sendable {
 
 /// Turns a scheduled item into something a player can play.
 public protocol StreamSource: Sendable {
+    /// The players the device has: the built-in one, and an add-on, if it has one.
+    var players: [MediaStream.Player] { get }
+
     /// How to play `itemID`, at no more than `maxBitrate` bits per second
-    /// (see `StreamingQuality`).
-    func stream(for itemID: String, maxBitrate: Int) async throws -> MediaStream
+    /// (see `StreamingQuality`): as it is, on the first of `players` (in
+    /// order) that plays it so, or else converted for the built-in player.
+    func stream(for itemID: String, maxBitrate: Int, players: [MediaStream.Player]) async throws -> MediaStream
 
     /// Lets the server stop any work it's doing for `stream` (such as a
     /// transcode) now that the player is finished with it.
@@ -76,10 +80,11 @@ public struct MediaStream: Sendable, Equatable {
     public enum Player: Sendable, Equatable {
         /// The platform's own: AVFoundation on Apple TV, `<video>` in a browser.
         case builtIn
-        /// The device's fallback player, for a file its own can't play as it
-        /// is but the fallback can (VLC on Apple TV), so the server needn't
-        /// convert it.
-        case fallback
+        /// A player the app brings with it (VLC on Apple TV), where it has
+        /// one: for files the platform's own can't play as they are, so the
+        /// server needn't convert them, or any it plays as they are, when
+        /// the viewer asks for it.
+        case addOn
     }
 
     public let url: URL

@@ -16,8 +16,7 @@ public struct PlaybackSource: Sendable, Equatable {
 
     public let url: URL
     public let method: Method
-    /// The device's own player, or its fallback, which plays this file as
-    /// it is where the device's own would need it converted.
+    /// The device's own player, or the add-on player it has (VLC on Apple TV).
     public let player: MediaStream.Player
     /// Pass to `JellyfinClient.stopTranscoding` when leaving this item, so
     /// the server stops the transcode straight away rather than timing it out.

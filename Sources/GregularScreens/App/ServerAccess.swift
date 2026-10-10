@@ -9,8 +9,8 @@ struct ServerAccess: Sendable {
     /// The kind of device, such as "Apple TV".
     let deviceName: String
     let formats: PlayableFormats
-    /// What the device's fallback player plays as it is, if it has one.
-    let fallbackFormats: PlayableFormats?
+    /// What the device's add-on player plays as it is, if it has one.
+    let addOnFormats: PlayableFormats?
     let transport: any HTTPTransport
 
     /// A server being signed in to: a device ID of its own (`ClientIdentity.forSignIn`).
@@ -24,7 +24,7 @@ struct ServerAccess: Sendable {
     }
 
     func client(for credentials: Credentials) -> JellyfinClient {
-        JellyfinClient(credentials: credentials, identity: identity(for: credentials), formats: formats, fallbackFormats: fallbackFormats,
+        JellyfinClient(credentials: credentials, identity: identity(for: credentials), formats: formats, addOnFormats: addOnFormats,
                        transport: transport)
     }
 

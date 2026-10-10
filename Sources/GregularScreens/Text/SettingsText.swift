@@ -28,6 +28,20 @@ public enum SettingsText {
         (.standard, "Standard", "Back to your streaming quality setting."),
     ]
 
+    /// Apple TV's switch for playing the programme on now in VLC.
+    public static let playInVLC = "Play in VLC"
+
+    /// What the switch does, by whether VLC is playing the programme and
+    /// whether the viewer asked for it.
+    public static func playInVLCDetail(isOn: Bool, asked: Bool) -> String {
+        switch (isOn, asked) {
+        case (true, true): "On for this programme. Off goes back to Apple TV's own player, if it can play the file as it is."
+        case (true, false): "Apple TV's own player can't play this file as it is, so VLC already is."
+        case (false, true): "VLC can't play this file as it is, so Apple TV's own player has it."
+        case (false, false): "Restarts it in VLC, if VLC can play the file as it is."
+        }
+    }
+
     // MARK: Schedule code
 
     public static let scheduleCode = "Schedule code"
