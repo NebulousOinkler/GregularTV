@@ -104,6 +104,8 @@ public struct MediaStream: Sendable, Equatable {
 
         /// The server streams it, rather than sending the file.
         public var isStreamed: Bool { self != .original }
+        /// The server converts it (its sound or its video): it has to keep up.
+        public var isConverted: Bool { self == .soundConverted || self == .reencoded }
     }
 
     /// Which of the device's players plays it.

@@ -45,15 +45,15 @@ struct ProgrammeSettingsTests {
         #expect(settings.fix == nil && !settings.stepDownAgain(), "Only Step Down steps down again")
     }
 
-    /// Re-encoding trouble: 720p first, then a step lower each time.
+    /// Re-encoding trouble: 720p first, then a step lower each time; nothing below the lowest.
     @Test func reencodingTroubleAsksForLessEachTime() {
         var settings = ProgrammeSettings(programme: film)
-        settings.askForLessReencoding(from: 20_000_000)
-        #expect(settings.fix?.kind == .hd720 && settings.fix?.cap == 4_000_000)
-        settings.askForLessReencoding(from: 4_000_000)
-        #expect(settings.fix?.kind == .stepDown && settings.fix?.cap == 1_500_000)
-        settings.askForLessReencoding(from: 1_500_000)
-        #expect(settings.fix?.cap == 1_500_000, "No lower than the lowest")
+        let first = settings.askForLessReencoding(from: 20_000_000)
+        #expect(first && settings.fix?.kind == .hd720 && settings.fix?.cap == 4_000_000)
+        let second = settings.askForLessReencoding(from: 4_000_000)
+        #expect(second && settings.fix?.kind == .stepDown && settings.fix?.cap == 1_500_000)
+        let third = settings.askForLessReencoding(from: 1_500_000)
+        #expect(!third && settings.fix?.cap == 1_500_000, "Nothing less to ask for")
     }
 
     /// A test run while video plays only raises Auto's cap; one at the maximum is no cap.
@@ -88,17 +88,25 @@ struct ProgrammeSettingsTests {
         #expect(settings.prefersAddOn)
     }
 
-    /// Sound conversion trouble: stereo, never a lower bitrate; then nothing left.
-    @Test func soundTroubleAsksForStereo() {
+    /// Sound conversion trouble: stereo, then a head start, never a lower bitrate; then nothing left.
+    @Test func soundTroubleAsksForStereoThenAHeadStart() {
         var settings = ProgrammeSettings(programme: film)
         let first = settings.askForLessSoundWork(offersStereo: true)
-        #expect(first && settings.stereoSound && !settings.prefersAddOn)
+        #expect(first && settings.stereoSound && !settings.soundHeadStart && !settings.prefersAddOn)
         let second = settings.askForLessSoundWork(offersStereo: true)
-        #expect(!second)
+        #expect(second && settings.soundHeadStart)
+        let third = settings.askForLessSoundWork(offersStereo: true)
+        #expect(!third)
         #expect(settings.cap(at: .auto) == StreamingQuality.maximumBitrate, "Never a lower bitrate")
-        var stereoOnly = ProgrammeSettings(programme: film)
-        let nothing = stereoOnly.askForLessSoundWork(offersStereo: false)
-        #expect(!nothing)
+    }
+
+    /// With no surround to mix down (a browser), the head start comes first.
+    @Test func withoutSurroundTheHeadStartComesFirst() {
+        var settings = ProgrammeSettings(programme: film)
+        let first = settings.askForLessSoundWork(offersStereo: false)
+        #expect(first && settings.soundHeadStart && !settings.stereoSound)
+        let second = settings.askForLessSoundWork(offersStereo: false)
+        #expect(!second)
     }
 
     @Test func aQualityChangeKeepsStereoSound() {

@@ -12,15 +12,18 @@ import Testing
         let player: MediaStream.Player
         let start: TimeInterval
         let end: TimeInterval
+        /// How far ahead the player was asked to buffer, or nil for its default.
+        let bufferAhead: TimeInterval?
         var hasFailed = false
         var failure: (any Error)?
         var bufferedAhead: TimeInterval = 60
         var bufferedInAll: TimeInterval = 60
-        init(url: URL, player: MediaStream.Player, start: TimeInterval, end: TimeInterval) {
+        init(url: URL, player: MediaStream.Player, start: TimeInterval, end: TimeInterval, bufferAhead: TimeInterval?) {
             self.url = url
             self.player = player
             self.start = start
             self.end = end
+            self.bufferAhead = bufferAhead
         }
     }
 
@@ -35,7 +38,7 @@ import Testing
 
     func makeItem(url: URL, on player: MediaStream.Player, from start: TimeInterval, to end: TimeInterval,
                   bufferAhead: TimeInterval?) -> any PlayerItem {
-        Item(url: url, player: player, start: start, end: end)
+        Item(url: url, player: player, start: start, end: end, bufferAhead: bufferAhead)
     }
 
     var currentItem: (any PlayerItem)? { queue.first }
@@ -50,6 +53,8 @@ import Testing
         if pausesAtItemEnd { state = .paused } else { advance() }
     }
     func pause() { state = .paused }
+    /// Runs out of video while playing, until it's played or paused again.
+    func startBuffering() { state = .waiting }
     func seek(to seconds: TimeInterval) {
         seeks.append(seconds)
         position = seconds
