@@ -752,7 +752,12 @@ public final class ChannelPlayer {
         let order = players(for: airing)
         let (source, cap) = airing.isFiller ? try await commercialSource(for: airing.item, players: order)
                                             : try await programmeSource(for: airing, players: order)
-        let method = source.delivery == .original ? "direct play" : "streamed by the server"
+        let method = switch source.delivery {
+        case .original: "direct play"
+        case .repackaged: "repackaged by the server"
+        case .soundConverted: "sound converted by the server"
+        case .reencoded: "re-encoded by the server"
+        }
         let label = airing.isFiller ? "Commercial"
             : settings(for: airing).fix != nil ? "This programme only"
             : quality == .auto ? "Auto" : quality.label

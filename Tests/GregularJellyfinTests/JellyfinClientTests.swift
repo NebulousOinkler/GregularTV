@@ -231,7 +231,7 @@ struct JellyfinPlaybackTests {
         let url = try #require(URL(string: "https://tv.invalid/master.m3u8?TranscodeReasons=ContainerNotSupported,AudioCodecNotSupported"))
         let stream = PlaybackSource(url: url, method: .hls, playSessionID: "p").mediaStream
         #expect(stream.conversionReasons == ["container not supported", "audio codec not supported"])
-        #expect(!stream.reencodes && stream.delivery == .converted && stream.sessionID == "p")
+        #expect(!stream.reencodes && stream.delivery == .soundConverted && stream.sessionID == "p")
     }
 
     @Test func noSourcesIsAnError() async {

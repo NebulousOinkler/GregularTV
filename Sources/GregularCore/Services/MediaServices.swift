@@ -69,11 +69,21 @@ public protocol StreamSource: Sendable {
 
 /// A playable stream for one item.
 public struct MediaStream: Sendable, Equatable {
+    /// How the server sends it, from no work to the most.
     public enum Delivery: Sendable, Equatable {
         /// The original file, played as it is.
         case original
-        /// Streamed by the server: repackaged, or converted.
-        case converted
+        /// Streamed by the server, with only the container changed: cheap.
+        case repackaged
+        /// Streamed by the server with its sound converted (the video copied
+        /// as it is): the server has to keep up, but with little work.
+        case soundConverted
+        /// Streamed by the server with its video re-encoded (whatever the
+        /// sound): the expensive kind, which a slow server may not keep up with.
+        case reencoded
+
+        /// The server streams it, rather than sending the file.
+        public var isStreamed: Bool { self != .original }
     }
 
     /// Which of the device's players plays it.
@@ -89,9 +99,6 @@ public struct MediaStream: Sendable, Equatable {
 
     public let url: URL
     public let delivery: Delivery
-    /// The server has to re-encode it (not just repackage it). That's the
-    /// expensive kind of conversion: a slow server may not keep up.
-    public let reencodes: Bool
     /// Why the server is converting it, in plain words such as "container
     /// not supported" (for diagnostics). Empty for the original file.
     public let conversionReasons: [String]
@@ -100,12 +107,15 @@ public struct MediaStream: Sendable, Equatable {
     public let sessionID: String?
     public let player: Player
 
-    public init(url: URL, delivery: Delivery, player: Player = .builtIn, reencodes: Bool = false,
+    /// The server has to re-encode its video: the expensive kind of
+    /// conversion (`Delivery.reencoded`).
+    public var reencodes: Bool { delivery == .reencoded }
+
+    public init(url: URL, delivery: Delivery, player: Player = .builtIn,
                 conversionReasons: [String] = [], sessionID: String? = nil) {
         self.url = url
         self.delivery = delivery
         self.player = player
-        self.reencodes = reencodes
         self.conversionReasons = conversionReasons
         self.sessionID = sessionID
     }

@@ -37,11 +37,17 @@ public struct PlaybackSource: Sendable, Equatable {
             .split(separator: ",").map(String.init) ?? []
     }
 
-    /// True when the server has to re-encode the video, the expensive kind of
-    /// transcode. Changing only the container (a remux) or the audio is cheap.
-    public var reencodesVideo: Bool {
-        guard method == .hls else { return false }
-        return transcodeReasons.contains { $0 != "ContainerNotSupported" && !$0.hasPrefix("Audio") }
+    /// How much work the server does, from Jellyfin's reasons: none for the
+    /// original; the video re-encoded for any reason that isn't the
+    /// container's or the sound's (the codec, the bitrate cap, burned-in
+    /// subtitles); else the sound converted for a sound reason; else only
+    /// the container changed (a stream with no reasons is taken as that).
+    public var delivery: MediaStream.Delivery {
+        guard method == .hls else { return .original }
+        let reasons = transcodeReasons
+        let isSound = { (reason: String) in reason.hasPrefix("Audio") || reason == "UnknownAudioStreamInfo" }
+        if reasons.contains(where: { $0 != "ContainerNotSupported" && !isSound($0) }) { return .reencoded }
+        return reasons.contains(where: isSound) ? .soundConverted : .repackaged
     }
 
     /// "SubtitleCodecNotSupported" → "subtitle codec not supported".
@@ -56,9 +62,8 @@ public struct PlaybackSource: Sendable, Equatable {
     /// session has a transcode for `StreamSource.release(_:)` to stop.
     public var mediaStream: MediaStream {
         MediaStream(url: url,
-                    delivery: method == .directPlay ? .original : .converted,
+                    delivery: delivery,
                     player: player,
-                    reencodes: reencodesVideo,
                     conversionReasons: transcodeReasons.map(Self.plainWords),
                     sessionID: method == .hls ? playSessionID : nil)
     }

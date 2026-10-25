@@ -116,8 +116,8 @@ final class FakeStreams: StreamSource, @unchecked Sendable {
         let reencodes = converting.contains(itemID)
         let asItIs = players.first { $0 == .addOn || !addOnOnly.contains(itemID) }
         let served = reencodes || streaming || asItIs == nil
-        return MediaStream(url: url, delivery: served ? .converted : .original, player: served ? .builtIn : asItIs ?? .builtIn,
-                           reencodes: reencodes,
+        return MediaStream(url: url, delivery: reencodes ? .reencoded : served ? .repackaged : .original,
+                           player: served ? .builtIn : asItIs ?? .builtIn,
                            sessionID: served ? "session-\(itemID)" : nil)
     }
     func release(_ stream: MediaStream) async {}
