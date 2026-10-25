@@ -73,9 +73,12 @@ import Observation
 ///   transcode costs the server a lot for a minute of video. The screen is
 ///   blank with "Up next" instead.
 /// - **Programme fixes** (`ProgrammeFix`, from Settings) try a lower quality
-///   for just the programme on now, if it keeps having trouble. Changing
-///   channel, changing quality, or the next programme starting puts it back
-///   to standard.
+///   for just the programme on now, if it keeps having trouble.
+/// - **One programme's settings** (`ProgrammeSettings`): its fix, the
+///   viewer's choice of player, and Auto's cap after its trouble are one
+///   value, with one rule. The next programme starting, or changing
+///   channel, clears all of it; changing quality clears what's about
+///   quality and keeps the choice of player.
 /// - **Quality** caps the bitrate the server sends. A cap below the file's
 ///   own bitrate makes the server re-encode, far more work than sending the
 ///   file, and more than a small server can do in real time. So Auto asks for
@@ -128,7 +131,6 @@ public final class ChannelPlayer {
     public static let prepareNextLead: TimeInterval = 30
     public static let maxDriftBehindLive: TimeInterval = 60
     public static let maxRetryDelay: TimeInterval = 60
-    public static let autoRemeasureInterval: TimeInterval = 600
     /// How long after starting a programme Auto's background speed test waits,
     /// so it doesn't compete with the video for bandwidth while it starts.
     public static var backgroundMeasurementDelay: Duration = .seconds(20)
@@ -167,17 +169,16 @@ public final class ChannelPlayer {
     /// What the schedule says is on this channel. The UI shows this.
     public private(set) var airing: Airing? {
         didSet {
-            // A fix is for one programme: the next one plays as standard.
-            if let airing, !airing.isFiller, let fixed = fixedProgramme, !fixed.airing.isSameProgramme(as: airing) {
-                clearProgrammeFix()
-            }
-            if let airing, !airing.isFiller, let preferred = addOnFirst, !preferred.isSameProgramme(as: airing) {
-                addOnFirst = nil
+            // Settings are for one programme: the next one starts with none.
+            if let airing, !airing.isFiller, let programmeSettings, !programmeSettings.apply(to: airing) {
+                clearProgrammeSettings()
             }
         }
     }
     /// The fix in use for the programme on now.
-    public private(set) var programmeFix: ProgrammeFix = .standard
+    public var programmeFix: ProgrammeFix {
+        fixableProgramme.flatMap { settings(for: $0).fix?.kind } ?? .standard
+    }
     /// The programme on now, if one is (not a commercial or a gap). Fixes apply to it.
     public var fixableProgramme: Airing? {
         airing.flatMap { $0.isFiller ? nil : $0 }
@@ -205,10 +206,9 @@ public final class ChannelPlayer {
     private var current: LoadedAiring?
     private var next: LoadedAiring?
     private var isPreparingNext = false
-    /// The programme a fix applies to, and the cap it's playing at.
-    private var fixedProgramme: (airing: Airing, cap: Int)?
-    /// The programme the viewer asked the add-on player to play, every part of it.
-    private var addOnFirst: Airing?
+    /// What applies to the programme on now only: fixes, the choice of
+    /// player, Auto's cap (`ProgrammeSettings`). Nil until one is set.
+    private var programmeSettings: ProgrammeSettings?
     /// When the current fixed programme started buffering, for stepping down again.
     private var bufferingSince: Date?
     /// The programme after the current commercial break, buffering in
@@ -222,14 +222,8 @@ public final class ChannelPlayer {
     private var standbyHandoff: Task<Void, Never>?
     /// Failures since video last actually played, on this channel. Sets the retry backoff.
     private var consecutiveFailures = 0
-    /// Auto's cap for the programme that had trouble, and when it was
-    /// measured. Nil until then, and for every other programme: no cap.
-    private var autoBitrate: (bitsPerSecond: Int, measuredAt: Date, programme: Airing)?
     /// A background speed test that's waiting or running (Auto only).
     private var measurementTask: Task<Void, Never>?
-    /// The programme that had trouble on the connection, in Auto: measure
-    /// for it as the next tune-in starts.
-    private var measureFirst: Airing?
     /// When the playhead last moved, for spotting stalls.
     private var lastProgress: (position: Double, at: Date)?
     private var tuneTask: Task<Void, Never>?
@@ -310,27 +304,16 @@ public final class ChannelPlayer {
     public func switchTo(_ schedule: ChannelSchedule) {
         self.schedule = schedule
         consecutiveFailures = 0   // a new channel starts with the shortest retry wait
-        clearProgrammeFix()
-        clearAutoCap()   // and with the original
-        addOnFirst = nil
+        clearProgrammeSettings()   // and with none of the last one's settings
         tune()
     }
 
     /// Applies a fix to the programme on now and restarts it. Does nothing
     /// during a commercial or a gap.
     public func setProgrammeFix(_ fix: ProgrammeFix) {
-        guard let programme = fixableProgramme else { return }
-        switch fix {
-        case .standard:
-            guard programmeFix != .standard else { return }
-            clearProgrammeFix()
-        case .stepDown:
-            let from = fixedProgramme?.cap ?? current?.cap ?? StreamingQuality.maximumBitrate
-            fixedProgramme = (programme, StreamingQuality.bitrate(below: from) ?? StreamingQuality.lowestBitrate)
-        case .hd720:
-            fixedProgramme = (programme, StreamingQuality.hd720.fixedBitrate!)
-        }
-        programmeFix = fix
+        guard let programme = fixableProgramme, fix != .standard || programmeFix != .standard else { return }
+        let from = settings(for: programme).fix?.cap ?? current?.cap ?? StreamingQuality.maximumBitrate
+        updateSettings(for: programme) { $0.setFix(fix, from: from) }
         tune()
     }
 
@@ -339,8 +322,7 @@ public final class ChannelPlayer {
 
     /// The viewer asked for the programme on now on the add-on player.
     public var prefersAddOn: Bool {
-        guard let programme = fixableProgramme, let addOnFirst else { return false }
-        return addOnFirst.isSameProgramme(as: programme)
+        fixableProgramme.map { settings(for: $0).prefersAddOn } ?? false
     }
 
     /// The programme on now is on the add-on player: chosen for it, or
@@ -361,14 +343,28 @@ public final class ChannelPlayer {
     public func setPrefersAddOn(_ on: Bool) -> Bool {
         guard let programme = fixableProgramme, hasAddOnPlayer, on != prefersAddOn else { return false }
         if on, programmeIsOnAddOn { return false }
-        addOnFirst = on ? programme : nil
+        updateSettings(for: programme) { $0.prefersAddOn = on }
         tune()
         return true
     }
 
-    private func clearProgrammeFix() {
-        fixedProgramme = nil
-        programmeFix = .standard
+    /// `airing`'s programme's settings: none set, if the ones held are another's.
+    private func settings(for airing: Airing) -> ProgrammeSettings {
+        programmeSettings.flatMap { $0.apply(to: airing) ? $0 : nil } ?? ProgrammeSettings(programme: airing)
+    }
+
+    /// Changes `programme`'s settings. The ones held for another programme go.
+    private func updateSettings(for programme: Airing, _ change: (inout ProgrammeSettings) -> Void) {
+        var updated = settings(for: programme)
+        change(&updated)
+        programmeSettings = updated
+    }
+
+    /// The next programme, or another channel: none of the last one's settings,
+    /// and no speed test waiting for it.
+    private func clearProgrammeSettings() {
+        programmeSettings = nil
+        cancelMeasurement()
     }
 
     /// Re-tunes at the new quality. Choosing the quality that's already set
@@ -376,9 +372,10 @@ public final class ChannelPlayer {
     public func setQuality(_ quality: StreamingQuality) {
         guard quality != self.quality else { return }
         self.quality = quality
-        clearProgrammeFix()
-        // Any speed test belongs to Auto: stop it, and forget its result.
-        clearAutoCap()
+        // Fixes and Auto's measurement go (any speed test belongs to Auto);
+        // the choice of player stays.
+        programmeSettings?.clearQuality()
+        cancelMeasurement()
         tune()
     }
 
@@ -559,12 +556,11 @@ public final class ChannelPlayer {
         isBuffering = player.state == .waiting
 
         // "Step down quality": buffering for a few seconds steps down again.
-        if programmeFix == .stepDown, isBuffering, let fixed = fixedProgramme, fixed.airing.isSameProgramme(as: current.airing) {
+        if isBuffering, settings(for: current.airing).fix?.kind == .stepDown {
             let since = bufferingSince ?? now
             bufferingSince = since
             if now.timeIntervalSince(since) > Self.stepDownAfterBuffering,
-               let lower = StreamingQuality.bitrate(below: fixed.cap) {
-                fixedProgramme = (fixed.airing, lower)
+               programmeSettings?.stepDownAgain() == true {
                 tune()
                 return
             }
@@ -757,7 +753,7 @@ public final class ChannelPlayer {
                                             : try await programmeSource(for: airing, players: order)
         let method = source.delivery == .original ? "direct play" : "streamed by the server"
         let label = airing.isFiller ? "Commercial"
-            : fixedProgramme.map({ $0.airing.isSameProgramme(as: airing) }) == true ? "This programme only"
+            : settings(for: airing).fix != nil ? "This programme only"
             : quality == .auto ? "Auto" : quality.label
         let reasons = source.conversionReasons.isEmpty ? nil : source.conversionReasons.joined(separator: ", ")
         // Stop at the scheduled length, so programmes and commercials keep to
@@ -778,10 +774,12 @@ public final class ChannelPlayer {
                             conversionReasons: reasons)
     }
 
-    /// Programmes use the viewer's quality setting, or the programme fix's cap.
+    /// Programmes use their settings' cap (`ProgrammeSettings.cap(at:)`).
+    /// While Auto's cap is old, a background speed test may raise it.
     private func programmeSource(for airing: Airing, players: [MediaStream.Player]) async throws -> (MediaStream, cap: Int) {
-        let fixedCap = fixedProgramme.flatMap { $0.airing.isSameProgramme(as: airing) ? $0.cap : nil }
-        let cap = if let fixedCap { fixedCap } else { await maxBitrate(for: airing) }
+        let settings = settings(for: airing)
+        if quality == .auto, settings.needsRemeasuring(at: .now) { measureInBackground(for: airing) }
+        let cap = settings.cap(at: quality)
         return (try await streams.stream(for: airing.item.id, maxBitrate: cap, players: players), cap)
     }
 
@@ -797,24 +795,8 @@ public final class ChannelPlayer {
     /// The players to ask about for `airing`, in order: the device's own
     /// first, unless the viewer asked for the add-on player for it.
     private func players(for airing: Airing) -> [MediaStream.Player] {
-        let order: [MediaStream.Player] = addOnFirst?.isSameProgramme(as: airing) == true ? [.addOn, .builtIn] : [.builtIn, .addOn]
+        let order: [MediaStream.Player] = settings(for: airing).prefersAddOn ? [.addOn, .builtIn] : [.builtIn, .addOn]
         return order.filter(streams.players.contains)
-    }
-
-    /// The bitrate cap for `programme` at the current quality setting.
-    ///
-    /// Fixed qualities return their cap and never measure. Auto has no cap
-    /// until a programme has trouble on the connection, then measures
-    /// before tuning in again (`measureIfTroubled()`). Once capped, it
-    /// returns that programme's cap straight away, and schedules a
-    /// background re-measure, which may raise it, when the cap is over 10
-    /// minutes old.
-    private func maxBitrate(for programme: Airing) async -> Int {
-        if let fixed = quality.fixedBitrate { return fixed }
-        if let capped = autoCap(for: programme), Date.now.timeIntervalSince(capped.measuredAt) >= Self.autoRemeasureInterval {
-            measureInBackground(for: programme)
-        }
-        return autoCap(for: programme)?.bitsPerSecond ?? StreamingQuality.maximumBitrate
     }
 
     /// In Auto, after a programme's connection trouble: measures for it now,
@@ -823,30 +805,17 @@ public final class ChannelPlayer {
     /// commercial, when the retry lands in a break), which understates the
     /// connection.
     private func measureIfTroubled() async {
-        guard let programme = measureFirst else { return }
-        measureFirst = nil
+        guard let troubled = programmeSettings, troubled.measuresFirst else { return }
+        programmeSettings?.measuresFirst = false
         cancelMeasurement()
-        await measureBandwidth(for: programme, raiseOnly: false)
-    }
-
-    /// Auto's cap, if it's for `programme`.
-    private func autoCap(for programme: Airing) -> (bitsPerSecond: Int, measuredAt: Date)? {
-        guard let autoBitrate, autoBitrate.programme.isSameProgramme(as: programme) else { return nil }
-        return (autoBitrate.bitsPerSecond, autoBitrate.measuredAt)
+        await measureBandwidth(for: troubled.programme, raiseOnly: false)
     }
 
     /// In Auto, a programme had trouble on the connection: measure for it
     /// before tuning in again. Not a commercial, which has no cap.
     private func measureBeforeRetrying(_ airing: Airing) {
         guard quality == .auto, !airing.isFiller else { return }
-        measureFirst = airing
-    }
-
-    /// Back to the original, with no speed test waiting.
-    private func clearAutoCap() {
-        cancelMeasurement()
-        autoBitrate = nil
-        measureFirst = nil
+        updateSettings(for: airing) { $0.measuresFirst = true }
     }
 
     /// Runs the speed test after `backgroundMeasurementDelay`, unless one is already pending.
@@ -861,17 +830,15 @@ public final class ChannelPlayer {
         }
     }
 
-    /// Sets Auto's cap for `programme` from a speed test, or with
-    /// `raiseOnly` (a test run while video plays), only raises it. A cap at
-    /// the maximum is no cap. A test that fails leaves the cap as it was.
+    /// Sets Auto's cap for `programme` from a speed test
+    /// (`ProgrammeSettings.measured`). A test that fails leaves the cap as it was.
     private func measureBandwidth(for programme: Airing, raiseOnly: Bool) async {
         guard quality == .auto else { return }
         let measured = try? await streams.measureBandwidth()
-        // Dropped if cancelled, or if the viewer left Auto meanwhile.
-        guard !Task.isCancelled, quality == .auto, let measured else { return }
-        let cap = StreamingQuality.autoBitrate(measured: measured)
-        let newCap = raiseOnly ? autoCap(for: programme).map { max($0.bitsPerSecond, cap) } : cap
-        autoBitrate = newCap.flatMap { $0 < StreamingQuality.maximumBitrate ? ($0, .now, programme) : nil }
+        // Dropped if cancelled, if the viewer left Auto meanwhile, or if
+        // another programme is on now.
+        guard !Task.isCancelled, quality == .auto, let measured, programmeSettings?.apply(to: programme) == true else { return }
+        programmeSettings?.measured(measured, raiseOnly: raiseOnly, at: .now)
     }
 
     private func cancelMeasurement() {
@@ -932,13 +899,10 @@ public final class ChannelPlayer {
         return [.timedOut, .networkConnectionLost, .notConnectedToInternet, .cannotConnectToHost].contains(error.code)
     }
 
-    /// A re-encode the server can't keep up with: 720p first, then a step
-    /// lower each time, down to the lowest, for this programme only.
+    /// A re-encode the server can't keep up with: ask for less, for this
+    /// programme only (`ProgrammeSettings.askForLessReencoding`).
     private func askForLessReencoding(of airing: Airing, from cap: Int) {
-        let hd720 = StreamingQuality.hd720.fixedBitrate!
-        let lower = cap > hd720 ? hd720 : StreamingQuality.bitrate(below: cap) ?? StreamingQuality.lowestBitrate
-        fixedProgramme = (airing, lower)
-        programmeFix = lower == hd720 ? .hd720 : .stepDown
+        updateSettings(for: airing) { $0.askForLessReencoding(from: cap) }
     }
 
     private func unloadEverything() {

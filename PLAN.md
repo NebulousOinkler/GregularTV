@@ -130,6 +130,7 @@ jellyfin_tv/
 │  │  ├─ PlayerDeck.swift           # the ONLY way to actual video: a queue player with its own picture
 │  │  ├─ ChannelPlayer.swift        # every playback decision: tuning, hand-offs, breaks, retries, head
 │  │  │                             # starts, quality; plays on two PlayerDecks
+│  │  ├─ ProgrammeSettings.swift    # one programme's fix, choice of player and Auto cap, and the cap rules
 │  │  └─ ChannelSurfer.swift        # channel up/down with preview, typed numbers, the list
 │  ├─ Channels/LibraryChoices.swift # the library's names to pick from, and preview lines
 │  ├─ Editing/                      # the editing page: EditingPage (requests), EditingDocument (the JSON),

@@ -87,8 +87,12 @@ struct ChannelPlayerDeckTests {
         deck = try await Fixture.playingDeck(player)
         #expect(deck.queue.first?.player == .builtIn && !player.programmeIsOnAddOn)
 
-        // Changing channel goes back to the usual choice.
+        // Changing quality keeps it (it's a choice of player, not of quality);
+        // changing channel goes back to the usual choice.
         #expect(player.setPrefersAddOn(true))
+        player.setProgrammeFix(.hd720)
+        player.setQuality(.hd20)
+        #expect(player.prefersAddOn && player.programmeFix == .standard)
         player.switchTo(player.schedule)
         #expect(!player.prefersAddOn)
         player.stop()
