@@ -91,6 +91,47 @@ public struct PlayableFormats: Sendable, Equatable {
                         playsFilesOnlyOverHTTPS: playsFilesOnlyOverHTTPS)
     }
 
+    /// The same, without `unplayable` (formats the player turned out not to
+    /// decode), as it plays them as they are and as a conversion copies them:
+    /// a video profile comes off its codec's limit where it has one, or else
+    /// the whole codec goes; a sound codec goes. So the server converts them.
+    public func without(_ unplayable: Set<MediaFormat>) -> PlayableFormats {
+        guard !unplayable.isEmpty else { return self }
+        var videoCodecs = videoCodecs, audioCodecs = audioCodecs, codecLimits = codecLimits
+        var convertedVideoCodecs = convertedVideoCodecs, convertedAudioCodecs = convertedAudioCodecs
+        for format in unplayable {
+            switch format.kind {
+            case .sound:
+                audioCodecs.removeAll { $0 == format.codec }
+                convertedAudioCodecs.removeAll { $0 == format.codec }
+            case .video:
+                let limit = codecLimits.firstIndex { $0.codec == format.codec }
+                if let profile = format.profile, let limit, let profiles = codecLimits[limit].profiles {
+                    let kept = profiles.filter { $0 != profile }
+                    if !kept.isEmpty {
+                        codecLimits[limit] = CodecLimit(codec: format.codec, profiles: kept, tags: codecLimits[limit].tags)
+                        continue
+                    }
+                }
+                videoCodecs.removeAll { $0 == format.codec }
+                convertedVideoCodecs.removeAll { $0 == format.codec }
+                codecLimits.removeAll { $0.codec == format.codec }
+            }
+        }
+        return PlayableFormats(name: name, containers: containers, videoCodecs: videoCodecs, audioCodecs: audioCodecs,
+                               codecLimits: codecLimits, convertedVideoCodecs: convertedVideoCodecs,
+                               convertedAudioCodecs: convertedAudioCodecs, mostAudioChannels: mostAudioChannels,
+                               audioFileContainers: audioFileContainers, audioFileCodecs: audioFileCodecs,
+                               playsFilesOnlyOverHTTPS: playsFilesOnlyOverHTTPS)
+    }
+
+    /// What a conversion ends up as: its first video and sound codecs, which
+    /// the player is surest of. Never left out (`without(_:)` is only asked to).
+    public var safestFormats: Set<MediaFormat> {
+        Set([convertedVideoCodecs.first.map { MediaFormat(.video, $0) }, convertedAudioCodecs.first.map { MediaFormat(.sound, $0) }]
+            .compactMap { $0 })
+    }
+
     /// Apple TV's own player (AVFoundation). A re-encode makes H.264, far
     /// less work for a small server than HEVC (a Raspberry Pi can't make HEVC
     /// in real time); HEVC is only ever copied as it is. It can't decode

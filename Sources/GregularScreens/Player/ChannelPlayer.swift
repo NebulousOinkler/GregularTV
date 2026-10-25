@@ -67,6 +67,11 @@ import Observation
 ///   one too once it couldn't keep up without (below). Files that play as-is
 ///   or are only repackaged start at once. Every stream the server converts
 ///   buffers up to `convertedForwardBuffer` ahead.
+/// - **A file the player can't decode** (`ErrorKind.unplayable`): the
+///   format it carried is ruled out for that player for the session
+///   (`UnplayableFormats`), and the programme is asked for again at once, for
+///   something else. With nothing left to rule out, it's `cantPlay` until
+///   its slot ends.
 /// - **Sound conversion that can't keep up:** when a programme whose sound
 ///   the server converts (the video copied as it is) fails, stalls, buffers
 ///   too long or falls a minute behind live, the retry asks for less sound
@@ -131,6 +136,9 @@ public final class ChannelPlayer {
         /// Buffering ahead of live while the server re-encodes; plays at `at`.
         case startingSoon(at: Date)
         case failed(message: String, retryAt: Date)
+        /// Nothing this device plays can show what's on (`UnplayableFormats`):
+        /// blank, saying so, until it ends, with no more retries for it.
+        case cantPlay(until: Date)
 
         public var isPaused: Bool { if case .paused = self { true } else { false } }
     }
@@ -229,6 +237,9 @@ public final class ChannelPlayer {
     /// What applies to the programme on now only: fixes, the choice of
     /// player, Auto's cap (`ProgrammeSettings`). Nil until one is set.
     private var programmeSettings: ProgrammeSettings?
+    /// What this device's players turned out not to decode, for as long as
+    /// this player lasts (the watching session), across channels.
+    private var unplayable = UnplayableFormats()
     /// When the current fixed programme started buffering, for stepping down again.
     private var bufferingSince: Date?
     /// The programme after the current commercial break, buffering in
@@ -265,6 +276,8 @@ public final class ChannelPlayer {
         let player: MediaStream.Player
         /// How the server sends it (`MediaStream.Delivery`).
         let delivery: MediaStream.Delivery
+        /// What it carries, for learning what the player can't decode.
+        let contents: StreamContents
         /// The server re-encodes it, so tuning in mid-programme gets a head start.
         var reencodes: Bool { delivery == .reencoded }
         /// Why the server converts it, if it does (for diagnostics).
@@ -473,6 +486,11 @@ public final class ChannelPlayer {
             status = .betweenProgrammes(until: tuning.airing.slotEnd)
             return
         }
+        // Nothing here plays this programme (any part of it): don't ask again.
+        if !tuning.airing.isFiller, settings(for: tuning.airing).cantPlay {
+            status = .cantPlay(until: tuning.airing.slotEnd)
+            return
+        }
 
         tuneTask = Task {
             do {
@@ -534,7 +552,7 @@ public final class ChannelPlayer {
         case .betweenProgrammes(let until):
             if now >= until, !startHeldNext() { tune() }
             return
-        case .failed(_, let until):
+        case .failed(_, let until), .cantPlay(let until):
             if now >= until { tune() }
             return
         case .playing:
@@ -833,6 +851,7 @@ public final class ChannelPlayer {
                             cap: cap,
                             player: source.player,
                             delivery: source.delivery,
+                            contents: source.contents,
                             conversionReasons: reasons)
     }
 
@@ -842,7 +861,8 @@ public final class ChannelPlayer {
         let settings = settings(for: airing)
         if quality == .auto, settings.needsRemeasuring(at: .now) { measureInBackground(for: airing) }
         let cap = settings.cap(at: quality)
-        let request = StreamRequest(maxBitrate: cap, players: players, stereoSound: settings.stereoSound)
+        let request = StreamRequest(maxBitrate: cap, players: players, stereoSound: settings.stereoSound,
+                                    unplayable: unplayable.byPlayer)
         return (try await streams.stream(for: airing.item.id, request), cap)
     }
 
@@ -852,7 +872,7 @@ public final class ChannelPlayer {
     /// is converted by the server, as a programme is.
     private func commercialSource(for item: MediaItem, players: [MediaStream.Player]) async throws -> (MediaStream, cap: Int) {
         let cap = StreamingQuality.maximumBitrate
-        return (try await streams.stream(for: item.id, StreamRequest(maxBitrate: cap, players: players)), cap)
+        return (try await streams.stream(for: item.id, StreamRequest(maxBitrate: cap, players: players, unplayable: unplayable.byPlayer)), cap)
     }
 
     /// The players to ask about for `airing`, in order: the device's own
@@ -945,6 +965,15 @@ public final class ChannelPlayer {
         let failed = current.flatMap { $0.airing == airing ? $0 : nil }
         unloadEverything()
         self.airing = airing
+        // The player couldn't decode it: rule out what it carried and ask
+        // again at once, for something else (no backoff: the server isn't
+        // at fault). With nothing left to rule out, it can't be played here.
+        if kind == .unplayable, let failed {
+            if unplayable.learn(from: failed.contents, on: failed.player, safest: streams.safestFormats) { return tune() }
+            if !airing.isFiller { updateSettings(for: airing) { $0.cantPlay = true } }
+            status = .cantPlay(until: airing.slotEnd)
+            return
+        }
         let delay = min(Self.maxRetryDelay, 5 * pow(2, Double(consecutiveFailures)))
         consecutiveFailures += 1
         if let failed, askForLessWork(on: failed) {

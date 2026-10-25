@@ -292,9 +292,12 @@ import Observation
             }
         }
 
-        /// AVFoundation's own errors are technical; say it plainly instead.
-        /// One that's a network error underneath is the network error, so
-        /// the player knows it's the connection's (`ChannelPlayer`).
+        /// AVFoundation's own errors are technical; say it plainly instead,
+        /// and say what kind it is (`ChannelPlayer`). One that's a network
+        /// error underneath is the network error: the connection's. One that
+        /// says it couldn't decode or read the format is `UnplayableFormat`:
+        /// something else must be sent. Any other stopped it for some other
+        /// reason, to retry as it is.
         var failure: (any Error)? {
             switch engine {
             case .av(let item):
@@ -303,11 +306,16 @@ import Observation
                 if let underlying = error.userInfo[NSUnderlyingErrorKey] as? NSError, underlying.domain == NSURLErrorDomain {
                     return URLError(URLError.Code(rawValue: underlying.code))
                 }
-                return UnplayableFormat()
+                return Self.formatErrors.contains(AVError.Code(rawValue: error.code)) ? UnplayableFormat() : PlaybackStopped()
             case .vlc(let item):
                 return item.failure
             }
         }
+
+        /// AVFoundation's errors that say it can't decode or read what it was sent.
+        private static let formatErrors: Set<AVError.Code?> = [
+            .decoderNotFound, .decodeFailed, .fileFormatNotRecognized, .failedToParse, .undecodableMediaData,
+        ]
 
         var bufferedAhead: TimeInterval {
             guard let item = avItem else { return 0 }   // VLC doesn't say
@@ -324,8 +332,9 @@ import Observation
     }
 }
 
-/// A programme Apple TV couldn't play.
-struct UnplayableFormat: LocalizedError {
+/// A programme Apple TV couldn't decode (`UnplayableMedia`): AVFoundation
+/// couldn't read its format, or VLC stopped with an error.
+struct UnplayableFormat: UnplayableMedia, LocalizedError {
     var errorDescription: String? {
         "This programme couldn't be played. It may be in a format Apple TV can't show."
     }

@@ -66,3 +66,14 @@ public enum PlayerDeckState: Sendable, Equatable {
     /// (for diagnostics).
     var bufferedInAll: TimeInterval { get }
 }
+
+/// A deck's item stopped for a reason that isn't its format (`UnplayableMedia`)
+/// or the connection (`ConnectionFailure`): it's retried as it is. For any
+/// deck to report.
+public struct PlaybackStopped: LocalizedError {
+    public init() {}
+
+    public var errorDescription: String? {
+        "This programme stopped playing."
+    }
+}

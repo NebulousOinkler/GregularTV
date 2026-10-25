@@ -26,3 +26,24 @@ struct PlayableFormatsTests {
         #expect(PlayableFormats.appleTV.codecLimits.contains(.eightBitH264), "The same limit as Apple TV")
     }
 }
+
+/// Leaving out what a player turned out not to decode.
+struct PlayableFormatsWithoutTests {
+    @Test func aVideoProfileComesOffItsCodecsLimit() {
+        let tv = PlayableFormats.appleTV.without([MediaFormat(.video, "hevc", profile: "Main 10")])
+        let hevc = tv.codecLimits.first { $0.codec == "hevc" }
+        #expect(hevc?.profiles == ["main"] && hevc?.tags == ["hvc1", "dvh1"] && tv.videoCodecs.contains("hevc"))
+    }
+
+    @Test func aCodecWithNoLimitGoesWhole() {
+        let tv = PlayableFormats.appleTV.without([MediaFormat(.sound, "eac3"), MediaFormat(.video, "hevc")])
+        #expect(!tv.audioCodecs.contains("eac3") && !tv.convertedAudioCodecs.contains("eac3"))
+        #expect(!tv.videoCodecs.contains("hevc") && !tv.convertedVideoCodecs.contains("hevc"))
+        #expect(!tv.codecLimits.contains { $0.codec == "hevc" })
+        #expect(tv.safestFormats == [MediaFormat(.video, "h264"), MediaFormat(.sound, "aac")])
+    }
+
+    @Test func nothingToLeaveOutLeavesItAsItIs() {
+        #expect(PlayableFormats.appleTV.without([]) == .appleTV)
+    }
+}

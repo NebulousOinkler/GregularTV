@@ -30,6 +30,9 @@ struct ProgrammeSettings {
     /// A stream whose sound the server converts gets a head start, as a
     /// re-encode does: it couldn't keep up without one.
     var soundHeadStart = false
+    /// Nothing this device plays can show it (`UnplayableFormats`): it isn't
+    /// asked for again.
+    var cantPlay = false
 
     /// While capped, Auto measures again in the background after this long,
     /// which may raise the cap.
