@@ -80,6 +80,7 @@ final class FakeStreams: StreamSource, @unchecked Sendable {
     let players: [MediaStream.Player]
     private var asked: [Int] = []
     private var orders: [[MediaStream.Player]] = []
+    private var log: [String] = []
     private var tests = 0
     private var kept: [String] = []
 
@@ -96,6 +97,8 @@ final class FakeStreams: StreamSource, @unchecked Sendable {
     /// For each stream asked for, the players asked about, in order.
     var playersAsked: [[MediaStream.Player]] { lock.withLock { orders } }
     var speedTests: Int { lock.withLock { tests } }
+    /// What it was asked, in order: "speed test", or "<item ID> at <cap>".
+    var events: [String] { lock.withLock { log } }
     /// The sessions kept going, in order.
     var keptAlive: [String] { lock.withLock { kept } }
 
@@ -103,6 +106,7 @@ final class FakeStreams: StreamSource, @unchecked Sendable {
         lock.withLock {
             asked.append(maxBitrate)
             orders.append(players)
+            log.append("\(itemID) at \(maxBitrate)")
         }
         let url = URL(string: "https://tv.invalid/\(itemID)")!
         let reencodes = converting.contains(itemID)
@@ -117,7 +121,10 @@ final class FakeStreams: StreamSource, @unchecked Sendable {
         if let session = stream.sessionID { lock.withLock { kept.append(session) } }
     }
     func measureBandwidth() async throws -> Int {
-        lock.withLock { tests += 1 }
+        lock.withLock {
+            tests += 1
+            log.append("speed test")
+        }
         return measured
     }
 }

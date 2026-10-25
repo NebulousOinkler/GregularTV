@@ -135,8 +135,8 @@ public enum BrowserNetwork {
         return !loopback && ServerAddress.isOnLocalNetwork(host)
     }
 
-    /// A request the browser couldn't make.
-    public struct Unreachable: LocalizedError {
+    /// A request the browser couldn't make, or a video it couldn't fetch.
+    public struct Unreachable: ConnectionFailure, LocalizedError {
         public init() {}
 
         public var errorDescription: String? {

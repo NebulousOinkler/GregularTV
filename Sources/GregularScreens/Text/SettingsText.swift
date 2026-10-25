@@ -9,7 +9,8 @@ public enum SettingsText {
     // MARK: Streaming quality
 
     public static let quality = "Streaming quality"
-    public static let autoDetail = "Measures how fast your server can stream right now, and backs off when it's busy."
+    public static let autoDetail = "Plays the original, as Maximum does. If a programme has trouble on the connection, "
+        + "measures it and lowers the quality for that programme only."
     public static func nowPlaying(_ stream: String) -> String { "Now playing: \(stream)" }
     public static let qualityNote = "Lower quality saves bandwidth but makes the server transcode, which takes more of its processing power. "
         + "If your server is short on CPU rather than bandwidth, Maximum may work best."

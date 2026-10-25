@@ -197,7 +197,9 @@ import Observation
         video.on("ended") { [weak self] _ in self?.finish() }
         video.on("error") { [weak self] _ in
             guard let self, let item = self.item else { return }
-            item.fail(UnplayableFormat())
+            // MEDIA_ERR_NETWORK: the connection's, not the file's (`ConnectionFailure`).
+            let isNetwork = self.video.object.error.code.number == 2
+            item.fail(isNetwork ? BrowserNetwork.Unreachable() as any Error : UnplayableFormat())
         }
     }
 
