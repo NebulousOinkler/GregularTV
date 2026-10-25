@@ -207,7 +207,7 @@ struct JellyfinPlaybackTests {
         }
         let client = JellyfinClient(credentials: Credentials(serverURL: URL(string: server)!, userID: "user-1", accessToken: "t",
                                                              deviceID: "d"),
-                                    identity: JellyfinFixtures.identity, formats: .browser(playsHEVC: false), transport: mock)
+                                    identity: JellyfinFixtures.identity, formats: .browser(alsoPlays: []), transport: mock)
         _ = try await client.playbackSource(for: "abc")
     }
 

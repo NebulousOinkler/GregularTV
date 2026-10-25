@@ -165,27 +165,42 @@ public struct PlayableFormats: Sendable, Equatable {
                      "vob", "flv", "ogv", "ogg", "3gp"],
         videoCodecs: ["h264", "hevc", "mpeg4", "mpeg2video", "mpeg1video", "vc1", "vp8", "vp9", "msmpeg4v3",
                       "wmv1", "wmv2", "wmv3", "mjpeg", "theora", "prores", "dv"],
-        audioCodecs: ["aac", "ac3", "eac3", "alac", "flac", "mp3", "mp2", "mp1", "dts", "opus", "vorbis",
+        audioCodecs: ["aac", "ac3", "eac3", "alac", "flac", "mp3", "mp2", "mp1", "dts", "truehd", "opus", "vorbis",
                       "wmalossless", "wmapro", "wmav1", "wmav2", "pcm_alaw", "pcm_mulaw", "pcm_bluray", "pcm_dvd",
                       "pcm_s16be", "pcm_s16le", "pcm_s24be", "pcm_s24le", "pcm_u8"],
         convertedVideoCodecs: ["h264"],
         convertedAudioCodecs: ["aac"],
         mostAudioChannels: 8)
 
+    /// The formats a browser may say it decodes beyond H.264 and AAC, which
+    /// every browser plays: HEVC by profile, AV1, and the sound formats films
+    /// carry. The app asks the browser about each (`GregularWeb`), and only
+    /// what it confirms goes into `browser(alsoPlays:)`.
+    public static let browserMayPlay: [MediaFormat] = [
+        MediaFormat(.video, "hevc", profile: "main"), MediaFormat(.video, "hevc", profile: "main 10"), MediaFormat(.video, "av1"),
+        MediaFormat(.sound, "ac3"), MediaFormat(.sound, "eac3"), MediaFormat(.sound, "opus"), MediaFormat(.sound, "flac"),
+    ]
+
     /// A web browser: H.264 and AAC in MP4 play everywhere, but not 10-bit
-    /// H.264, which no browser reliably decodes. HEVC only where the browser
-    /// says it can (`playsHEVC`). Surround sound is mixed down to stereo,
-    /// which every browser plays.
-    public static func browser(playsHEVC: Bool) -> PlayableFormats {
-        PlayableFormats(
+    /// H.264, which no browser reliably decodes. Beyond those, only what the
+    /// browser says it decodes (`alsoPlays`, from `browserMayPlay`): played
+    /// as they are, and copied into a conversion as they are rather than
+    /// converted. Converted sound has at most 6 channels where the browser
+    /// plays a surround format (AC-3, E-AC-3), so surround copies as it is;
+    /// otherwise it's mixed down to stereo, which every browser plays.
+    public static func browser(alsoPlays: Set<MediaFormat>) -> PlayableFormats {
+        let hevcProfiles = (["main", "main 10"] as [String]).filter { alsoPlays.contains(MediaFormat(.video, "hevc", profile: $0)) }
+        let video = (hevcProfiles.isEmpty ? [] : ["hevc"]) + (alsoPlays.contains(MediaFormat(.video, "av1")) ? ["av1"] : [])
+        let sound = ["ac3", "eac3", "opus", "flac"].filter { alsoPlays.contains(MediaFormat(.sound, $0)) }
+        return PlayableFormats(
             name: "Web",
             containers: ["mp4", "m4v"],
-            videoCodecs: playsHEVC ? ["h264", "hevc"] : ["h264"],
-            audioCodecs: ["aac", "mp3"],
-            codecLimits: [.eightBitH264] + (playsHEVC ? [.hevc()] : []),
-            convertedVideoCodecs: playsHEVC ? ["h264", "hevc"] : ["h264"],
-            convertedAudioCodecs: ["aac"],
-            mostAudioChannels: 2,
+            videoCodecs: ["h264"] + video,
+            audioCodecs: ["aac", "mp3"] + sound,
+            codecLimits: [.eightBitH264] + (hevcProfiles.isEmpty ? [] : [CodecLimit(codec: "hevc", profiles: hevcProfiles)]),
+            convertedVideoCodecs: ["h264"] + video,
+            convertedAudioCodecs: ["aac"] + sound,
+            mostAudioChannels: sound.contains("ac3") || sound.contains("eac3") ? 6 : 2,
             audioFileContainers: ["mp3", "m4a", "mp4", "aac", "flac", "wav"],
             audioFileCodecs: ["mp3", "aac", "flac", "pcm_s16le"],
             playsFilesOnlyOverHTTPS: true)

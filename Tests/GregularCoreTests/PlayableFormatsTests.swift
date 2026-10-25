@@ -17,13 +17,30 @@ struct PlayableFormatsTests {
     /// rather than sending a file the browser fails on. HEVC has limits only
     /// where the browser plays HEVC at all.
     @Test func browsersHearWhichH264TheyPlay() {
-        for playsHEVC in [false, true] {
-            let limits = PlayableFormats.browser(playsHEVC: playsHEVC).codecLimits
+        for alsoPlays in [[], [MediaFormat(.video, "hevc", profile: "main")]] as [Set<MediaFormat>] {
+            let limits = PlayableFormats.browser(alsoPlays: alsoPlays).codecLimits
             let h264 = limits.first { $0.codec == "h264" }
             #expect(h264 == .eightBitH264 && h264?.profiles?.contains("high 10") == false)
-            #expect(limits.contains { $0.codec == "hevc" } == playsHEVC)
+            #expect(limits.contains { $0.codec == "hevc" } == !alsoPlays.isEmpty)
         }
         #expect(PlayableFormats.appleTV.codecLimits.contains(.eightBitH264), "The same limit as Apple TV")
+    }
+
+    /// Only what the browser confirms: HEVC by the profiles it says, and the
+    /// sound formats it says, which copy into a conversion as they are.
+    @Test func browsersDeclareOnlyWhatTheyConfirm() {
+        let plain = PlayableFormats.browser(alsoPlays: [])
+        #expect(plain.videoCodecs == ["h264"] && plain.audioCodecs == ["aac", "mp3"] && plain.mostAudioChannels == 2)
+        let main = PlayableFormats.browser(alsoPlays: [MediaFormat(.video, "hevc", profile: "main")])
+        #expect(main.codecLimits.first { $0.codec == "hevc" }?.profiles == ["main"], "Not Main 10 unless it says")
+        let surround = PlayableFormats.browser(alsoPlays: [MediaFormat(.sound, "eac3"), MediaFormat(.video, "av1")])
+        #expect(surround.audioCodecs.contains("eac3") && surround.convertedAudioCodecs == ["aac", "eac3"])
+        #expect(surround.videoCodecs == ["h264", "av1"] && surround.mostAudioChannels == 6)
+        #expect(surround.safestFormats == plain.safestFormats, "H.264 and AAC stay the safest")
+    }
+
+    @Test func vlcPlaysTrueHD() {
+        #expect(PlayableFormats.vlcOnAppleTV.audioCodecs.contains("truehd"))
     }
 }
 

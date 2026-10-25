@@ -52,9 +52,11 @@ The same app in a web browser: the shared Swift code (`Sources/`) compiled to We
 | Your server | Chrome, Edge | Safari, Firefox |
 |---|---|---|
 | `https://…` | ✅ | ✅ |
-| `http://` on your home network (`192.168.x.x`, `name.local`, `nas:8096`) | ✅ after allowing "local network" access | ❌ |
+| `http://` on your home network (`192.168.x.x`, `name.local`; not a one-word name such as `nas`, which your network's DNS could send elsewhere) | ✅ after allowing "local network" access | ❌ |
 
 From an http server the browser asks for every programme as HLS (usually just a change of container, which is cheap for the server), since it can't play a file over http.
+
+**What it plays as it is.** Every browser plays H.264 (8-bit) video and AAC sound in MP4. The app asks the browser, through its own interface, whether it also decodes HEVC (Main, and Main 10 separately), AV1, AC-3, E-AC-3, Opus and FLAC, and tells your server only what it confirms: those play as they are, or are copied as they are into a conversion, which saves Jellyfin converting them. Where the browser plays AC-3 or E-AC-3, converted sound keeps up to 5.1 channels; otherwise it's mixed down to stereo. A format a browser claims but then can't decode is ruled out for the rest of the session (see *A file a player can't decode*, above).
 
 **Controls.** Touch: tap the picture for the controls, swipe across it to change channel. Keyboard (the same tables as the Siri Remote, `KeyboardControls`): ← → channels, I info, L channel list, S Settings, Space pause or jump to live, Esc steps back (banner, guide, servers), digits type a channel number. Everything works with a screen reader, at any text size, and with reduced motion.
 
@@ -319,7 +321,7 @@ Gregular TV is built to know as little as possible about your Jellyfin server, a
 
 **Never stored:** your password (it's used for one sign-in request only), your library (titles, episodes, artwork; a custom channel or set time keeps only the names you picked for it), schedules, watch history, or logs. The library is fetched into memory at launch and is gone when the app quits. Schedules are recomputed from each channel's seed and the clock, so there's nothing to save.
 
-**What the app learns about this device's formats** (kept in memory only, never stored, gone when the app or page closes): when a player can't decode a stream, the app reads that stream's video and sound formats from what Jellyfin already sent (the codec and its profile, such as "HEVC Main 10" or "E-AC-3"; nothing about the programme), and stops telling Jellyfin the device plays that format, for the rest of the session. Your server sees only a shorter list of what this device plays in the next requests, as it sees that list in every request now. On the web, the browser is asked whether it plays HEVC through its own interface, and the answer goes only into that list, sent to your own server.
+**What the app learns about this device's formats** (kept in memory only, never stored, gone when the app or page closes): when a player can't decode a stream, the app reads that stream's video and sound formats from what Jellyfin already sent (the codec and its profile, such as "HEVC Main 10" or "E-AC-3"; nothing about the programme), and stops telling Jellyfin the device plays that format, for the rest of the session. Your server sees only a shorter list of what this device plays in the next requests, as it sees that list in every request now. On the web, the browser is asked which of HEVC, AV1, AC-3, E-AC-3, Opus and FLAC it decodes, through its own interface, and the answers go only into that list, sent to your own server.
 
 **Deleting the app** leaves nothing that comes back: the Keychain can keep an app's items after it's deleted, so on its first launch after installing, the app forgets every sign-in it finds.
 
