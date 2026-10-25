@@ -29,6 +29,14 @@ public enum SettingsText {
         (.standard, "Standard", "Back to your streaming quality setting."),
     ]
 
+    /// The switch for the programme on now's sound, mixed down to stereo.
+    public static let stereoSound = "Stereo Sound"
+
+    public static func stereoSoundDetail(isOn: Bool) -> String {
+        isOn ? "On for this programme: sound the server converts is mixed down to two channels, which is less work for it."
+            : "Restarts it with two-channel sound. Helps when the server converts the sound and can't keep up."
+    }
+
     /// Apple TV's switch for playing the programme on now in VLC.
     public static let playInVLC = "Play in VLC"
 

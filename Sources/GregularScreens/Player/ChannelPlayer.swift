@@ -63,6 +63,13 @@ import Observation
 ///   live). Each stall on the channel doubles the head start, up to
 ///   `maxTranscodeHeadStart`. Files that play as-is or are only repackaged
 ///   start at once.
+/// - **Sound conversion that can't keep up:** when a programme whose sound
+///   the server converts (the video copied as it is) fails, stalls or falls
+///   a minute behind live, the retry asks for stereo sound, which is less to
+///   make (`ProgrammeSettings.askForLessSoundWork`). Never a lower bitrate,
+///   which would make the server re-encode the video too, so Auto doesn't
+///   measure. (The add-on player can't help: it was asked before the server
+///   converted anything.) After stereo, the trouble may be the connection's.
 /// - **Re-encoding that can't keep up:** when a programme the server re-encodes
 ///   fails, stalls or falls a minute behind live, the retry asks for less
 ///   work: 720p, then a step lower each further time, for that programme
@@ -244,8 +251,10 @@ public final class ChannelPlayer {
         let cap: Int
         /// The player it's on.
         let player: MediaStream.Player
+        /// How the server sends it (`MediaStream.Delivery`).
+        let delivery: MediaStream.Delivery
         /// The server re-encodes it, so tuning in mid-programme gets a head start.
-        let reencodes: Bool
+        var reencodes: Bool { delivery == .reencoded }
         /// Why the server converts it, if it does (for diagnostics).
         let conversionReasons: String?
     }
@@ -345,6 +354,28 @@ public final class ChannelPlayer {
         guard let programme = fixableProgramme, hasAddOnPlayer, on != prefersAddOn else { return false }
         if on, programmeIsOnAddOn { return false }
         updateSettings(for: programme) { $0.prefersAddOn = on }
+        tune()
+        return true
+    }
+
+    /// The device mixes sound down from surround, so stereo can be asked for
+    /// to make a sound conversion less work.
+    public var offersStereoSound: Bool { streams.mostSoundChannels > 2 }
+
+    /// Sound the server converts for the programme on now is mixed down to stereo.
+    public var stereoSound: Bool {
+        fixableProgramme.map { settings(for: $0).stereoSound } ?? false
+    }
+
+    /// Asks for the programme on now with stereo sound, or no longer, and
+    /// restarts it. It only matters when the server converts the sound:
+    /// stereo is less work for it to make. Until the programme ends, or the
+    /// channel changes. False if nothing changes: no programme on, no
+    /// surround to mix down, or already so.
+    @discardableResult
+    public func setStereoSound(_ on: Bool) -> Bool {
+        guard let programme = fixableProgramme, offersStereoSound, on != stereoSound else { return false }
+        updateSettings(for: programme) { $0.stereoSound = on }
         tune()
         return true
     }
@@ -585,13 +616,11 @@ public final class ChannelPlayer {
         }
 
         // A long buffering stall left us well behind live, so jump back. If
-        // the server re-encodes it, its processor is the limit: ask it for
-        // less work. Otherwise the connection may not carry this stream, so
-        // Auto measures it first.
+        // the server converts it, its processor is the limit: ask it for less
+        // work (`askForLessWork`). Otherwise the connection may not carry this
+        // stream, so Auto measures it first.
         if player.state == .playing, behindLive > Self.maxDriftBehindLive {
-            if current.reencodes, !current.airing.isFiller {
-                askForLessReencoding(of: current.airing, from: current.cap)
-            } else {
+            if !askForLessWork(on: current) {
                 measureBeforeRetrying(current.airing)
             }
             tune()
@@ -776,7 +805,7 @@ public final class ChannelPlayer {
                             description: "\(label) · up to \(Self.mbps(cap)) · \(method)",
                             cap: cap,
                             player: source.player,
-                            reencodes: source.reencodes,
+                            delivery: source.delivery,
                             conversionReasons: reasons)
     }
 
@@ -786,7 +815,8 @@ public final class ChannelPlayer {
         let settings = settings(for: airing)
         if quality == .auto, settings.needsRemeasuring(at: .now) { measureInBackground(for: airing) }
         let cap = settings.cap(at: quality)
-        return (try await streams.stream(for: airing.item.id, maxBitrate: cap, players: players), cap)
+        let request = StreamRequest(maxBitrate: cap, players: players, stereoSound: settings.stereoSound)
+        return (try await streams.stream(for: airing.item.id, request), cap)
     }
 
     /// Commercials never start a speed test, and are asked for with no
@@ -795,7 +825,7 @@ public final class ChannelPlayer {
     /// is converted by the server, as a programme is.
     private func commercialSource(for item: MediaItem, players: [MediaStream.Player]) async throws -> (MediaStream, cap: Int) {
         let cap = StreamingQuality.maximumBitrate
-        return (try await streams.stream(for: item.id, maxBitrate: cap, players: players), cap)
+        return (try await streams.stream(for: item.id, StreamRequest(maxBitrate: cap, players: players)), cap)
     }
 
     /// The players to ask about for `airing`, in order: the device's own
@@ -885,15 +915,13 @@ public final class ChannelPlayer {
             onUnauthorized?()
             return
         }
-        let failedReencode = current.map { $0.airing == airing && $0.reencodes && !airing.isFiller } ?? false
-        let failedCap = current?.cap
+        let failed = current.flatMap { $0.airing == airing ? $0 : nil }
         unloadEverything()
         self.airing = airing
         let delay = min(Self.maxRetryDelay, 5 * pow(2, Double(consecutiveFailures)))
         consecutiveFailures += 1
-        if failedReencode, let failedCap {
-            // The server couldn't re-encode fast enough: retry this programme with less work.
-            askForLessReencoding(of: airing, from: failedCap)
+        if let failed, askForLessWork(on: failed) {
+            // The server couldn't convert it fast enough: the retry asks for less.
         } else if kind == .connection || (kind == .timedOut && !whileAsking) {
             // The connection may not carry it: measure before the retry.
             measureBeforeRetrying(airing)
@@ -901,10 +929,26 @@ public final class ChannelPlayer {
         status = .failed(message: FriendlyError.message(for: error), retryAt: .now.addingTimeInterval(delay))
     }
 
-    /// A re-encode the server can't keep up with: ask for less, for this
-    /// programme only (`ProgrammeSettings.askForLessReencoding`).
-    private func askForLessReencoding(of airing: Airing, from cap: Int) {
-        updateSettings(for: airing) { $0.askForLessReencoding(from: cap) }
+    /// The server converting `loaded` couldn't keep up: ask it for less
+    /// work, for this programme only. A re-encode asks for a lower quality
+    /// (`ProgrammeSettings.askForLessReencoding`); a sound conversion asks
+    /// for stereo (`askForLessSoundWork`). False if
+    /// the server isn't converting it (the original, or only repackaged), it's
+    /// a commercial, or there's nothing less to ask for: then the trouble may
+    /// be the connection's.
+    private func askForLessWork(on loaded: LoadedAiring) -> Bool {
+        guard !loaded.airing.isFiller else { return false }
+        var asked = false
+        switch loaded.delivery {
+        case .reencoded:
+            updateSettings(for: loaded.airing) { $0.askForLessReencoding(from: loaded.cap) }
+            asked = true
+        case .soundConverted:
+            updateSettings(for: loaded.airing) { asked = $0.askForLessSoundWork(offersStereo: offersStereoSound) }
+        case .original, .repackaged:
+            break
+        }
+        return asked
     }
 
     private func unloadEverything() {

@@ -81,6 +81,16 @@ public struct PlayableFormats: Sendable, Equatable {
         self.playsFilesOnlyOverHTTPS = playsFilesOnlyOverHTTPS
     }
 
+    /// The same, with sound the server converts mixed down to stereo, which
+    /// is less work for it to make.
+    public var withStereoSound: PlayableFormats {
+        PlayableFormats(name: name, containers: containers, videoCodecs: videoCodecs, audioCodecs: audioCodecs,
+                        codecLimits: codecLimits, convertedVideoCodecs: convertedVideoCodecs,
+                        convertedAudioCodecs: convertedAudioCodecs, mostAudioChannels: min(2, mostAudioChannels),
+                        audioFileContainers: audioFileContainers, audioFileCodecs: audioFileCodecs,
+                        playsFilesOnlyOverHTTPS: playsFilesOnlyOverHTTPS)
+    }
+
     /// Apple TV's own player (AVFoundation). A re-encode makes H.264, far
     /// less work for a small server than HEVC (a Raspberry Pi can't make HEVC
     /// in real time); HEVC is only ever copied as it is. It can't decode

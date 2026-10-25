@@ -87,4 +87,24 @@ struct ProgrammeSettingsTests {
         #expect(settings.fix == nil && settings.autoCap == nil && !settings.measuresFirst)
         #expect(settings.prefersAddOn)
     }
+
+    /// Sound conversion trouble: stereo, never a lower bitrate; then nothing left.
+    @Test func soundTroubleAsksForStereo() {
+        var settings = ProgrammeSettings(programme: film)
+        let first = settings.askForLessSoundWork(offersStereo: true)
+        #expect(first && settings.stereoSound && !settings.prefersAddOn)
+        let second = settings.askForLessSoundWork(offersStereo: true)
+        #expect(!second)
+        #expect(settings.cap(at: .auto) == StreamingQuality.maximumBitrate, "Never a lower bitrate")
+        var stereoOnly = ProgrammeSettings(programme: film)
+        let nothing = stereoOnly.askForLessSoundWork(offersStereo: false)
+        #expect(!nothing)
+    }
+
+    @Test func aQualityChangeKeepsStereoSound() {
+        var settings = ProgrammeSettings(programme: film)
+        settings.stereoSound = true
+        settings.clearQuality()
+        #expect(settings.stereoSound)
+    }
 }

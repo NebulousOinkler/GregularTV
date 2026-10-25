@@ -82,6 +82,9 @@ public struct JellyfinClient: Sendable {
         addOnFormats == nil ? [.builtIn] : [.builtIn, .addOn]
     }
 
+    /// The most sound channels in a stream converted for the device's own player.
+    public var mostSoundChannels: Int { formats.mostAudioChannels }
+
     /// Asks Jellyfin how to play an item on this device, and returns the URL.
     ///
     /// The first of `players` that plays the file as it is plays it so (the
@@ -91,10 +94,13 @@ public struct JellyfinClient: Sendable {
     ///   - maxBitrate: the quality cap in bits per second (see `StreamingQuality`).
     ///   - players: the players to ask about, in order. A player the
     ///     device hasn't got is skipped.
+    ///   - stereoSound: sound converted for the device's own player is mixed
+    ///     down to stereo (`PlayableFormats.withStereoSound`).
     public func playbackSource(
         for itemID: String, maxBitrate: Int = StreamingQuality.maximumBitrate,
-        players: [MediaStream.Player] = [.builtIn, .addOn]
+        players: [MediaStream.Player] = [.builtIn, .addOn], stereoSound: Bool = false
     ) async throws -> PlaybackSource {
+        let formats = stereoSound ? formats.withStereoSound : formats
         var ownAnswer: (info: PlaybackInfoResponse, source: PlaybackInfoResponse.MediaSource)?
         for player in players {
             switch player {
@@ -271,8 +277,9 @@ extension JellyfinClient: OriginalFiles {
 }
 
 extension JellyfinClient: StreamSource {
-    public func stream(for itemID: String, maxBitrate: Int, players: [MediaStream.Player]) async throws -> MediaStream {
-        try await playbackSource(for: itemID, maxBitrate: maxBitrate, players: players).mediaStream
+    public func stream(for itemID: String, _ request: StreamRequest) async throws -> MediaStream {
+        try await playbackSource(for: itemID, maxBitrate: request.maxBitrate, players: request.players,
+                                 stereoSound: request.stereoSound).mediaStream
     }
 
     public func release(_ stream: MediaStream) async {

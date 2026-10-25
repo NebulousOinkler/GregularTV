@@ -63,62 +63,77 @@ import Testing
     }
 }
 
-/// A server that plays everything as the original file, except the items
-/// in `converting`, which it re-encodes, and (with `streaming`) everything
-/// else, which it repackages; each stream it serves itself is in a session
-/// of its own. The device has `players`, each of which plays every original
-/// file, except those in `addOnOnly`, which only the add-on player does
-/// (any other has them repackaged). The first stream asked for fails with
-/// `failingFirst`, if given. Its speed test says `measured`. It records the cap each stream was
-/// asked for, the players asked about for it, and each stream it was told
-/// is still wanted.
+/// A server for the player's tests. Each item's file plays as it is on every
+/// player the device has (`players`), except:
+/// - `converting`: it re-encodes them (as for the quality cap);
+/// - `addOnOnly`: only the add-on player plays them as they are; it
+///   repackages them for any other;
+/// - `soundConverting`: only the add-on player plays them as they are; it
+///   converts their sound for any other;
+/// - with `streaming`, it repackages everything the built-in player would
+///   otherwise play as it is.
+///
+/// Each stream it serves itself is in a session of its own. The first stream
+/// asked for fails with `failingFirst`, if given. A stream converted for the
+/// built-in player has at most `mostSoundChannels`. Its speed test says
+/// `measured`. It records each request, and each stream it was told is
+/// still wanted.
 final class FakeStreams: StreamSource, @unchecked Sendable {
     private let lock = NSLock()
     private let measured: Int
     private let converting: Set<String>
     private let streaming: Bool
     private let addOnOnly: Set<String>
+    private let soundConverting: Set<String>
     private var failingFirst: (any Error)?
     let players: [MediaStream.Player]
-    private var asked: [Int] = []
-    private var orders: [[MediaStream.Player]] = []
+    let mostSoundChannels: Int
+    private var requests: [StreamRequest] = []
     private var log: [String] = []
     private var tests = 0
     private var kept: [String] = []
 
     init(measured: Int = 50_000_000, converting: Set<String> = [], streaming: Bool = false,
-         players: [MediaStream.Player] = [.builtIn], addOnOnly: Set<String> = [], failingFirst: (any Error)? = nil) {
+         players: [MediaStream.Player] = [.builtIn], addOnOnly: Set<String> = [], soundConverting: Set<String> = [],
+         mostSoundChannels: Int = 6, failingFirst: (any Error)? = nil) {
         self.measured = measured
         self.converting = converting
         self.streaming = streaming
         self.addOnOnly = addOnOnly
+        self.soundConverting = soundConverting
+        self.mostSoundChannels = mostSoundChannels
         self.failingFirst = failingFirst
         self.players = players
     }
 
-    var caps: [Int] { lock.withLock { asked } }
+    /// Each stream's cap, in order.
+    var caps: [Int] { lock.withLock { requests.map(\.maxBitrate) } }
     /// For each stream asked for, the players asked about, in order.
-    var playersAsked: [[MediaStream.Player]] { lock.withLock { orders } }
+    var playersAsked: [[MediaStream.Player]] { lock.withLock { requests.map(\.players) } }
+    /// For each stream asked for, whether it was with stereo sound.
+    var stereoAsked: [Bool] { lock.withLock { requests.map(\.stereoSound) } }
     var speedTests: Int { lock.withLock { tests } }
     /// What it was asked, in order: "speed test", or "<item ID> at <cap>".
     var events: [String] { lock.withLock { log } }
     /// The sessions kept going, in order.
     var keptAlive: [String] { lock.withLock { kept } }
 
-    func stream(for itemID: String, maxBitrate: Int, players: [MediaStream.Player]) async throws -> MediaStream {
+    func stream(for itemID: String, _ request: StreamRequest) async throws -> MediaStream {
         lock.withLock {
-            asked.append(maxBitrate)
-            orders.append(players)
-            log.append("\(itemID) at \(maxBitrate)")
+            requests.append(request)
+            log.append("\(itemID) at \(request.maxBitrate)")
         }
         if let failure = lock.withLock({ () -> (any Error)? in defer { failingFirst = nil }; return failingFirst }) { throw failure }
         let url = URL(string: "https://tv.invalid/\(itemID)")!
-        let reencodes = converting.contains(itemID)
-        let asItIs = players.first { $0 == .addOn || !addOnOnly.contains(itemID) }
-        let served = reencodes || streaming || asItIs == nil
-        return MediaStream(url: url, delivery: reencodes ? .reencoded : served ? .repackaged : .original,
-                           player: served ? .builtIn : asItIs ?? .builtIn,
-                           sessionID: served ? "session-\(itemID)" : nil)
+        let addOnOnly = addOnOnly.contains(itemID) || soundConverting.contains(itemID)
+        let asItIs = request.players.first { $0 == .addOn || !addOnOnly }
+        let delivery: MediaStream.Delivery =
+            converting.contains(itemID) ? .reencoded
+            : asItIs == nil ? (soundConverting.contains(itemID) ? .soundConverted : .repackaged)
+            : streaming && asItIs == .builtIn ? .repackaged
+            : .original
+        return MediaStream(url: url, delivery: delivery, player: delivery.isStreamed ? .builtIn : asItIs ?? .builtIn,
+                           sessionID: delivery.isStreamed ? "session-\(itemID)" : nil)
     }
     func release(_ stream: MediaStream) async {}
     func keepAlive(_ stream: MediaStream) async {

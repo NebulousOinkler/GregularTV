@@ -1,18 +1,18 @@
 import Foundation
 import GregularCore
 
-/// Everything that applies to one programme only: the viewer's fix and
-/// choice of player, and what Auto learned from the programme's trouble.
+/// Everything that applies to one programme only: the viewer's fixes and
+/// choice of player, and what was learned from the programme's trouble.
 ///
 /// One value, so it goes together. `ChannelPlayer` holds one, for the
 /// programme on now (every part of a split film shares it), and lets it go
 /// when the next programme starts or the channel changes, so those start
 /// with none of it. A quality change clears only what's about quality
-/// (`clearQuality()`): the viewer's choice of player stays.
+/// (`clearQuality()`): the choice of player, and stereo sound, stay.
 ///
 /// It decides, without a deck or a server: the cap a programme plays at,
-/// the step-down ladder, asking for less re-encoding, and what a speed test
-/// makes Auto's cap.
+/// the step-down ladder, asking for less re-encoding or less sound
+/// conversion, and what a speed test makes Auto's cap.
 struct ProgrammeSettings {
     let programme: Airing
     /// The fix in use (the viewer's, or one asked for after re-encoding
@@ -24,6 +24,9 @@ struct ProgrammeSettings {
     var measuresFirst = false
     /// The viewer asked for the add-on player (VLC on Apple TV).
     var prefersAddOn = false
+    /// Sound the server converts is mixed down to stereo: the viewer asked,
+    /// or the server couldn't convert it fast enough.
+    var stereoSound = false
 
     /// While capped, Auto measures again in the background after this long,
     /// which may raise the cap.
@@ -74,6 +77,18 @@ struct ProgrammeSettings {
         fix = (lower == hd720 ? .hd720 : .stepDown, lower)
     }
 
+    /// The server couldn't convert the sound fast enough, the video copied
+    /// as it is: ask for stereo, which is less to make. Never a lower
+    /// bitrate, which would make it re-encode the video too. Not the add-on
+    /// player either: it was asked before the server converted anything, and
+    /// can't play this file as it is. False if stereo is asked for already,
+    /// or there's no surround to mix down.
+    mutating func askForLessSoundWork(offersStereo: Bool) -> Bool {
+        guard offersStereo, !stereoSound else { return false }
+        stereoSound = true
+        return true
+    }
+
     // MARK: - Auto
 
     /// Auto's cap from a speed test that measured `bitsPerSecond`: 70% of it.
@@ -90,8 +105,8 @@ struct ProgrammeSettings {
         autoCap.map { date.timeIntervalSince($0.measuredAt) >= Self.remeasureInterval } ?? false
     }
 
-    /// The quality setting changed: the fix and Auto's measurement go, and
-    /// the choice of player stays.
+    /// The quality setting changed: the fix and Auto's measurement go; the
+    /// choice of player and stereo sound stay.
     mutating func clearQuality() {
         fix = nil
         autoCap = nil

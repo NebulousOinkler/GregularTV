@@ -47,10 +47,14 @@ public protocol StreamSource: Sendable {
     /// The players the device has: the built-in one, and an add-on, if it has one.
     var players: [MediaStream.Player] { get }
 
-    /// How to play `itemID`, at no more than `maxBitrate` bits per second
-    /// (see `StreamingQuality`): as it is, on the first of `players` (in
-    /// order) that plays it so, or else converted for the built-in player.
-    func stream(for itemID: String, maxBitrate: Int, players: [MediaStream.Player]) async throws -> MediaStream
+    /// The most sound channels a stream converted for the built-in player
+    /// carries (more are mixed down).
+    var mostSoundChannels: Int { get }
+
+    /// How to play `itemID`, as `request` asks: as it is, on the first of its
+    /// players (in order) that plays it so, or else converted for the
+    /// built-in player.
+    func stream(for itemID: String, _ request: StreamRequest) async throws -> MediaStream
 
     /// Lets the server stop any work it's doing for `stream` (such as a
     /// transcode) now that the player is finished with it.
@@ -65,6 +69,22 @@ public protocol StreamSource: Sendable {
 
     /// How fast the server can send data right now, in bits per second.
     func measureBandwidth() async throws -> Int
+}
+
+/// What to ask a server for, for one stream.
+public struct StreamRequest: Sendable, Equatable {
+    /// At most this many bits per second (see `StreamingQuality`).
+    public var maxBitrate: Int
+    /// The players to ask about for playing the file as it is, in order.
+    public var players: [MediaStream.Player]
+    /// Sound the server converts is mixed down to stereo: less work for it.
+    public var stereoSound: Bool
+
+    public init(maxBitrate: Int, players: [MediaStream.Player], stereoSound: Bool = false) {
+        self.maxBitrate = maxBitrate
+        self.players = players
+        self.stereoSound = stereoSound
+    }
 }
 
 /// A playable stream for one item.

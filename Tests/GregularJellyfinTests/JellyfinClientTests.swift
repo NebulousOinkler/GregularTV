@@ -331,6 +331,23 @@ struct JellyfinPlaybackTests {
         #expect((profile?["Name"] as? String)?.contains("VLC") == true)
     }
 
+    /// Asked for stereo sound, a conversion for Apple TV's own player mixes
+    /// the sound down to two channels, which is less for the server to make.
+    @Test func stereoSoundMixesTheConversionDown() async throws {
+        var channels: [String] = []
+        mock.on("POST", "/Items/abc/PlaybackInfo") { request in
+            let profile = request.jsonBody["DeviceProfile"] as? [String: Any]
+            let conversion = (profile?["TranscodingProfiles"] as? [[String: Any]])?.first
+            channels.append(conversion?["MaxAudioChannels"] as? String ?? "?")
+            return (200, #"{ "MediaSources": [{ "Id": "s", "SupportsDirectPlay": true }] }"#)
+        }
+        let client = JellyfinFixtures.client(mock)
+        _ = try await client.playbackSource(for: "abc")
+        _ = try await client.playbackSource(for: "abc", stereoSound: true)
+        #expect(channels == ["6", "2"])
+        #expect(client.mostSoundChannels == 6)
+    }
+
     @Test func stopTranscodingTargetsThisDeviceAndSession() async throws {
         mock.on("DELETE", "/Videos/ActiveEncodings", status: 204)
         try await JellyfinFixtures.client(mock).stopTranscoding(playSessionID: "ps1")
