@@ -34,6 +34,12 @@ import Observation
     static func pair() -> [any PlayerDeck] { [TVDeck(), TVDeck()] }
 
     init() {
+        // Waits until it can play on without stopping, rather than starting
+        // into a stall. AVFoundation's default, kept on purpose: a channel
+        // joins live, and a moment's wait at the start is better than
+        // buffering mid-programme. (The head start and resume rules use the
+        // buffered time it reports.)
+        avPlayer.automaticallyWaitsToMinimizeStalling = true
         endObserver = NotificationCenter.default.addObserver(forName: AVPlayerItem.didPlayToEndTimeNotification, object: nil,
                                                              queue: .main) { [weak self] note in
             guard let ended = (note.object as? AVPlayerItem).map(ObjectIdentifier.init) else { return }
@@ -287,11 +293,17 @@ import Observation
         }
 
         /// AVFoundation's own errors are technical; say it plainly instead.
+        /// One that's a network error underneath is the network error, so
+        /// the player knows it's the connection's (`ChannelPlayer`).
         var failure: (any Error)? {
             switch engine {
             case .av(let item):
-                guard let error = item.error else { return nil }
-                return (error as NSError).domain == AVFoundationErrorDomain ? UnplayableFormat() : error
+                guard let error = item.error as NSError? else { return nil }
+                guard error.domain == AVFoundationErrorDomain else { return error }
+                if let underlying = error.userInfo[NSUnderlyingErrorKey] as? NSError, underlying.domain == NSURLErrorDomain {
+                    return URLError(URLError.Code(rawValue: underlying.code))
+                }
+                return UnplayableFormat()
             case .vlc(let item):
                 return item.failure
             }

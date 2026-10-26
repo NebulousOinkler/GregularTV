@@ -113,6 +113,12 @@ public struct MediaStream: Sendable, Equatable {
 
 /// An error from a media server that says whether signing in again is the
 /// only fix (the server rejected the session).
+/// A failure that's the connection's: it dropped, or couldn't carry the
+/// stream fast enough. A lower quality may help, where a server's own
+/// error, or a file a player can't show, wouldn't. (A player's or a
+/// network's errors say so by conforming.)
+public protocol ConnectionFailure: Error {}
+
 public protocol MediaServiceFailure: LocalizedError {
     var isSessionExpired: Bool { get }
 }

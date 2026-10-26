@@ -1,4 +1,5 @@
 import Foundation
+import GregularCore
 import GregularScreens
 import SwiftVLC
 
@@ -26,8 +27,16 @@ import SwiftVLC
     /// requests do. (That libVLC has no Lua, so no scripts run on what it reads.)
     private static let vlc = (try? VLCInstance(arguments: arguments)) ?? .shared
     /// Its messages off: like the rest of the app, it logs nothing
-    /// (`scripts/privacy-check.sh`). `VLCSetupTests` checks libVLC takes them.
-    static let arguments = VLCInstance.defaultArguments + ["--quiet"]
+    /// (`scripts/privacy-check.sh`). And a network buffer of
+    /// `networkCaching`. `VLCSetupTests` checks libVLC takes them.
+    static let arguments = VLCInstance.defaultArguments + ["--quiet", "--network-caching=\(networkCaching)"]
+    /// Milliseconds of stream VLC holds ahead: three times libVLC's default
+    /// of one second. An item opens paused and fills it while the item before
+    /// it plays, so it costs nothing at the start, and it rides out a server
+    /// or Wi-Fi that's slow for a moment instead of stopping. (Resuming after
+    /// a seek waits for it to fill again; rebuffering is judged against it,
+    /// in `settle(playing:)`.)
+    static let networkCaching = 3000
     let url: URL
     /// Where it starts and stops, in seconds into the file.
     let start: TimeInterval
@@ -172,7 +181,7 @@ import SwiftVLC
 }
 
 /// VLC stopped well before the end: the connection to the server dropped.
-struct DroppedConnection: LocalizedError {
+struct DroppedConnection: ConnectionFailure, LocalizedError {
     var errorDescription: String? {
         "The connection to the server dropped."
     }
