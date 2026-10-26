@@ -94,6 +94,36 @@ test("signs in and plays live TV", async ({ page }) => {
   expect(problems).toEqual([]);
 });
 
+// Before anything loads, a browser reports a video it couldn't fetch at all
+// as one it can't decode (MEDIA_ERR_SRC_NOT_SUPPORTED). That's the
+// connection's trouble, so it's retried; it once said "can't be played".
+test("a video the browser couldn't fetch is retried, not called unplayable", async ({ page }) => {
+  test.setTimeout(90_000);
+  const problems = watchForProblems(page);
+  await page.addInitScript(() => {
+    new MutationObserver(() => {
+      if (/can.t be played/i.test(document.body?.innerText ?? "")) globalThis.saidUnplayable = true;
+    }).observe(document, { subtree: true, childList: true, characterData: true });
+  });
+  // The first two stream requests fail outright: the video's, and (in a
+  // browser that reports it as undecodable) the player's check of whether
+  // the server can be reached at all.
+  let refused = 0;
+  await page.route(/\/stream/, (route) => (refused++ < 2 ? route.abort("connectionrefused") : route.continue()));
+  await signIn(page);
+  // Playing: a video's time moves on (it's set to the live position before it loads).
+  const moving = () => page.evaluate(async () => {
+    const times = () => [...document.querySelectorAll("video")].map((video) => (video.paused ? -1 : video.currentTime));
+    const before = times();
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    return times().some((time, index) => before[index] >= 0 && time > before[index] + 0.5);
+  });
+  await expect.poll(moving, { timeout: 60_000, message: "the retry should play" }).toBe(true);
+  expect(refused).toBeGreaterThanOrEqual(3);
+  expect(await page.evaluate(() => globalThis.saidUnplayable ?? false)).toBe(false);
+  expect(problems).toEqual([]);
+});
+
 test("keeps the sign-in encrypted, and none of it in local storage", async ({ page }) => {
   await signIn(page);
   await page.reload();

@@ -156,6 +156,14 @@ public final class ChannelPlayer {
     public static let prepareNextLead: TimeInterval = 30
     public static let maxDriftBehindLive: TimeInterval = 60
     public static let maxRetryDelay: TimeInterval = 60
+    /// The first retry's wait; each further failure doubles it, up to `maxRetryDelay`.
+    public static var firstRetryDelay: TimeInterval = 5
+    /// A stream in only the formats every player plays (`StreamSource.safestFormats`)
+    /// that's reported as one the player can't decode is retried as any
+    /// failure this many times in a row before it's taken as unplayable
+    /// here: a browser reports a stream it couldn't fetch at all as one it
+    /// can't decode (the same error), and these formats it does decode.
+    public static let safestFormatRetries = 2
     /// How long after starting a programme Auto's background speed test waits,
     /// so it doesn't compete with the video for bandwidth while it starts.
     public static var backgroundMeasurementDelay: Duration = .seconds(20)
@@ -967,14 +975,17 @@ public final class ChannelPlayer {
         self.airing = airing
         // The player couldn't decode it: rule out what it carried and ask
         // again at once, for something else (no backoff: the server isn't
-        // at fault). With nothing left to rule out, it can't be played here.
+        // at fault). With nothing left to rule out, it's retried as any
+        // failure (`safestFormatRetries`), and after that it can't be played here.
         if kind == .unplayable, let failed {
             if unplayable.learn(from: failed.contents, on: failed.player, safest: streams.safestFormats) { return tune() }
-            if !airing.isFiller { updateSettings(for: airing) { $0.cantPlay = true } }
-            status = .cantPlay(until: airing.slotEnd)
-            return
+            if consecutiveFailures >= Self.safestFormatRetries {
+                if !airing.isFiller { updateSettings(for: airing) { $0.cantPlay = true } }
+                status = .cantPlay(until: airing.slotEnd)
+                return
+            }
         }
-        let delay = min(Self.maxRetryDelay, 5 * pow(2, Double(consecutiveFailures)))
+        let delay = min(Self.maxRetryDelay, Self.firstRetryDelay * pow(2, Double(consecutiveFailures)))
         consecutiveFailures += 1
         if let failed, askForLessWork(on: failed) {
             // The server couldn't convert it fast enough: the retry asks for less.

@@ -1,12 +1,46 @@
 // HLS for VideoDeck (GregularWeb): hls.js where the browser has Media
 // Source Extensions, the browser's own HLS otherwise (older Safari on iPhone).
 // hls.js is the light build, served from this site: no subtitles, no DRM.
+// Also `reach`, which tells a stream that can't be fetched from one that can't
+// be decoded, as a <video> doesn't.
 
 import Hls, { FetchLoader } from "../vendor/hls.light.min.mjs";
 
 /** Whether hls.js can play here; if not, a <video> may play HLS itself. */
 export function supported() {
   return Hls.isSupported();
+}
+
+/**
+ * Whether `url` can be fetched: "fetched" if the server sends it, "refused"
+ * if it answers with an error, "unreachable" if there's no answer within 10
+ * seconds. For a <video> that failed before loading anything, which a
+ * browser reports the same way (MEDIA_ERR_SRC_NOT_SUPPORTED) whether it
+ * couldn't fetch the file or couldn't decode it. Asks for the first byte
+ * only, as hls.js asks: no cookies, no referrer, and to plain http on the
+ * home network marked as such (`local`).
+ */
+export async function reach(url, local) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10_000);
+  const options = {
+    headers: { Range: "bytes=0-0" },
+    credentials: "omit",
+    referrerPolicy: "no-referrer",
+    cache: "no-store",
+    redirect: "error",
+    signal: controller.signal,
+  };
+  if (local) options.targetAddressSpace = "local";
+  try {
+    const response = await fetch(url, options);
+    response.body?.cancel();
+    return response.ok ? "fetched" : "refused";
+  } catch {
+    return "unreachable";
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** Times a dropped stream picks up where it was, since a piece last loaded. */

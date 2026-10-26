@@ -44,32 +44,47 @@ struct UnplayableTests {
 
     /// End to end: the sound, then the video, converted; then it can't be
     /// played here, until its slot ends, and isn't asked for again.
+    /// Each format is ruled out at once; then the stream is in the safest
+    /// formats, which every player decodes, so a failure as undecodable
+    /// is retried as any failure (a browser says the same of a stream it
+    /// couldn't fetch), `safestFormatRetries` times, and after that it can't
+    /// be played here.
     @Test func theRetriesEndAndSaySo() async throws {
+        let firstRetryDelay = ChannelPlayer.firstRetryDelay
+        ChannelPlayer.firstRetryDelay = 0.05
+        defer { ChannelPlayer.firstRetryDelay = firstRetryDelay }
         let file = StreamContents(video: hevc10, sound: eac3)
         let streams = FakeStreams(files: ["m1": file, "m2": file, "m3": file])   // whichever film is on
         let player = try Fixture.surfer(streams: streams).player
         player.start()
-        for expected in [[], [eac3], [eac3, hevc10]] as [Set<MediaFormat>] {
+        let isCantPlay = { if case .cantPlay = player.status { true } else { false } }
+        let ruledOut: [Set<MediaFormat>] = [[], [eac3]] + Array(repeating: [eac3, hevc10], count: ChannelPlayer.safestFormatRetries + 1)
+        for (attempt, expected) in ruledOut.enumerated() {
             let deck = try await Fixture.playingDeck(player)
             #expect(streams.ruledOut.last == expected)
             let item = try #require(deck.queue.first)
             let count = streams.ruledOut.count
             item.failure = CantDecode()
             item.hasFailed = true
-            try await waitUntil(3) { streams.ruledOut.count > count || { if case .cantPlay = player.status { true } else { false } }() }
-            #expect(!player.status.isFailed, "No backoff: the server isn't at fault")
+            try await waitUntil(3) { streams.ruledOut.count > count || isCantPlay() }
+            if attempt < 2 {
+                #expect(streams.ruledOut.count == count + 1, "No backoff: the server isn't at fault")
+            } else if attempt < ruledOut.count - 1 {
+                #expect(!isCantPlay(), "The safest formats: retried, after a wait")
+            }
         }
         guard case .cantPlay(let until) = player.status else {
             Issue.record("Expected it to say it can't be played, not \(player.status)")
             return
         }
-        #expect(until == player.airing?.slotEnd && streams.ruledOut.count == 3)
+        let asked = streams.ruledOut.count
+        #expect(until == player.airing?.slotEnd && asked == 2 + ChannelPlayer.safestFormatRetries + 1)
         player.tune()   // as if tuning in again: it isn't asked for
-        #expect(streams.ruledOut.count == 3)
+        #expect(streams.ruledOut.count == asked)
         if case .cantPlay = player.status {} else { Issue.record("Still can't be played: \(player.status)") }
         // What was learned lasts the session: another channel's first request leaves them out.
         player.switchTo(player.schedule)
-        try await waitUntil(3) { streams.ruledOut.count == 4 }
+        try await waitUntil(3) { streams.ruledOut.count == asked + 1 }
         #expect(streams.ruledOut.last == [eac3, hevc10])
         player.stop()
     }
