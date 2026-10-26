@@ -154,6 +154,9 @@ public final class ChannelPlayer {
     }
 
     public static let prepareNextLead: TimeInterval = 30
+    /// How long before this programme ends one straight after it that the
+    /// server converts starts buffering (`preloadConvertedNext`).
+    public static let convertedNextLead: TimeInterval = 90
     public static let maxDriftBehindLive: TimeInterval = 60
     public static let maxRetryDelay: TimeInterval = 60
     /// The first retry's wait; each further failure doubles it, up to `maxRetryDelay`.
@@ -189,8 +192,8 @@ public final class ChannelPlayer {
     public static var keepAliveInterval: TimeInterval = 20
 
     /// Two decks, each with its own picture. One is on screen (`player`);
-    /// the other is standby, buffering the programme after a commercial
-    /// break (`afterBreak`) until they swap.
+    /// the other is standby, buffering the next programme
+    /// (`standbyProgramme`) until they swap.
     public let decks: [any PlayerDeck]
     public private(set) var activeIndex = 0
     /// Sound level on both decks, 0 to 1, for fading the sound with the picture.
@@ -250,9 +253,17 @@ public final class ChannelPlayer {
     private var unplayable = UnplayableFormats()
     /// When the current fixed programme started buffering, for stepping down again.
     private var bufferingSince: Date?
-    /// The programme after the current commercial break, buffering in
-    /// `standby`. It becomes `next` once it's the next thing to air.
-    private var afterBreak: LoadedAiring?
+    /// A programme buffering, paused, in `standby` before it airs: the one
+    /// after the current commercial break, or one the server converts
+    /// straight after this one (`preloadConvertedNext`). It becomes `next`
+    /// once it's the next thing to air.
+    private var standbyProgramme: LoadedAiring?
+    /// The programme straight after this one, asked for early
+    /// (`preloadConvertedNext`), which the server sends as it is: queued at
+    /// the usual `prepareNextLead`, without asking again.
+    private var earlyNext: LoadedAiring?
+    /// When the programme the next one was asked for early after ends, so it's asked once.
+    private var askedEarlyBefore: Date?
     /// When the break we've started preloading for ends, so each break loads once.
     private var preloadedBreakEnd: Date?
     /// `next` is in `standby`, waiting for its start time to swap in.
@@ -340,7 +351,7 @@ public final class ChannelPlayer {
         let now = Date.now
         let before = old.tune(at: now), after = schedule.tune(at: now)
         guard after.airing == before.airing, after.isInPadding == before.isInPadding,
-              unchanged(current?.airing), unchanged(next?.airing), unchanged(afterBreak?.airing)
+              unchanged(current?.airing), unchanged(next?.airing), unchanged(standbyProgramme?.airing), unchanged(earlyNext?.airing)
         else { return tune() }
     }
 
@@ -677,8 +688,14 @@ public final class ChannelPlayer {
             preloadProgrammeAfterBreak(during: current.airing)
         }
 
-        // Queue whatever's next (a programme or a commercial) shortly before this one ends.
-        if next == nil, !isPreparingNext, current.airing.end.timeIntervalSince(now) < Self.prepareNextLead {
+        // Queue whatever's next (a programme or a commercial) shortly before
+        // this one ends; one the server converts, sooner.
+        let timeLeft = current.airing.end.timeIntervalSince(now)
+        if next == nil, standbyProgramme == nil, askedEarlyBefore != current.airing.slotEnd, !current.airing.isFiller,
+           !current.delivery.isConverted, timeLeft < Self.convertedNextLead, timeLeft >= Self.prepareNextLead {
+            preloadConvertedNext(after: current)
+        }
+        if next == nil, !isPreparingNext, timeLeft < Self.prepareNextLead {
             prepareNext(after: current)
         }
     }
@@ -690,7 +707,7 @@ public final class ChannelPlayer {
         guard !status.isPaused,
               now.timeIntervalSince(lastKeepAlive ?? .distantPast) >= Self.keepAliveInterval else { return }
         lastKeepAlive = now
-        let held = [current, next, afterBreak].compactMap { $0?.unreleased }.filter { $0.sessionID != nil }
+        let held = [current, next, standbyProgramme, earlyNext].compactMap { $0?.unreleased }.filter { $0.sessionID != nil }
         guard !held.isEmpty else { return }
         let streams = streams
         Task.detached { for stream in held { await streams.keepAlive(stream) } }
@@ -720,9 +737,13 @@ public final class ChannelPlayer {
             guard let upcoming = schedule.airings(from: from, to: from.addingTimeInterval(1)).first,
                   // The channel may have changed, or re-tuned, while we were loading.
                   self.current?.item === current.item, next == nil else { return }
-            // The programme after a break is already buffering in `standby`.
-            if let preloaded = afterBreak, preloaded.airing == upcoming {
+            // Already buffering in `standby`, or asked for early.
+            if let preloaded = standbyProgramme, preloaded.airing == upcoming {
                 return scheduleStandbyHandoff(to: preloaded)
+            }
+            if let early = earlyNext, early.airing == upcoming {
+                earlyNext = nil
+                return queue(early, after: current)
             }
             guard let loaded = try? await load(upcoming) else { return }
             guard self.current?.item === current.item, next == nil else { return release(loaded) }
@@ -733,7 +754,7 @@ public final class ChannelPlayer {
     /// Holds on the current item if it ends early (blank, with the banner),
     /// and swaps to `standby` right on the programme's start time.
     private func scheduleStandbyHandoff(to preloaded: LoadedAiring) {
-        afterBreak = nil
+        standbyProgramme = nil
         next = preloaded
         nextIsOnStandby = true
         player.pausesAtItemEnd = true
@@ -783,6 +804,34 @@ public final class ChannelPlayer {
         status = .playing
     }
 
+    /// Asks early for the programme straight after `current`, if there's
+    /// one (not a commercial). One the server converts starts buffering
+    /// now, paused, in `standby`, so the server gets well ahead of it before
+    /// it airs, rather than starting 30 s before (`prepareNextLead`). One it
+    /// sends as it is waits for the usual lead (`earlyNext`): buffering it
+    /// now would only take bandwidth from this one. Not while the server
+    /// converts `current`: a small server would be making two conversions
+    /// for longer (the tick checks).
+    private func preloadConvertedNext(after current: LoadedAiring) {
+        askedEarlyBefore = current.airing.slotEnd
+        let from = current.airing.slotEnd
+        guard let upcoming = schedule.airings(from: from, to: from.addingTimeInterval(1)).first, !upcoming.isFiller else { return }
+        let tuneCount = tuneCount
+        Task {
+            guard let loaded = try? await load(upcoming) else { return }   // the usual lead tries again
+            // Dropped if the channel changed or re-tuned while it loaded, or the usual lead got there first.
+            guard self.tuneCount == tuneCount, self.current?.item === current.item, next == nil,
+                  standbyProgramme == nil, earlyNext == nil else { return release(loaded) }
+            if loaded.delivery.isConverted {
+                standbyProgramme = loaded
+                standby.removeAll()
+                standby.append(loaded.item)
+            } else {
+                earlyNext = loaded
+            }
+        }
+    }
+
     /// Starts loading the programme that follows the break `clip` is in.
     /// It buffers, paused, in `standby` until the swap.
     private func preloadProgrammeAfterBreak(during clip: Airing) {
@@ -794,9 +843,9 @@ public final class ChannelPlayer {
         Task {
             guard let loaded = try? await load(programme) else { return }   // the usual 30 s lead tries again
             // Dropped if the channel changed or re-tuned while it loaded.
-            guard self.tuneCount == tuneCount, preloadedBreakEnd == span.end, afterBreak == nil,
+            guard self.tuneCount == tuneCount, preloadedBreakEnd == span.end, standbyProgramme == nil,
                   next?.airing != programme else { return release(loaded) }
-            afterBreak = loaded
+            standbyProgramme = loaded
             standby.removeAll()
             standby.append(loaded.item)
         }
@@ -945,7 +994,7 @@ public final class ChannelPlayer {
         let live = behindLive.formatted(.number.precision(.fractionLength(1)))
         let at = Duration.seconds(player.position).formatted(.time(pattern: .hourMinuteSecond))
         let work = current.conversionReasons.map { "transcoding: \($0)" } ?? "no transcoding"
-        let preloaded = (nextIsOnStandby ? next : afterBreak)?.item
+        let preloaded = (nextIsOnStandby ? next : standbyProgramme)?.item
         let buffered = preloaded.map { " · next programme: \(Int($0.bufferedInAll)) s buffered" } ?? ""
         return "\(player.activity) · \(live) s behind live · at \(at) · \(work)\(buffered)"
     }
@@ -1028,10 +1077,12 @@ public final class ChannelPlayer {
             deck.removeAll()
             deck.pausesAtItemEnd = false
         }
-        [current, next, afterBreak].compactMap { $0 }.forEach(release)
+        [current, next, standbyProgramme, earlyNext].compactMap { $0 }.forEach(release)
         current = nil
         next = nil
-        afterBreak = nil
+        standbyProgramme = nil
+        earlyNext = nil
+        askedEarlyBefore = nil
         preloadedBreakEnd = nil
         isPreparingNext = false
         isBuffering = false
