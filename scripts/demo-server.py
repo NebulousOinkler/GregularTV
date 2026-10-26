@@ -277,7 +277,7 @@ class Handler(BaseHTTPRequestHandler):
         if path.endswith("/PlaybackInfo"):
             item = path.split("/")[-2]
             is_song = any(item == song["Id"] for song in SONG_ITEMS)
-            # Songs always play as they are: karaoke never has them converted.
+            # Songs always play as they are here: the demo has none the server would convert.
             plays = not FALLBACK or "VLC" in json.loads(body or b"{}").get("DeviceProfile", {}).get("Name", "") \
                 or item.startswith("ad") or is_song
             return self.send_json({"MediaSources": [{"Id": "source", "SupportsDirectPlay": plays,

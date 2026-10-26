@@ -56,7 +56,7 @@ import Testing
 }
 
 /// A server whose songs all play as they are, except those named `unplayable`.
-final class FakeSongServer: LyricsSource, OriginalFiles, @unchecked Sendable {
+final class FakeSongServer: LyricsSource, WholeFiles, @unchecked Sendable {
     let unplayable: Set<String>
     let lyrics: [String: SyncedLyrics]
     private let lock = NSLock()
@@ -68,7 +68,7 @@ final class FakeSongServer: LyricsSource, OriginalFiles, @unchecked Sendable {
         self.lyrics = lyrics
     }
 
-    func originalFile(of item: MediaItem) async throws -> URL? {
+    func wholeFile(of item: MediaItem) async throws -> URL? {
         unplayable.contains(item.id) ? nil : URL(string: "https://tv.invalid/\(item.id)")
     }
 
@@ -121,14 +121,16 @@ struct SongbookTests {
         #expect((duet.artist, duet.credit) == ("Elton John", "Elton John, Kiki Dee"), "Grouped by the first, credited to all")
     }
 
-    @Test func onlyFilesThatPlayAsTheyAreAreListed() {
+    /// Songs in any format (the server converts one the device doesn't
+    /// play), but only videos that play as they are.
+    @Test func songsInAnyFormatAndVideosThatPlayAsTheyAreAreListed() {
         let book = Songbook([
             Songs.song("ok", "Fine"),
-            Songs.song("ogg", "Nope", container: "ogg"),
+            Songs.song("ogg", "Converted", container: "ogg"),
             Songs.song("mkv", "Nope", kind: .musicVideo, container: "mkv"),
             MediaItem(id: "film", kind: .movie, name: "A Film", duration: 6000),
         ], formats: .appleTV)
-        #expect(book.songs.map(\.id) == ["ok"])
+        #expect(book.songs.map(\.id) == ["ogg", "ok"])
     }
 
     @Test func artistsAlbumsAndSongsAreInOrder() throws {

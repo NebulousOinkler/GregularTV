@@ -4,7 +4,8 @@ import Testing
 @testable import GregularJellyfin
 
 /// What special modes read from Jellyfin: songs and music videos in a
-/// library, their lyrics, and whether their original files play as they are.
+/// library, their lyrics, and the files to fetch whole: the original where
+/// it plays as it is, or a song's sound converted.
 struct SpecialLibraryTests {
     let mock = MockJellyfin()
 
@@ -103,18 +104,37 @@ struct SpecialLibraryTests {
             return (200, #"{ "MediaSources": [{ "Id": "s1", "Container": "mp3", "SupportsDirectPlay": true }], "PlaySessionId": "p" }"#)
         }
         let song = MediaItem(id: "s1", kind: .song, name: "Dancing Queen", duration: 231)
-        let url = try #require(try await JellyfinFixtures.client(mock).originalFile(of: song))
+        let url = try #require(try await JellyfinFixtures.client(mock).wholeFile(of: song))
         #expect(url.path == "/Audio/s1/stream.mp3")
         let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
         #expect(query.contains(URLQueryItem(name: "Static", value: "true")))
         #expect(query.contains(URLQueryItem(name: "ApiKey", value: "token-abc")))
     }
 
-    @Test func oneThatWouldBeConvertedHasNone() async throws {
+    @Test func aVideoThatWouldBeConvertedHasNone() async throws {
         mock.on("POST", "/Items/m1/PlaybackInfo",
                 json: #"{ "MediaSources": [{ "Id": "m1", "SupportsDirectPlay": false, "TranscodingUrl": "/videos/m1/master.m3u8" }] }"#)
         let video = MediaItem(id: "m1", kind: .musicVideo, name: "Waterloo", duration: 168)
-        #expect(try await JellyfinFixtures.client(mock).originalFile(of: video) == nil)
+        #expect(try await JellyfinFixtures.client(mock).wholeFile(of: video) == nil)
+    }
+
+    /// A song the device doesn't play comes as one file of AAC, which
+    /// Jellyfin makes as it's fetched; one Jellyfin would stream, never.
+    @Test func aSongThatWouldBeConvertedComesConvertedWhole() async throws {
+        mock.on("POST", "/Items/s2/PlaybackInfo") { request in
+            let profile = request.jsonBody["DeviceProfile"] as? [String: Any]
+            let song = (profile?["TranscodingProfiles"] as? [[String: Any]] ?? []).first { $0["Type"] as? String == "Audio" }
+            #expect(song?["Container"] as? String == "aac" && song?["AudioCodec"] as? String == "aac")
+            #expect(song?["Protocol"] as? String == "http" && song?["Context"] as? String == "Static" && song?["MaxAudioChannels"] as? String == "2")
+            #expect(song?["VideoCodec"] == nil && song?["MinSegments"] == nil)
+            return (200, #"{ "MediaSources": [{ "Id": "s2", "Container": "ogg", "SupportsDirectPlay": false, "TranscodingUrl": "/audio/s2/stream.aac?AudioCodec=aac&ApiKey=token-abc" }] }"#)
+        }
+        mock.on("POST", "/Items/s3/PlaybackInfo",
+                json: #"{ "MediaSources": [{ "Id": "s3", "SupportsDirectPlay": false, "TranscodingUrl": "/audio/s3/master.m3u8?AudioCodec=aac" }] }"#)
+        let client = JellyfinFixtures.client(mock)
+        let url = try #require(try await client.wholeFile(of: MediaItem(id: "s2", kind: .song, name: "Fernando", duration: 254)))
+        #expect(url.path == "/audio/s2/stream.aac" && url.host() == "tv.local")
+        #expect(try await client.wholeFile(of: MediaItem(id: "s3", kind: .song, name: "Chiquitita", duration: 326)) == nil)
     }
 
     @Test func aWholeFileComesFromItsOwnServerOnly() async throws {
@@ -144,6 +164,6 @@ struct SpecialLibraryTests {
         let client = JellyfinClient(credentials: JellyfinFixtures.credentials, identity: JellyfinFixtures.identity,
                                     formats: .browser(alsoPlays: []), transport: mock)
         let video = MediaItem(id: "m1", kind: .musicVideo, name: "Waterloo", duration: 168)
-        #expect(try await client.originalFile(of: video)?.path == "/Videos/m1/stream.mp4")
+        #expect(try await client.wholeFile(of: video)?.path == "/Videos/m1/stream.mp4")
     }
 }

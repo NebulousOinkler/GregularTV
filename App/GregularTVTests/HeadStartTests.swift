@@ -29,7 +29,19 @@ struct HeadStartTests {
             Issue.record("Expected a head start, not \(player.status)")
             return
         }
-        #expect(abs(at.timeIntervalSinceNow - ChannelPlayer.transcodeHeadStart) < 2)
+        #expect(abs(at.timeIntervalSinceNow - player.timings.transcodeHeadStart) < 2)
+        player.stop()
+    }
+
+    /// HDR tone-mapped to SDR, one of the heaviest re-encodes: twice the head start.
+    @Test func aHeavyReencodeStartsFurtherAhead() async throws {
+        let player = try player(reply: FakeServer.hls(reasons: "VideoCodecNotSupported,VideoRangeTypeNotSupported"))
+        player.tune()
+        guard case .startingSoon(let at) = try await settledStatus(player) else {
+            Issue.record("Expected a head start, not \(player.status)")
+            return
+        }
+        #expect(abs(at.timeIntervalSinceNow - player.timings.transcodeHeadStart * ChannelPlayer.heavyHeadStartFactor) < 2)
         player.stop()
     }
 

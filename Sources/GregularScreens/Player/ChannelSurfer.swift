@@ -31,11 +31,13 @@ public final class ChannelSurfer {
     private var noticeTask: Task<Void, Never>?
 
     public init(channels: [ChannelSchedule], startingWith channel: ChannelSchedule,
-         streams: any StreamSource, preferences: AppPreferences, decks: [any PlayerDeck]) {
+         streams: any StreamSource, preferences: AppPreferences, decks: [any PlayerDeck],
+         timings: ChannelPlayer.Timings = ChannelPlayer.Timings()) {
         self.channels = channels
         self.preferences = preferences
         navigator = ChannelNavigator(numbers: channels.map(\.channel.number))
-        player = ChannelPlayer(schedule: channel, streams: streams, quality: preferences.streamingQuality, decks: decks)
+        player = ChannelPlayer(schedule: channel, streams: streams, quality: preferences.streamingQuality, decks: decks,
+                               timings: timings)
     }
 
     /// The channels, rebuilt after a setting changed. The channel playing

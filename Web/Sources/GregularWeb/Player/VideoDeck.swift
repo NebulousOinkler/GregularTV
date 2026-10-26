@@ -94,11 +94,11 @@ import Observation
         queue.first?.slot?.position ?? 0
     }
 
-    var activity: String {
+    var activity: DeckActivity {
         switch state {
-        case .playing: "Playing"
-        case .paused: "Paused"
-        case .waiting: "Buffering" + (queue.first?.slot?.waitingReason.map { " (\($0))" } ?? "")
+        case .playing: DeckActivity(.playing)
+        case .paused: DeckActivity(.paused)
+        case .waiting: DeckActivity(.waiting, waitingFor: queue.first?.slot?.waitingFor)
         }
     }
 
@@ -159,7 +159,7 @@ import Observation
     /// Called when the item reaches its end.
     var onEnded: (() -> Void)?
     /// What's waited for, while buffering, in a word or two.
-    private(set) var waitingReason: String?
+    private(set) var waitingFor: DeckActivity.Wait?
     /// Where the video has been asked to go and hasn't reached yet. Until it
     /// has, the slot reports that position and isn't ready, as `AVPlayer`
     /// does: a browser can say it's ready at the start before it seeks, and
@@ -180,10 +180,10 @@ import Observation
         // credentials for the server.
         video.attribute("crossorigin", "anonymous")
         video.object.muted = .boolean(true)
-        video.on("waiting") { [weak self] _ in self?.waitingReason = "filling buffer" }
-        video.on("stalled") { [weak self] _ in self?.waitingReason = "network stalled" }
+        video.on("waiting") { [weak self] _ in self?.waitingFor = .fillingBuffer }
+        video.on("stalled") { [weak self] _ in self?.waitingFor = .networkStalled }
         video.on("playing") { [weak self] _ in
-            self?.waitingReason = nil
+            self?.waitingFor = nil
             self?.scheduleEnd()
         }
         video.on("seeked") { [weak self] _ in
@@ -317,7 +317,7 @@ import Observation
         video.emptyVideo()
         item?.slot = nil
         item = nil
-        waitingReason = nil
+        waitingFor = nil
         pendingSeek = nil
         isCurrent = false
     }
@@ -381,5 +381,5 @@ import Observation
 
 extension UnplayableFormat {
     /// A format this browser couldn't decode.
-    static let here = UnplayableFormat(on: "this browser")
+    static let here = UnplayableFormat(on: PlayerText.thisBrowser)
 }

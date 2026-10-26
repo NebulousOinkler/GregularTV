@@ -30,7 +30,7 @@ public struct PlayableFormats: Sendable, Equatable {
     /// Whether a file in `container` (as `MediaItem.container` names it) could
     /// play as it is, judged by the container alone. True when it isn't
     /// known, or the player takes any container: only the server can say
-    /// for sure (`OriginalFiles`).
+    /// for sure (`WholeFiles`).
     public func mightPlayAsIs(_ kind: MediaItem.Kind, container: String?) -> Bool {
         let playable = kind == .song ? audioFileContainers : containers
         guard let container, !playable.isEmpty else { return true }
@@ -126,15 +126,19 @@ public struct PlayableFormats: Sendable, Equatable {
     /// in real time); HEVC is only ever copied as it is. It can't decode
     /// 10-bit H.264, or HEVC beyond Main 10, and plays HEVC only tagged
     /// `hvc1` (or `dvh1`, Dolby Vision) in the file.
+    ///
+    /// FLAC plays as it is in a file, and a conversion keeps up to 7.1
+    /// sound (decided 2026-10-26, A4; `AppleTVSoundTests`, in the
+    /// simulator). FLAC isn't copied into a conversion: that's untested.
     public static let appleTV = PlayableFormats(
         name: "tvOS",
         containers: ["mp4", "m4v", "mov"],
         videoCodecs: ["hevc", "h264"],
-        audioCodecs: ["aac", "ac3", "eac3", "alac", "mp3"],
+        audioCodecs: ["aac", "ac3", "eac3", "alac", "mp3", "flac"],
         codecLimits: [.eightBitH264, .hevc(tags: ["hvc1", "dvh1"])],
         convertedVideoCodecs: ["h264", "hevc"],
         convertedAudioCodecs: ["aac", "ac3", "eac3"],
-        mostAudioChannels: 6,
+        mostAudioChannels: 8,
         audioFileContainers: ["mp3", "m4a", "mp4", "aac", "flac", "wav"],
         audioFileCodecs: ["mp3", "aac", "alac", "flac", "pcm_s16le", "pcm_s24le"])
 

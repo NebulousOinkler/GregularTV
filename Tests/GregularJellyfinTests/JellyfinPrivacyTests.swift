@@ -30,7 +30,7 @@ struct JellyfinPrivacyTests {
         _ = try await client.fetchLibrary(named: "Commercials", kinds: Set(MediaItem.Kind.allCases))
         _ = try await client.playbackSource(for: "abc")
         _ = try await client.lyrics(for: "abc")
-        _ = try await client.originalFile(of: MediaItem(id: "abc", kind: .song, name: "Song", duration: 200))
+        _ = try await client.wholeFile(of: MediaItem(id: "abc", kind: .song, name: "Song", duration: 200))
         try await client.stopTranscoding(playSessionID: "p")
         await client.keepAlive(MediaStream(url: URL(string: "https://tv.invalid/s")!, delivery: .repackaged, sessionID: "p"))
         await client.signOut(clearing: InMemoryCredentialStore())

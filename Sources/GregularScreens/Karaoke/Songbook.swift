@@ -55,10 +55,13 @@ public struct Songbook: Sendable {
     /// Every artist, by name.
     public let artists: [Artist]
 
-    /// - Parameter formats: what this device plays; files it can't play as they are are left out.
+    /// - Parameter formats: what this device plays; videos it can't play as
+    ///   they are are left out. Songs in any format are listed: the server
+    ///   converts the sound of one the device doesn't play (`WholeFiles`).
     public init(_ items: [MediaItem], formats: PlayableFormats) {
         self.init(songs: items
-            .filter { [.song, .musicVideo, .video].contains($0.kind) && $0.duration > 0 && formats.mightPlayAsIs($0.kind, container: $0.container) }
+            .filter { [.song, .musicVideo, .video].contains($0.kind) && $0.duration > 0
+                && ($0.kind == .song || formats.mightPlayAsIs($0.kind, container: $0.container)) }
             .map(Song.init))
     }
 

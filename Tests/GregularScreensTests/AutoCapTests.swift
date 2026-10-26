@@ -43,15 +43,21 @@ struct AutoCapTests {
     /// again with the original, with no speed test.
     @Test func theNextProgrammeStartsAgainWithTheOriginal() async throws {
         let streams = FakeStreams(measured: 10_000_000)
-        // The next programme is asked for 30 seconds before this one ends: a few seconds from now.
+        // The next programme is asked for 30 seconds before this one ends
+        // (sooner, to see whether the server converts it): a few seconds from now.
         let player = try player(streams, elapsed: 3600 - 40)
         player.start()
         let deck = try await Fixture.playingDeck(player)
+        let now = try #require(player.airing?.item.id), next = now == "m1" ? "m2" : "m1"
+        let capped = "\(now) at 7000000", original = "\(next) at \(StreamingQuality.maximumBitrate)"
         deck.seek(to: 300)   // as if buffering had left it far behind live
-        try await waitUntil(3) { streams.caps.count == 2 }
-        #expect(streams.caps.last == 7_000_000 && streams.speedTests == 1)
-        try await waitUntil(15) { streams.caps.count == 3 }
-        #expect(streams.caps.last == StreamingQuality.maximumBitrate && streams.speedTests == 1)
+        try await waitUntil(5) { streams.events.contains(capped) }
+        #expect(streams.events.contains(capped) && streams.speedTests == 1)
+        // Asked for after the cap (each programme's requests in order, whatever else is asked meanwhile).
+        let askedAfterCap = { streams.events.drop { $0 != capped }.contains(original) }
+        try await waitUntil(15) { askedAfterCap() }
+        #expect(askedAfterCap() && streams.speedTests == 1)
+        #expect(!streams.events.contains { $0.hasPrefix(next) && $0 != original }, "Never capped")
         player.stop()
     }
 

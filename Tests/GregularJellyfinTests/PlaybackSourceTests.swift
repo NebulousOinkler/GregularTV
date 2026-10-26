@@ -15,6 +15,7 @@ struct PlaybackSourceTests {
             (.directPlay, "", .original),
             (.hls, "", .repackaged),
             (.hls, "TranscodeReasons=ContainerNotSupported", .repackaged),
+            (.hls, "TranscodeReasons=ContainerNotSupported,SecondaryAudioNotSupported", .repackaged),
             (.hls, "TranscodeReasons=ContainerNotSupported,AudioCodecNotSupported", .soundConverted),
             (.hls, "TranscodeReasons=AudioChannelsNotSupported", .soundConverted),
             (.hls, "TranscodeReasons=UnknownAudioStreamInfo", .soundConverted),
@@ -27,6 +28,22 @@ struct PlaybackSourceTests {
             let source = source(method, query)
             #expect(source.delivery == delivery, "\(query)")
             #expect(source.mediaStream.delivery == delivery && source.mediaStream.reencodes == (delivery == .reencoded))
+        }
+    }
+
+    /// Tone mapping, 10-bit to 8-bit and deinterlacing make the heaviest re-encodes.
+    @Test func theHeaviestReencodesAreToldApart() {
+        let heavy: [(PlaybackSource.Method, String, Bool)] = [
+            (.hls, "TranscodeReasons=VideoRangeTypeNotSupported", true),
+            (.hls, "TranscodeReasons=ContainerNotSupported,VideoBitDepthNotSupported", true),
+            (.hls, "TranscodeReasons=InterlacedVideoNotSupported", true),
+            (.hls, "TranscodeReasons=VideoCodecNotSupported", false),
+            (.hls, "TranscodeReasons=ContainerBitrateExceedsLimit", false),
+            (.hls, "TranscodeReasons=AudioCodecNotSupported", false),
+            (.directPlay, "TranscodeReasons=VideoRangeTypeNotSupported", false),
+        ]
+        for (method, query, isHeavy) in heavy {
+            #expect(source(method, query).mediaStream.isHeavyReencode == isHeavy, "\(query)")
         }
     }
 }

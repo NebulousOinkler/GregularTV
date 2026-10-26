@@ -7,14 +7,16 @@ import Testing
 
 /// Speed tests: Auto asks for the original with no speed test until
 /// playback has trouble, and they never run unless Auto is selected.
-/// Serialized: the tests change the shared background-measurement delay.
 @MainActor @Suite(.serialized)
 struct AutoQualityTests {
-    private func makePlayer(quality: StreamingQuality, server: FakeServer) throws -> ChannelPlayer {
+    /// - Parameter measuringAfter: the background speed test's wait (at once, unless given).
+    private func makePlayer(quality: StreamingQuality, server: FakeServer, measuringAfter: Duration = .zero) throws -> ChannelPlayer {
         let items = [MediaItem(id: "m", kind: .movie, name: "M", duration: 3600)]
         let schedule = try #require(try ChannelSchedule.testing(items: items).first)
         let client = JellyfinClient.testing(server)
-        return ChannelPlayer(schedule: schedule, streams: client, quality: quality)
+        var timings = ChannelPlayer.Timings()
+        timings.backgroundMeasurementDelay = measuringAfter
+        return ChannelPlayer(schedule: schedule, streams: client, quality: quality, timings: timings)
     }
 
     private func waitForPlaybackInfo(_ server: FakeServer) async throws {
@@ -22,7 +24,6 @@ struct AutoQualityTests {
     }
 
     @Test func fixedQualityNeverRunsASpeedTest() async throws {
-        ChannelPlayer.backgroundMeasurementDelay = .zero
         let server = FakeServer(speedTestDelay: .seconds(2))   // like a slow link
         let player = try makePlayer(quality: .hd10, server: server)
         player.tune()
@@ -34,7 +35,6 @@ struct AutoQualityTests {
     }
 
     @Test func autoAsksForTheOriginalWithoutASpeedTest() async throws {
-        ChannelPlayer.backgroundMeasurementDelay = .zero
         let server = FakeServer(speedTestDelay: .seconds(2))   // like a slow link
         let player = try makePlayer(quality: .auto, server: server)
         let start = ContinuousClock.now
@@ -49,9 +49,8 @@ struct AutoQualityTests {
     }
 
     @Test func switchingAwayFromAutoUsesTheFixedCapWithNoSpeedTest() async throws {
-        ChannelPlayer.backgroundMeasurementDelay = .milliseconds(200)
         let server = FakeServer(speedTestDelay: .seconds(2))   // like a slow link
-        let player = try makePlayer(quality: .auto, server: server)
+        let player = try makePlayer(quality: .auto, server: server, measuringAfter: .milliseconds(200))
         player.tune()
         try await waitForPlaybackInfo(server)
         player.setQuality(.hd720)

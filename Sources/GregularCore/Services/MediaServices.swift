@@ -23,14 +23,16 @@ public protocol LyricsSource: Sendable {
     func lyrics(for itemID: String) async throws -> SyncedLyrics?
 }
 
-/// Items' original files, for playing whole: fetched completely before they
-/// play, so nothing can stall partway (unlike a `StreamSource`'s streams).
-public protocol OriginalFiles: Sendable {
-    /// Where `item`'s original file is, if this device plays it as it is.
-    /// Nil if the server would have to convert it.
-    func originalFile(of item: MediaItem) async throws -> URL?
+/// Items' files, for playing whole: fetched completely before they play,
+/// so nothing can stall partway (unlike a `StreamSource`'s streams).
+public protocol WholeFiles: Sendable {
+    /// Where `item`'s file is, to fetch whole: the original, if this device
+    /// plays it as it is; else, for a song, the server's conversion of it to
+    /// a sound format the device plays, made as it's fetched. Nil for
+    /// anything else the server would have to convert (a video).
+    func wholeFile(of item: MediaItem) async throws -> URL?
 
-    /// The whole of an `originalFile(of:)`, in memory (never on disk), for
+    /// The whole of a `wholeFile(of:)`, in memory (never on disk), for
     /// a platform whose player can't fetch it whole itself. Throws if it's
     /// larger than `mostBytes`, or if `checkDownload(_:)` would.
     func download(_ url: URL, mostBytes: Int) async throws -> Data
@@ -160,6 +162,13 @@ public struct MediaStream: Sendable, Equatable {
         /// server needn't convert them, or any it plays as they are, when
         /// the viewer asks for it.
         case addOn
+
+        /// The order players are asked about: the device's own first, so
+        /// the add-on only plays what it can't; or the add-on first, when the
+        /// viewer asks for it (Play in VLC).
+        public static func order(addOnFirst: Bool = false) -> [Player] {
+            addOnFirst ? [.addOn, .builtIn] : [.builtIn, .addOn]
+        }
     }
 
     public let url: URL
@@ -173,19 +182,25 @@ public struct MediaStream: Sendable, Equatable {
     public let player: Player
     /// What it carries, as far as the server says.
     public let contents: StreamContents
+    /// A re-encode among the heaviest a server makes: HDR tone-mapped to
+    /// SDR, 10-bit video made 8-bit, or interlaced video deinterlaced, each
+    /// far more work than a plain re-encode. It gets a longer head start.
+    public let isHeavyReencode: Bool
 
     /// The server has to re-encode its video: the expensive kind of
     /// conversion (`Delivery.reencoded`).
     public var reencodes: Bool { delivery == .reencoded }
 
     public init(url: URL, delivery: Delivery, player: Player = .builtIn,
-                conversionReasons: [String] = [], sessionID: String? = nil, contents: StreamContents = StreamContents()) {
+                conversionReasons: [String] = [], sessionID: String? = nil, contents: StreamContents = StreamContents(),
+                isHeavyReencode: Bool = false) {
         self.url = url
         self.delivery = delivery
         self.player = player
         self.contents = contents
         self.conversionReasons = conversionReasons
         self.sessionID = sessionID
+        self.isHeavyReencode = isHeavyReencode && delivery == .reencoded
     }
 }
 

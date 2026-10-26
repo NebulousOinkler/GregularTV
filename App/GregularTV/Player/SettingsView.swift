@@ -138,12 +138,10 @@ struct SettingsView: View {
 
     /// Your channels and set times, listed here and made on the editing page.
     @ViewBuilder private var yourChannels: some View {
-        let howToEdit = app.allowsEditingPage
-            ? "Make and change them on the editing page: Open the Editing Page, below, and follow the steps on a phone or computer."
-            : "Make and change them from a phone or computer: turn on the editing page, below."
+        let howToEdit = SettingsText.howToEdit(pageAllowed: app.allowsEditingPage)
         SettingsRows.section(SettingsText.yourChannels, footer: [
             app.customChannels.isEmpty ? SettingsText.noneYet : nil,
-            SettingsText.yourChannelsNote(kept: "on this Apple TV"),
+            SettingsText.yourChannelsNote(kept: SettingsText.onThisAppleTV),
             howToEdit,
         ]) {
             ForEach(app.customChannels, id: \.self) { channel in
@@ -153,7 +151,7 @@ struct SettingsView: View {
 
         SettingsRows.section(SettingsText.setTimes, footer: [
             app.setTimes.isEmpty ? SettingsText.noneYet : nil,
-            SettingsText.setTimesNote(kept: "on this Apple TV"),
+            SettingsText.setTimesNote(kept: SettingsText.onThisAppleTV),
             howToEdit,
         ]) {
             ForEach(app.setTimesChannels) { channel in
@@ -161,14 +159,12 @@ struct SettingsView: View {
             }
         }
 
-        SettingsRows.section("Edit from a phone or computer", footer: [
-            "When on, you can make and change your channels and set times in a web browser on a phone or computer on your home network, with a keyboard and search, while the editing screen is open here. Off, they can't be changed. Nothing is kept or sent anywhere else either way.",
-        ]) {
-            SettingsRows.row("Editing page", value: SettingsText.onOff(app.allowsEditingPage)) {
+        SettingsRows.section(SettingsText.editFromAnotherDevice, footer: [SettingsText.editingPageNote]) {
+            SettingsRows.row(SettingsText.editingPage, value: SettingsText.onOff(app.allowsEditingPage)) {
                 app.setAllowsEditingPage(!app.allowsEditingPage)
             }
             if app.allowsEditingPage {
-                SettingsRows.row("Open the Editing Page") { editingPage = true }
+                SettingsRows.row(SettingsText.openEditingPage) { editingPage = true }
             }
         }
     }

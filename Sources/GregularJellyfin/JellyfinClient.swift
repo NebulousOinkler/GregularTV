@@ -57,13 +57,17 @@ public struct JellyfinClient: Sendable {
         return lyrics.synced
     }
 
-    /// Where `item`'s original file is, to fetch whole, if this device plays
-    /// it as it is. Nil if Jellyfin would have to convert it.
+    /// Where `item`'s file is, to fetch whole: the original, if this device
+    /// plays it as it is; else, for a song, Jellyfin's conversion of its
+    /// sound into one file (`DeviceProfile.TranscodingProfile.song`), made as
+    /// it's fetched, so it costs the server a sound conversion. Nil for a
+    /// video Jellyfin would have to convert, or a conversion that isn't one
+    /// file (a stream can't be fetched whole).
     ///
     /// Asked as if the server were on https even when it isn't: the file is
     /// fetched by the app itself, not by a web page's player, so a browser's
     /// rule against playing files from plain http doesn't apply (`PlayableFormats.playsFilesOnlyOverHTTPS`).
-    public func originalFileURL(of item: MediaItem) async throws -> URL? {
+    public func wholeFileURL(of item: MediaItem) async throws -> URL? {
         let info: PlaybackInfoResponse = try await api.post(
             "/Items/\(JellyfinAPI.segment(item.id))/PlaybackInfo",
             query: [
@@ -73,13 +77,18 @@ public struct JellyfinClient: Sendable {
             ],
             body: PlaybackInfoRequest(itemID: item.id, userId: credentials.userID, formats: formats,
                                       maxBitrate: StreamingQuality.maximumBitrate, secure: true))
-        guard let source = info.mediaSources.first, source.supportsDirectPlay else { return nil }
-        return directPlayURL(itemID: item.id, source: source, playSessionID: nil, isSong: item.kind == .song)
+        guard let source = info.mediaSources.first else { return nil }
+        if source.supportsDirectPlay {
+            return directPlayURL(itemID: item.id, source: source, playSessionID: nil, isSong: item.kind == .song)
+        }
+        guard item.kind == .song, let url = source.transcodingUrl.flatMap(serverRelativeURL),
+              url.pathExtension.lowercased() != "m3u8" else { return nil }
+        return url
     }
 
     /// The device's players: its own, and the add-on if it has one.
     public var players: [MediaStream.Player] {
-        addOnFormats == nil ? [.builtIn] : [.builtIn, .addOn]
+        MediaStream.Player.order().filter { $0 == .builtIn || addOnFormats != nil }
     }
 
     /// The most sound channels in a stream converted for the device's own player.
@@ -92,7 +101,8 @@ public struct JellyfinClient: Sendable {
     ///
     /// The first of `players` that plays the file as it is plays it so (the
     /// add-on player only if the device has one). If none can, the server
-    /// converts it for the device's own player.
+    /// converts it for the device's own player: with another sound track,
+    /// if that spares converting the sound (`withASoundTrackToCopy`).
     /// - Parameters:
     ///   - maxBitrate: the quality cap in bits per second (see `StreamingQuality`).
     ///   - players: the players to ask about, in order. A player the
@@ -103,12 +113,12 @@ public struct JellyfinClient: Sendable {
     ///     of what it's said to play (`PlayableFormats.without(_:)`).
     public func playbackSource(
         for itemID: String, maxBitrate: Int = StreamingQuality.maximumBitrate,
-        players: [MediaStream.Player] = [.builtIn, .addOn], stereoSound: Bool = false,
+        players: [MediaStream.Player] = MediaStream.Player.order(), stereoSound: Bool = false,
         unplayable: [MediaStream.Player: Set<MediaFormat>] = [:]
     ) async throws -> PlaybackSource {
         let formats = (stereoSound ? formats.withStereoSound : formats).without(unplayable[.builtIn] ?? [])
         let addOnFormats = addOnFormats?.without(unplayable[.addOn] ?? [])
-        var ownAnswer: (info: PlaybackInfoResponse, source: PlaybackInfoResponse.MediaSource)?
+        var ownAnswer: Answer?
         for player in players {
             switch player {
             case .addOn:
@@ -122,29 +132,54 @@ public struct JellyfinClient: Sendable {
                 ownAnswer = answer
             }
         }
-        let (info, source) = if let ownAnswer { ownAnswer } else {
+        let answer = if let ownAnswer { ownAnswer } else {
             try await playbackInfo(for: itemID, formats: formats, maxBitrate: maxBitrate)
         }
-        if let transcodingURL = source.transcodingUrl, let url = serverRelativeURL(transcodingURL) {
-            return PlaybackSource(url: url, method: .hls, playSessionID: info.playSessionId, source: source.contents)
+        let (stream, soundTrack) = await withASoundTrackToCopy(answer, itemID: itemID, formats: formats, maxBitrate: maxBitrate)
+        if let url = stream.url {
+            return PlaybackSource(url: url, method: .hls, playSessionID: stream.answer.info.playSessionId,
+                                  source: stream.answer.source.contents(soundTrack: soundTrack))
         }
         throw JellyfinError.noPlayableSource(itemID: itemID)
     }
 
+    /// Jellyfin's answer about playing an item: the answer, and the item's own media source in it.
+    private typealias Answer = (info: PlaybackInfoResponse, source: PlaybackInfoResponse.MediaSource)
+
+    /// A conversion Jellyfin offers, and where it is (nil if it offers none).
+    private typealias Conversion = (answer: Answer, url: URL?)
+
+    /// `answer`'s conversion, or, where it converts the sound and another of
+    /// the file's sound tracks would be copied as it is
+    /// (`MediaSource.soundTrackToCopy(into:)`), the conversion with that
+    /// track, and its index. That costs one more request, and the server
+    /// only repackages the file rather than converting its sound. Its answer
+    /// is taken only if it does spare the sound; otherwise, or if asking
+    /// fails, the first one stands.
+    private func withASoundTrackToCopy(_ answer: Answer, itemID: String, formats: PlayableFormats,
+                                       maxBitrate: Int) async -> (Conversion, soundTrack: Int?) {
+        let first = (answer: answer, url: answer.source.transcodingUrl.flatMap(serverRelativeURL))
+        guard let url = first.url, PlaybackSource(url: url, method: .hls, playSessionID: nil).convertsSound,
+              let track = answer.source.soundTrackToCopy(into: formats),
+              let other = try? await playbackInfo(for: itemID, formats: formats, maxBitrate: maxBitrate, soundTrack: track),
+              !other.source.supportsDirectPlay,
+              let otherURL = other.source.transcodingUrl.flatMap(serverRelativeURL),
+              !PlaybackSource(url: otherURL, method: .hls, playSessionID: nil).convertsSound
+        else { return (first, nil) }
+        return ((other, otherURL), track)
+    }
+
     /// The original file of `itemID`, as `answer` has it, on `player`.
-    private func directPlay(_ itemID: String, _ answer: (info: PlaybackInfoResponse, source: PlaybackInfoResponse.MediaSource),
-                            on player: MediaStream.Player) -> PlaybackSource {
+    private func directPlay(_ itemID: String, _ answer: Answer, on player: MediaStream.Player) -> PlaybackSource {
         PlaybackSource(url: directPlayURL(itemID: itemID, source: answer.source, playSessionID: answer.info.playSessionId, isSong: false),
-                       method: .directPlay, player: player, playSessionID: answer.info.playSessionId, source: answer.source.contents)
+                       method: .directPlay, player: player, playSessionID: answer.info.playSessionId, source: answer.source.contents())
     }
 
     /// What Jellyfin says about playing an item on a player that plays
-    /// `formats`: its answer, and the item's own media source in it. Asking
-    /// starts nothing on the server; a transcode starts only when its
-    /// stream is fetched.
-    private func playbackInfo(
-        for itemID: String, formats: PlayableFormats, maxBitrate: Int
-    ) async throws -> (info: PlaybackInfoResponse, source: PlaybackInfoResponse.MediaSource) {
+    /// `formats`, with `soundTrack` if one is named. Asking starts nothing on
+    /// the server; a transcode starts only when its stream is fetched.
+    private func playbackInfo(for itemID: String, formats: PlayableFormats, maxBitrate: Int,
+                              soundTrack: Int? = nil) async throws -> Answer {
         let info: PlaybackInfoResponse = try await api.post(
             "/Items/\(JellyfinAPI.segment(itemID))/PlaybackInfo",
             query: [
@@ -152,31 +187,32 @@ public struct JellyfinClient: Sendable {
                 URLQueryItem(name: "maxStreamingBitrate", value: String(maxBitrate)),
                 URLQueryItem(name: "mediaSourceId", value: itemID),
                 URLQueryItem(name: "subtitleStreamIndex", value: "-1"),
-            ],
+            ] + (soundTrack.map { [URLQueryItem(name: "audioStreamIndex", value: String($0))] } ?? []),
             body: PlaybackInfoRequest(itemID: itemID, userId: credentials.userID, formats: formats, maxBitrate: maxBitrate,
-                                      secure: credentials.serverURL.scheme?.lowercased() == "https"))
+                                      secure: credentials.serverURL.scheme?.lowercased() == "https", soundTrack: soundTrack))
         guard let source = info.mediaSources.first else { throw JellyfinError.noPlayableSource(itemID: itemID) }
         return (info, source)
     }
 
-    /// The fastest a measurement reports: 2 Gbps, far beyond any stream.
-    static let fastestMeasured = 2_000_000_000
-
     /// Measures how fast the server can send data right now, in bits per
-    /// second, by downloading `bytes` of test data from Jellyfin's bitrate
-    /// test endpoint. It reflects both the network and how busy the server is.
-    public func measureBandwidth(bytes: Int) async throws -> Int {
+    /// second, with test data from Jellyfin's bitrate test endpoint, in
+    /// downloads that grow until one is long enough to time (`SpeedTest`).
+    /// It reflects both the network and how busy the server is.
+    public func measureBandwidth() async throws -> Int {
         // Warm-up: the first request pays for DNS, TCP and the TLS handshake
         // (slow through a relay such as Tailscale Funnel). Timing it would make
-        // the server look far slower than it streams. The timed request then
-        // reuses the open connection.
-        try await api.call("GET", "/Playback/BitrateTest", query: [URLQueryItem(name: "size", value: "64000")])
-        let start = ContinuousClock.now
+        // the server look far slower than it streams. The timed requests then
+        // reuse the open connection.
+        try await bitrateTest(bytes: 64_000)
+        return try await SpeedTest.measure { bytes in
+            let start = ContinuousClock.now
+            try await bitrateTest(bytes: bytes)
+            return ContinuousClock.now - start
+        }
+    }
+
+    private func bitrateTest(bytes: Int) async throws {
         try await api.call("GET", "/Playback/BitrateTest", query: [URLQueryItem(name: "size", value: String(bytes))])
-        let seconds = max(0.001, (ContinuousClock.now - start) / .seconds(1))
-        // Capped: a server on the same machine can measure faster than a
-        // 32-bit Int holds (WebAssembly's), far beyond any stream's need.
-        return Int(min(Double(bytes * 8) / seconds, Double(Self.fastestMeasured)))
     }
 
     /// Stops the server's transcode for a play session. Call it when changing
@@ -268,9 +304,9 @@ extension JellyfinClient: LyricsSource {
     }
 }
 
-extension JellyfinClient: OriginalFiles {
-    public func originalFile(of item: MediaItem) async throws -> URL? {
-        try await originalFileURL(of: item)
+extension JellyfinClient: WholeFiles {
+    public func wholeFile(of item: MediaItem) async throws -> URL? {
+        try await wholeFileURL(of: item)
     }
 
     /// Only from this server, through its transport and rules.
@@ -297,10 +333,6 @@ extension JellyfinClient: StreamSource {
     public func keepAlive(_ stream: MediaStream) async {
         guard let session = stream.sessionID else { return }
         try? await keepTranscoding(playSessionID: session)
-    }
-
-    public func measureBandwidth() async throws -> Int {
-        try await measureBandwidth(bytes: 3_000_000)
     }
 }
 

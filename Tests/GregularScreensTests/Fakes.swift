@@ -59,13 +59,7 @@ import Testing
         seeks.append(seconds)
         position = seconds
     }
-    var activity: String {
-        switch state {
-        case .playing: "Playing"
-        case .paused: "Paused"
-        case .waiting: "Buffering"
-        }
-    }
+    var activity: DeckActivity { DeckActivity(state) }
 }
 
 /// A server for the player's tests. Each item's file plays as it is on every
@@ -81,19 +75,32 @@ import Testing
 ///   for the built-in player (`StreamRequest.unplayable`) is converted:
 ///   the sound to AAC, the video to H.264.
 ///
+/// (An item in more than one takes the last: `files`, else `converting`,
+/// else `soundConverting`, else `addOnOnly`; see `Treatment`.)
+///
 /// Each stream it serves itself is in a session of its own. The first stream
 /// asked for fails with `failingFirst`, if given. A stream converted for the
 /// built-in player has at most `mostSoundChannels`. Its speed test says
 /// `measured`. It records each request, and each stream it was told is
 /// still wanted.
 final class FakeStreams: StreamSource, @unchecked Sendable {
+    /// What the server does with one item's file.
+    private enum Treatment {
+        /// Every player plays it as it is (the built-in's repackaged, with `streaming`).
+        case asItIs
+        /// Re-encoded, whichever player is asked about.
+        case reencoded
+        /// Only the add-on player plays it as it is; any other gets it `otherwise`.
+        case addOnOnly(otherwise: MediaStream.Delivery)
+        /// A file carrying these, converted where the request rules one out.
+        case carrying(StreamContents)
+    }
+
     private let lock = NSLock()
     private let measured: Int
-    private let converting: Set<String>
     private let streaming: Bool
-    private let addOnOnly: Set<String>
-    private let soundConverting: Set<String>
-    private let files: [String: StreamContents]
+    /// Each item's treatment, by its ID: as it is, unless listed.
+    private let treatments: [String: Treatment]
     private var failingFirst: (any Error)?
     let players: [MediaStream.Player]
     let mostSoundChannels: Int
@@ -105,12 +112,14 @@ final class FakeStreams: StreamSource, @unchecked Sendable {
     init(measured: Int = 50_000_000, converting: Set<String> = [], streaming: Bool = false,
          players: [MediaStream.Player] = [.builtIn], addOnOnly: Set<String> = [], soundConverting: Set<String> = [],
          mostSoundChannels: Int = 6, files: [String: StreamContents] = [:], failingFirst: (any Error)? = nil) {
-        self.files = files
+        var treatments: [String: Treatment] = [:]
+        for id in addOnOnly { treatments[id] = .addOnOnly(otherwise: .repackaged) }
+        for id in soundConverting { treatments[id] = .addOnOnly(otherwise: .soundConverted) }
+        for id in converting { treatments[id] = .reencoded }
+        for (id, file) in files { treatments[id] = .carrying(file) }
+        self.treatments = treatments
         self.measured = measured
-        self.converting = converting
         self.streaming = streaming
-        self.addOnOnly = addOnOnly
-        self.soundConverting = soundConverting
         self.mostSoundChannels = mostSoundChannels
         self.failingFirst = failingFirst
         self.players = players
@@ -138,24 +147,26 @@ final class FakeStreams: StreamSource, @unchecked Sendable {
         }
         if let failure = lock.withLock({ () -> (any Error)? in defer { failingFirst = nil }; return failingFirst }) { throw failure }
         let url = URL(string: "https://tv.invalid/\(itemID)")!
-        if let file = files[itemID] {
+        let session = "session-\(itemID)"
+        switch treatments[itemID] ?? .asItIs {
+        case .carrying(let file):
             let ruledOut = request.unplayable[.builtIn] ?? []
             let video = file.video.map { ruledOut.contains($0) ? MediaFormat(.video, "h264") : $0 }
             let sound = file.sound.map { ruledOut.contains($0) ? MediaFormat(.sound, "aac") : $0 }
             let delivery: MediaStream.Delivery = video != file.video ? .reencoded : sound != file.sound ? .soundConverted : .original
-            return MediaStream(url: url, delivery: delivery, sessionID: delivery != .original ? "session-\(itemID)" : nil,
+            return MediaStream(url: url, delivery: delivery, sessionID: delivery != .original ? session : nil,
                                contents: StreamContents(video: video, sound: sound))
+        case .reencoded:
+            return MediaStream(url: url, delivery: .reencoded, sessionID: session)
+        case .asItIs, .addOnOnly:
+            // The first player asked about that plays it as it is.
+            let otherwise: MediaStream.Delivery? = if case .addOnOnly(let otherwise) = treatments[itemID] { otherwise } else { nil }
+            guard let asItIs = request.players.first(where: { $0 == .addOn || otherwise == nil }) else {
+                return MediaStream(url: url, delivery: otherwise ?? .repackaged, sessionID: session)
+            }
+            if streaming, asItIs == .builtIn { return MediaStream(url: url, delivery: .repackaged, sessionID: session) }
+            return MediaStream(url: url, delivery: .original, player: asItIs)
         }
-        let addOnOnly = addOnOnly.contains(itemID) || soundConverting.contains(itemID)
-        let asItIs = request.players.first { $0 == .addOn || !addOnOnly }
-        let delivery: MediaStream.Delivery =
-            converting.contains(itemID) ? .reencoded
-            : asItIs == nil ? (soundConverting.contains(itemID) ? .soundConverted : .repackaged)
-            : streaming && asItIs == .builtIn ? .repackaged
-            : .original
-        let streamed = delivery != .original
-        return MediaStream(url: url, delivery: delivery, player: streamed ? .builtIn : asItIs ?? .builtIn,
-                           sessionID: streamed ? "session-\(itemID)" : nil)
     }
     func release(_ stream: MediaStream) async {}
     func keepAlive(_ stream: MediaStream) async {
@@ -172,13 +183,14 @@ final class FakeStreams: StreamSource, @unchecked Sendable {
 
 enum Fixture {
     /// Two channels of hour-long films, `elapsed` seconds into one.
-    @MainActor static func surfer(elapsed: TimeInterval = 600, streams: FakeStreams = FakeStreams()) throws -> ChannelSurfer {
+    @MainActor static func surfer(elapsed: TimeInterval = 600, streams: FakeStreams = FakeStreams(),
+                                  timings: ChannelPlayer.Timings = ChannelPlayer.Timings()) throws -> ChannelSurfer {
         let items = (1...3).map { MediaItem(id: "m\($0)", kind: .movie, name: "Film \($0)", duration: 3600) }
         let channels = try ChannelSchedule.testing([1, 2], epoch: Date.now.addingTimeInterval(-elapsed), items: items)
         let preferences = AppPreferences.testing()
         preferences.streamingQuality = .hd10
         return ChannelSurfer(channels: channels, startingWith: channels[0], streams: streams,
-                             preferences: preferences, decks: FakeDeck.pair())
+                             preferences: preferences, decks: FakeDeck.pair(), timings: timings)
     }
 
     /// An app named "Test Device", signed in to whatever `store` holds,

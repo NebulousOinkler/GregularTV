@@ -11,7 +11,8 @@ import Testing
 @MainActor @Suite(.serialized)
 struct CommercialQualityTests {
     /// A channel tuned 30 seconds into a commercial break: a 20-minute
-    /// episode in a 30-minute slot, the rest filled with one-minute ads.
+    /// episode in a 30-minute slot, the rest filled with one-minute ads. Any
+    /// background speed test would start at once, so one shows if it runs.
     private func playerInABreak(server: FakeServer, playsCommercials: Bool = true) throws -> ChannelPlayer {
         let items = [MediaItem(id: "ep", kind: .episode, name: "E", duration: 20 * 60)]
         let ads = (0..<5).map { MediaItem(id: "ad\($0)", kind: .video, name: "Ad", duration: 60) }
@@ -19,7 +20,9 @@ struct CommercialQualityTests {
                                                                 items: items, ads: ads, playsCommercials: playsCommercials).first)
         #expect(schedule.tune(at: .now).isInPadding || schedule.tune(at: .now).airing.isFiller, "The test needs to start in the break")
         let client = JellyfinClient.testing(server)
-        return ChannelPlayer(schedule: schedule, streams: client, quality: .auto)
+        var timings = ChannelPlayer.Timings()
+        timings.backgroundMeasurementDelay = .zero
+        return ChannelPlayer(schedule: schedule, streams: client, quality: .auto, timings: timings)
     }
 
     private func settle(_ server: FakeServer) async throws {
@@ -28,13 +31,14 @@ struct CommercialQualityTests {
     }
 
     @Test func aPlayableCommercialUsesTheOriginalFile() async throws {
-        ChannelPlayer.backgroundMeasurementDelay = .zero
         let server = FakeServer()
         let player = try playerInABreak(server: server)
         player.tune()
         try await settle(server)
         #expect(server.requestedCaps == [StreamingQuality.maximumBitrate], "No cap, whatever the quality setting")
         #expect(server.speedTests == 0, "Even in Auto, commercials never run a speed test")
+        #expect(player.streamDescription?.hasPrefix("Commercial · original quality") == true,
+                "Diagnostics say the quality setting isn't for commercials, not \(player.streamDescription ?? "nothing")")
         player.stop()
     }
 

@@ -81,6 +81,23 @@ public enum SettingsText {
             + "with your schedule code. They're saved \(kept): the channel, the names you picked and the times."
     }
 
+    /// Where each place keeps them, for `kept`.
+    public static let onThisAppleTV = "on this Apple TV"
+    public static let inThisBrowser = "in this browser"
+
+    // On Apple TV, they're made on the editing page, from a phone or computer.
+    public static func howToEdit(pageAllowed: Bool) -> String {
+        pageAllowed
+            ? "Make and change them on the editing page: Open the Editing Page, below, and follow the steps on a phone or computer."
+            : "Make and change them from a phone or computer: turn on the editing page, below."
+    }
+    public static let editFromAnotherDevice = "Edit from a phone or computer"
+    public static let editingPageNote = "When on, you can make and change your channels and set times in a web browser on a "
+        + "phone or computer on your home network, with a keyboard and search, while the editing screen is open here. Off, "
+        + "they can't be changed. Nothing is kept or sent anywhere else either way."
+    public static let editingPage = "Editing page"
+    public static let openEditingPage = "Open the Editing Page"
+
     // MARK: Commercials and diagnostics
 
     public static let commercials = "Commercials"
