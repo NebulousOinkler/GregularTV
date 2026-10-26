@@ -317,6 +317,11 @@ import JavaScriptKit
                 El("p", "title", text: message).attribute("role", "alert"),
                 El("p", "when", text: "Trying again at \(retryAt.clockTime)…"),
             ])
+        case .cantPlay(let message, let next, let when):
+            let card = El("div", "status-card", [Icon.warning.element, El("p", "title", text: message).attribute("role", "alert")])
+            if let next { card.append(El("p", "heading", text: next)) }
+            card.append(El("p", "when", text: when))
+            return card
         }
     }
 }

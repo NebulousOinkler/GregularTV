@@ -1,18 +1,18 @@
 import Foundation
 import GregularCore
 
-/// Everything that applies to one programme only: the viewer's fix and
-/// choice of player, and what Auto learned from the programme's trouble.
+/// Everything that applies to one programme only: the viewer's fixes and
+/// choice of player, and what was learned from the programme's trouble.
 ///
 /// One value, so it goes together. `ChannelPlayer` holds one, for the
 /// programme on now (every part of a split film shares it), and lets it go
 /// when the next programme starts or the channel changes, so those start
 /// with none of it. A quality change clears only what's about quality
-/// (`clearQuality()`): the viewer's choice of player stays.
+/// (`clearQuality()`): the choice of player, and stereo sound, stay.
 ///
 /// It decides, without a deck or a server: the cap a programme plays at,
-/// the step-down ladder, asking for less re-encoding, and what a speed test
-/// makes Auto's cap.
+/// the step-down ladder, asking for less re-encoding or less sound
+/// conversion, and what a speed test makes Auto's cap.
 struct ProgrammeSettings {
     let programme: Airing
     /// The fix in use (the viewer's, or one asked for after re-encoding
@@ -24,6 +24,15 @@ struct ProgrammeSettings {
     var measuresFirst = false
     /// The viewer asked for the add-on player (VLC on Apple TV).
     var prefersAddOn = false
+    /// Sound the server converts is mixed down to stereo: the viewer asked,
+    /// or the server couldn't convert it fast enough.
+    var stereoSound = false
+    /// A stream whose sound the server converts gets a head start, as a
+    /// re-encode does: it couldn't keep up without one.
+    var soundHeadStart = false
+    /// Nothing this device plays can show it (`UnplayableFormats`): it isn't
+    /// asked for again.
+    var cantPlay = false
 
     /// While capped, Auto measures again in the background after this long,
     /// which may raise the cap.
@@ -67,11 +76,31 @@ struct ProgrammeSettings {
     }
 
     /// A re-encode the server couldn't keep up with, at `cap`: 720p first,
-    /// then a step lower each time, down to the lowest.
-    mutating func askForLessReencoding(from cap: Int) {
+    /// then a step lower each time, down to the lowest. False at the lowest:
+    /// there's nothing less to ask for.
+    mutating func askForLessReencoding(from cap: Int) -> Bool {
         let hd720 = StreamingQuality.hd720.fixedBitrate!
-        let lower = cap > hd720 ? hd720 : StreamingQuality.bitrate(below: cap) ?? StreamingQuality.lowestBitrate
+        guard let lower = cap > hd720 ? hd720 : StreamingQuality.bitrate(below: cap) else { return false }
         fix = (lower == hd720 ? .hd720 : .stepDown, lower)
+        return true
+    }
+
+    /// The server couldn't convert the sound fast enough, the video copied
+    /// as it is: first stereo, which is less to make (where there's surround
+    /// to mix down); then a head start, so the server gets ahead. Never a
+    /// lower bitrate, which would make it re-encode the video too. Not the
+    /// add-on player either: it was asked before the server converted
+    /// anything, and can't play this file as it is. False once both are
+    /// asked for: then the trouble may be the connection's.
+    mutating func askForLessSoundWork(offersStereo: Bool) -> Bool {
+        if offersStereo, !stereoSound {
+            stereoSound = true
+        } else if !soundHeadStart {
+            soundHeadStart = true
+        } else {
+            return false
+        }
+        return true
     }
 
     // MARK: - Auto
@@ -90,8 +119,8 @@ struct ProgrammeSettings {
         autoCap.map { date.timeIntervalSince($0.measuredAt) >= Self.remeasureInterval } ?? false
     }
 
-    /// The quality setting changed: the fix and Auto's measurement go, and
-    /// the choice of player stays.
+    /// The quality setting changed: the fix and Auto's measurement go; the
+    /// choice of player and stereo sound stay.
     mutating func clearQuality() {
         fix = nil
         autoCap = nil

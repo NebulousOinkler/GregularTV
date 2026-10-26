@@ -52,9 +52,11 @@ The same app in a web browser: the shared Swift code (`Sources/`) compiled to We
 | Your server | Chrome, Edge | Safari, Firefox |
 |---|---|---|
 | `https://…` | ✅ | ✅ |
-| `http://` on your home network (`192.168.x.x`, `name.local`, `nas:8096`) | ✅ after allowing "local network" access | ❌ |
+| `http://` on your home network (`192.168.x.x`, `name.local`; not a one-word name such as `nas`, which your network's DNS could send elsewhere) | ✅ after allowing "local network" access | ❌ |
 
 From an http server the browser asks for every programme as HLS (usually just a change of container, which is cheap for the server), since it can't play a file over http.
+
+**What it plays as it is.** Every browser plays H.264 (8-bit) video and AAC sound in MP4. The app asks the browser, through its own interface, whether it also decodes HEVC (Main, and Main 10 separately), AV1, AC-3, E-AC-3, Opus and FLAC, and tells your server only what it confirms: those play as they are, or are copied as they are into a conversion, which saves Jellyfin converting them. Where the browser plays AC-3 or E-AC-3, converted sound keeps up to 5.1 channels; otherwise it's mixed down to stereo. A format a browser claims but then can't decode is ruled out for the rest of the session (see *A file a player can't decode*, above).
 
 **Controls.** Touch: tap the picture for the controls, swipe across it to change channel. Keyboard (the same tables as the Siri Remote, `KeyboardControls`): ← → channels, I info, L channel list, S Settings, Space pause or jump to live, Esc steps back (banner, guide, servers), digits type a channel number. Everything works with a screen reader, at any text size, and with reduced motion.
 
@@ -98,7 +100,7 @@ The browser layer's own tests (`Web/Tests`) run in Node:
 scripts/test-web.sh browser
 ```
 
-**Deploying** is automatic: `.github/workflows/web.yml` runs only on main: each push to it is built, checked, tested and deployed to gregular.tv on Cloudflare. Other branches are tested locally with `scripts/test-web.sh`. Setting up the domain and Cloudflare is in [WEB_PLAN.md](WEB_PLAN.md), *Hosting at gregular.tv*.
+**Deploying** is automatic: `.github/workflows/web.yml` builds, checks, tests and deploys each push to main to gregular.tv on Cloudflare. Each pull request is built, checked and tested the same way, and its deploy rehearsed without publishing, with no secrets, so a change that fails is caught before it's merged. Other branches are tested locally with `scripts/test-web.sh`. Setting up the domain and Cloudflare is in [WEB_PLAN.md](WEB_PLAN.md), *Hosting at gregular.tv*.
 
 ## Schedule code
 
@@ -197,7 +199,7 @@ A light tap anywhere on the pad, edges included, only brings up the banner; only
 | Slide left | Channel list; Select tunes. Slide right, Menu, or 15 s idle closes it and stays on the current channel. Play/Pause opens Settings |
 | Light touch (a click touches the pad too) | Show the info banner (clock, progress, time in). Again while showing: switch between end time and time left |
 | Menu (or Back ‹) | If the banner is up, hide it. Otherwise the programme guide, six hours ahead, scrolling sideways; Select on a programme tunes to its channel, **Resume Live TV** (top row) goes back to the channel, and 60 s idle closes it. In the guide, Menu first moves up to Resume Live TV (highlighted, not pressed); Menu again goes up to the main page, with the channel playing on behind it (a click goes straight back). On the main page, Menu goes to the Home screen |
-| Click and hold | Settings: streaming quality, trouble with this programme (step down quality, 720p, standard, play in VLC), schedule code, your channels and set times, the editing page, commercials, match frame rate, diagnostics, and the server (All Servers, Sign Out). In the guide, it's the button next to Resume Live TV. Close with Menu, Play/Pause or Done |
+| Click and hold | Settings: streaming quality, trouble with this programme (step down quality, 720p, standard, stereo sound, play in VLC), schedule code, your channels and set times, the editing page, commercials, match frame rate, diagnostics, and the server (All Servers, Sign Out). In the guide, it's the button next to Resume Live TV. Close with Menu, Play/Pause or Done |
 | Play/Pause | Pause; press again to jump back to live |
 | Digits (keyboard only) | Type a channel number |
 
@@ -241,6 +243,10 @@ TEST_RUNNER_SHOTS_DIR=/path/to/shots scripts/test-app.sh walkthrough
 **Auto quality** plays the original file, with no bitrate cap, just as Maximum does, until a programme has trouble on the connection: a stall, falling a minute behind live, or a failure that's the connection's (it dropped or timed out). Only then does it measure the connection and cap the bitrate, for that programme only: the next programme, or another channel, starts again with the original. A cap below a file's own bitrate makes Jellyfin re-encode it, which a small server such as a Raspberry Pi can't do in real time, so Auto never keeps one longer than it needs to. A failure a lower quality wouldn't fix (a file the player can't show, or an error from the server) is just retried. **Subtitles are off**: the app asks Jellyfin for none, so it never burns them into the video (another full re-encode). A subtitle track inside a file that plays as-is follows the Apple TV's own Subtitles setting.
 
 **When Jellyfin can't re-encode fast enough** (a slow server converting a file the Apple TV can't play as-is), a programme that fails, stalls or falls a minute behind live is retried with less work: 720p, then a step lower on each further failure, for that programme only (Settings shows it as the programme's fix). A programme Jellyfin would re-encode isn't started with under 3 minutes left; the screen shows "Up next" instead, so the server isn't asked for an expensive transcode for a minute of video.
+
+**When Jellyfin can't convert the sound fast enough** (a file whose video plays as it is, but whose sound neither of the device's players plays, such as TrueHD on Apple TV), a programme that fails, stalls or falls a minute behind live is retried with **stereo sound**, which is less for the server to make, and if that isn't enough, with a head start so the server gets ahead (in a browser, which already gets stereo, the head start comes first). The quality isn't lowered: that would make Jellyfin re-encode the video too. Any stream Jellyfin converts, its sound or its video, also buffers further ahead, and about 10 seconds of buffering on one is enough to take the next step, without waiting for a stall. **Stereo Sound** is also a switch under *Trouble with this programme*, wherever the device plays surround; it lasts until the programme ends or you change channel.
+
+**A file a player can't decode** doesn't keep coming back: each time a player can't decode a stream, the format it carried is ruled out for that player (the sound first, being cheaper to convert, then the video), and the programme is asked for again at once, so Jellyfin converts it, or another player takes it. That lasts the session, for every programme in that format. It always ends: a stream in the formats every player plays (H.264 and AAC) that still won't play leaves nothing to rule out, and the screen says the programme can't be played on this device, with what's up next, until its slot ends. This works the same for any device and any format, video or sound.
 
 **Play in VLC** (Settings, under *Trouble with this programme*, on Apple TV): Apple's own player plays a file it can play as it is, and VLC one only VLC can. When a programme gives you trouble on Apple's player, turn this on to restart it in VLC, if VLC can play the file as it is (otherwise Apple's player keeps it, and the switch says why). It's on, too, whenever VLC is already playing the programme. Off goes back to the usual choice. It lasts until the programme ends or you change channel.
 
@@ -314,6 +320,8 @@ Gregular TV is built to know as little as possible about your Jellyfin server, a
 | Your set times, packed as short codes | App preferences | What you typed or picked: a channel number, the series or film names, the times and days, and your time zone |
 
 **Never stored:** your password (it's used for one sign-in request only), your library (titles, episodes, artwork; a custom channel or set time keeps only the names you picked for it), schedules, watch history, or logs. The library is fetched into memory at launch and is gone when the app quits. Schedules are recomputed from each channel's seed and the clock, so there's nothing to save.
+
+**What the app learns about this device's formats** (kept in memory only, never stored, gone when the app or page closes): for each stream, the app reads its video and sound formats from what Jellyfin already sends (the codec and its profile, such as "HEVC Main 10" or "E-AC-3"; nothing else about the programme), and keeps them only while that stream plays. When a player can't decode one, it stops telling Jellyfin the device plays that format, for the rest of the session (at most 8 formats for each player). Your server sees only a shorter list of what this device plays in the next requests, as it sees that list in every request now. On the web, the browser is asked which of HEVC, AV1, AC-3, E-AC-3, Opus and FLAC it decodes, through its own interface, and the answers go only into that list, sent to your own server.
 
 **Deleting the app** leaves nothing that comes back: the Keychain can keep an app's items after it's deleted, so on its first launch after installing, the app forgets every sign-in it finds.
 
