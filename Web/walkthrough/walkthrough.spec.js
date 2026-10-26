@@ -15,12 +15,14 @@ function watchForProblems(page) {
   return problems;
 }
 
-/** Signs in to the demo server with a made-up name, and waits for live TV. */
-async function signIn(page) {
+/** Signs in to the demo server with a made-up name, and waits for live TV.
+ *  With `remember`, turns on Remember me on this browser first (it's off). */
+async function signIn(page, { remember = false } = {}) {
   await page.goto("/");
   await page.getByLabel("Server address").fill(server);
   await page.getByRole("button", { name: "Connect" }).click();
   await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+  if (remember) await page.getByRole("switch", { name: /Remember me on this browser/ }).click();
   await page.getByLabel("Username").fill("tester");
   await page.getByLabel("Password").fill("not-a-real-password");
   await page.getByRole("button", { name: "Sign In" }).click();
@@ -125,7 +127,7 @@ test("a video the browser couldn't fetch is retried, not called unplayable", asy
 });
 
 test("keeps the sign-in encrypted, and none of it in local storage", async ({ page }) => {
-  await signIn(page);
+  await signIn(page, { remember: true });
   await page.reload();
   await expect(page.getByRole("heading", { name: "Your servers" })).toBeVisible();
   await expect(page.getByRole("button", { name: /Watch Demo Library/ })).toBeVisible();
@@ -143,13 +145,11 @@ test("keeps the sign-in encrypted, and none of it in local storage", async ({ pa
   expect(vault.text).not.toContain("accessToken");
 });
 
-test("a sign-in not remembered lasts only until the page closes", async ({ page }) => {
+test("a sign-in isn't remembered unless asked, and lasts only until the page closes", async ({ page }) => {
   await page.goto("/");
   await page.getByLabel("Server address").fill(server);
   await page.getByRole("button", { name: "Connect" }).click();
   const remember = page.getByRole("switch", { name: /Remember me on this browser/ });
-  await expect(remember).toHaveAttribute("aria-checked", "true");
-  await remember.click();
   await expect(remember).toHaveAttribute("aria-checked", "false");
   await page.getByLabel("Username").fill("tester");
   await page.getByLabel("Password").fill("not-a-real-password");
