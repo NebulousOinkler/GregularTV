@@ -21,12 +21,16 @@ public struct PlaybackSource: Sendable, Equatable {
     /// Pass to `JellyfinClient.stopTranscoding` when leaving this item, so
     /// the server stops the transcode straight away rather than timing it out.
     public let playSessionID: String?
+    /// The file's own video and sound, as Jellyfin describes them.
+    public let source: StreamContents
 
-    public init(url: URL, method: Method, player: MediaStream.Player = .builtIn, playSessionID: String?) {
+    public init(url: URL, method: Method, player: MediaStream.Player = .builtIn, playSessionID: String?,
+                source: StreamContents = StreamContents()) {
         self.url = url
         self.method = method
         self.player = player
         self.playSessionID = playSessionID
+        self.source = source
     }
 
     /// Why Jellyfin is sending HLS rather than the original file, from the
@@ -44,10 +48,33 @@ public struct PlaybackSource: Sendable, Equatable {
     /// the container changed (a stream with no reasons is taken as that).
     public var delivery: MediaStream.Delivery {
         guard method == .hls else { return .original }
-        let reasons = transcodeReasons
-        let isSound = { (reason: String) in reason.hasPrefix("Audio") || reason == "UnknownAudioStreamInfo" }
-        if reasons.contains(where: { $0 != "ContainerNotSupported" && !isSound($0) }) { return .reencoded }
-        return reasons.contains(where: isSound) ? .soundConverted : .repackaged
+        return convertsVideo ? .reencoded : convertsSound ? .soundConverted : .repackaged
+    }
+
+    /// The video is re-encoded: a reason that isn't the container's or the sound's.
+    private var convertsVideo: Bool {
+        method == .hls && transcodeReasons.contains { $0 != "ContainerNotSupported" && !Self.isSoundReason($0) }
+    }
+
+    /// The sound is converted.
+    private var convertsSound: Bool {
+        method == .hls && transcodeReasons.contains(where: Self.isSoundReason)
+    }
+
+    private static func isSoundReason(_ reason: String) -> Bool {
+        reason.hasPrefix("Audio") || reason == "UnknownAudioStreamInfo"
+    }
+
+    /// What reaches the player: the file's own video and sound, except what's
+    /// converted, which is the first codec the conversion may make (the one
+    /// Jellyfin makes, as `TranscodingProfile` lists them).
+    public var contents: StreamContents {
+        let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        let first = { (name: String) in
+            query.first { $0.name == name }?.value?.split(separator: ",").first.map(String.init)
+        }
+        return StreamContents(video: convertsVideo ? first("VideoCodec").map { MediaFormat(.video, $0) } : source.video,
+                              sound: convertsSound ? first("AudioCodec").map { MediaFormat(.sound, $0) } : source.sound)
     }
 
     /// "SubtitleCodecNotSupported" → "subtitle codec not supported".
@@ -65,7 +92,8 @@ public struct PlaybackSource: Sendable, Equatable {
                     delivery: delivery,
                     player: player,
                     conversionReasons: transcodeReasons.map(Self.plainWords),
-                    sessionID: method == .hls ? playSessionID : nil)
+                    sessionID: method == .hls ? playSessionID : nil,
+                    contents: contents)
     }
 }
 
@@ -199,6 +227,25 @@ struct PlaybackInfoResponse: Decodable {
         let container: String?
         let supportsDirectPlay: Bool
         let transcodingUrl: String?
+        let mediaStreams: [Stream]?
+
+        /// One of the file's tracks: only what says whether a player can decode it.
+        struct Stream: Decodable {
+            let type: String?
+            let codec: String?
+            let profile: String?
+            let isDefault: Bool?
+        }
+
+        /// The file's video, and the sound track that plays (its default, or else its first).
+        var contents: StreamContents {
+            let streams = mediaStreams ?? []
+            let video = streams.first { $0.type == "Video" }
+            let sounds = streams.filter { $0.type == "Audio" }
+            let sound = sounds.first { $0.isDefault == true } ?? sounds.first
+            return StreamContents(video: video?.codec.map { MediaFormat(.video, $0, profile: video?.profile) },
+                                  sound: sound?.codec.map { MediaFormat(.sound, $0) })
+        }
     }
 
     let mediaSources: [MediaSource]

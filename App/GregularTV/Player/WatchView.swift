@@ -341,6 +341,11 @@ private struct StatusCard: View {
                 Text(message).font(.title3).multilineTextAlignment(.center)
                 Text("Trying again \(retryAt, style: .relative)…")
                     .foregroundStyle(.secondary)
+            case .cantPlay(let message, let next, let when):
+                Image(systemName: "exclamationmark.triangle").font(.system(size: 80))
+                Text(message).font(.title3).multilineTextAlignment(.center)
+                if let next { Text(next).font(.title2).bold() }
+                Text(when).foregroundStyle(.secondary)
             }
         }
         .padding(80)

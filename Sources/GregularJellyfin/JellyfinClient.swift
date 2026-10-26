@@ -85,6 +85,9 @@ public struct JellyfinClient: Sendable {
     /// The most sound channels in a stream converted for the device's own player.
     public var mostSoundChannels: Int { formats.mostAudioChannels }
 
+    /// What a conversion for the device's own player ends up as.
+    public var safestFormats: Set<MediaFormat> { formats.safestFormats }
+
     /// Asks Jellyfin how to play an item on this device, and returns the URL.
     ///
     /// The first of `players` that plays the file as it is plays it so (the
@@ -96,11 +99,15 @@ public struct JellyfinClient: Sendable {
     ///     device hasn't got is skipped.
     ///   - stereoSound: sound converted for the device's own player is mixed
     ///     down to stereo (`PlayableFormats.withStereoSound`).
+    ///   - unplayable: what each player turned out not to decode, left out
+    ///     of what it's said to play (`PlayableFormats.without(_:)`).
     public func playbackSource(
         for itemID: String, maxBitrate: Int = StreamingQuality.maximumBitrate,
-        players: [MediaStream.Player] = [.builtIn, .addOn], stereoSound: Bool = false
+        players: [MediaStream.Player] = [.builtIn, .addOn], stereoSound: Bool = false,
+        unplayable: [MediaStream.Player: Set<MediaFormat>] = [:]
     ) async throws -> PlaybackSource {
-        let formats = stereoSound ? formats.withStereoSound : formats
+        let formats = (stereoSound ? formats.withStereoSound : formats).without(unplayable[.builtIn] ?? [])
+        let addOnFormats = addOnFormats?.without(unplayable[.addOn] ?? [])
         var ownAnswer: (info: PlaybackInfoResponse, source: PlaybackInfoResponse.MediaSource)?
         for player in players {
             switch player {
@@ -119,7 +126,7 @@ public struct JellyfinClient: Sendable {
             try await playbackInfo(for: itemID, formats: formats, maxBitrate: maxBitrate)
         }
         if let transcodingURL = source.transcodingUrl, let url = serverRelativeURL(transcodingURL) {
-            return PlaybackSource(url: url, method: .hls, playSessionID: info.playSessionId)
+            return PlaybackSource(url: url, method: .hls, playSessionID: info.playSessionId, source: source.contents)
         }
         throw JellyfinError.noPlayableSource(itemID: itemID)
     }
@@ -128,7 +135,7 @@ public struct JellyfinClient: Sendable {
     private func directPlay(_ itemID: String, _ answer: (info: PlaybackInfoResponse, source: PlaybackInfoResponse.MediaSource),
                             on player: MediaStream.Player) -> PlaybackSource {
         PlaybackSource(url: directPlayURL(itemID: itemID, source: answer.source, playSessionID: answer.info.playSessionId, isSong: false),
-                       method: .directPlay, player: player, playSessionID: answer.info.playSessionId)
+                       method: .directPlay, player: player, playSessionID: answer.info.playSessionId, source: answer.source.contents)
     }
 
     /// What Jellyfin says about playing an item on a player that plays
@@ -279,7 +286,7 @@ extension JellyfinClient: OriginalFiles {
 extension JellyfinClient: StreamSource {
     public func stream(for itemID: String, _ request: StreamRequest) async throws -> MediaStream {
         try await playbackSource(for: itemID, maxBitrate: request.maxBitrate, players: request.players,
-                                 stereoSound: request.stereoSound).mediaStream
+                                 stereoSound: request.stereoSound, unplayable: request.unplayable).mediaStream
     }
 
     public func release(_ stream: MediaStream) async {

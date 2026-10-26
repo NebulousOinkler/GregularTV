@@ -197,9 +197,14 @@ import Observation
         video.on("ended") { [weak self] _ in self?.finish() }
         video.on("error") { [weak self] _ in
             guard let self, let item = self.item else { return }
-            // MEDIA_ERR_NETWORK: the connection's, not the file's (`ConnectionFailure`).
-            let isNetwork = self.video.object.error.code.number == 2
-            item.fail(isNetwork ? BrowserNetwork.Unreachable() as any Error : UnplayableFormat())
+            // MEDIA_ERR_NETWORK is the connection's (`ConnectionFailure`);
+            // MEDIA_ERR_DECODE and MEDIA_ERR_SRC_NOT_SUPPORTED, the format's
+            // (`UnplayableMedia`); MEDIA_ERR_ABORTED, neither.
+            switch self.video.object.error.code.number {
+            case 2: item.fail(BrowserNetwork.Unreachable())
+            case 3, 4: item.fail(UnplayableFormat.here)
+            default: item.fail(PlaybackStopped())
+            }
         }
     }
 
@@ -242,7 +247,7 @@ import Observation
         if isHLS, player.supported!().boolean == true {
             let failed = JSClosure { [weak item] arguments in
                 MainActor.assumeIsolated {
-                    item?.fail(arguments.first?.string == "network" ? BrowserNetwork.Unreachable() as any Error : UnplayableFormat())
+                    item?.fail(arguments.first?.string == "network" ? BrowserNetwork.Unreachable() as any Error : UnplayableFormat.here)
                 }
                 return .undefined
             }
@@ -355,9 +360,7 @@ import Observation
     }
 }
 
-/// A programme the browser couldn't play.
-struct UnplayableFormat: LocalizedError {
-    var errorDescription: String? {
-        "This programme couldn't be played. It may be in a format this browser can't show."
-    }
+extension UnplayableFormat {
+    /// A format this browser couldn't decode.
+    static let here = UnplayableFormat(on: "this browser")
 }
