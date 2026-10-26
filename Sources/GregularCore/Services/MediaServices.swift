@@ -162,6 +162,13 @@ public struct MediaStream: Sendable, Equatable {
         /// server needn't convert them, or any it plays as they are, when
         /// the viewer asks for it.
         case addOn
+
+        /// The order players are asked about: the device's own first, so
+        /// the add-on only plays what it can't; or the add-on first, when the
+        /// viewer asks for it (Play in VLC).
+        public static func order(addOnFirst: Bool = false) -> [Player] {
+            addOnFirst ? [.addOn, .builtIn] : [.builtIn, .addOn]
+        }
     }
 
     public let url: URL

@@ -88,7 +88,7 @@ public struct JellyfinClient: Sendable {
 
     /// The device's players: its own, and the add-on if it has one.
     public var players: [MediaStream.Player] {
-        addOnFormats == nil ? [.builtIn] : [.builtIn, .addOn]
+        MediaStream.Player.order().filter { $0 == .builtIn || addOnFormats != nil }
     }
 
     /// The most sound channels in a stream converted for the device's own player.
@@ -113,7 +113,7 @@ public struct JellyfinClient: Sendable {
     ///     of what it's said to play (`PlayableFormats.without(_:)`).
     public func playbackSource(
         for itemID: String, maxBitrate: Int = StreamingQuality.maximumBitrate,
-        players: [MediaStream.Player] = [.builtIn, .addOn], stereoSound: Bool = false,
+        players: [MediaStream.Player] = MediaStream.Player.order(), stereoSound: Bool = false,
         unplayable: [MediaStream.Player: Set<MediaFormat>] = [:]
     ) async throws -> PlaybackSource {
         let formats = (stereoSound ? formats.withStereoSound : formats).without(unplayable[.builtIn] ?? [])

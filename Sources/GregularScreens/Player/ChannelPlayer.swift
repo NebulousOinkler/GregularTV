@@ -949,8 +949,7 @@ public final class ChannelPlayer {
     /// The players to ask about for `airing`, in order: the device's own
     /// first, unless the viewer asked for the add-on player for it.
     private func players(for airing: Airing) -> [MediaStream.Player] {
-        let order: [MediaStream.Player] = settings(for: airing).prefersAddOn ? [.addOn, .builtIn] : [.builtIn, .addOn]
-        return order.filter(streams.players.contains)
+        MediaStream.Player.order(addOnFirst: settings(for: airing).prefersAddOn).filter(streams.players.contains)
     }
 
     /// In Auto, after a programme's connection trouble: measures for it now,
