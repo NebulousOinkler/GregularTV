@@ -66,6 +66,16 @@ public struct PlaybackSource: Sendable, Equatable {
         method == .hls && transcodeReasons.contains(where: Self.isSoundReason)
     }
 
+    /// Reasons that make a re-encode among the heaviest: tone mapping HDR to
+    /// SDR, 10-bit to 8-bit, and deinterlacing (`MediaStream.isHeavyReencode`).
+    private static let heavyReasons: Set<String> = ["VideoRangeTypeNotSupported", "VideoBitDepthNotSupported",
+                                                    "InterlacedVideoNotSupported"]
+
+    /// The video is re-encoded, and among the heaviest re-encodes.
+    var isHeavyReencode: Bool {
+        convertsVideo && transcodeReasons.contains(where: Self.heavyReasons.contains)
+    }
+
     private static func isSoundReason(_ reason: String) -> Bool {
         reason.hasPrefix("Audio") || reason == "UnknownAudioStreamInfo"
     }
@@ -98,7 +108,8 @@ public struct PlaybackSource: Sendable, Equatable {
                     player: player,
                     conversionReasons: transcodeReasons.map(Self.plainWords),
                     sessionID: method == .hls ? playSessionID : nil,
-                    contents: contents)
+                    contents: contents,
+                    isHeavyReencode: isHeavyReencode)
     }
 }
 

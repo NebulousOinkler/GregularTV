@@ -175,19 +175,25 @@ public struct MediaStream: Sendable, Equatable {
     public let player: Player
     /// What it carries, as far as the server says.
     public let contents: StreamContents
+    /// A re-encode among the heaviest a server makes: HDR tone-mapped to
+    /// SDR, 10-bit video made 8-bit, or interlaced video deinterlaced, each
+    /// far more work than a plain re-encode. It gets a longer head start.
+    public let isHeavyReencode: Bool
 
     /// The server has to re-encode its video: the expensive kind of
     /// conversion (`Delivery.reencoded`).
     public var reencodes: Bool { delivery == .reencoded }
 
     public init(url: URL, delivery: Delivery, player: Player = .builtIn,
-                conversionReasons: [String] = [], sessionID: String? = nil, contents: StreamContents = StreamContents()) {
+                conversionReasons: [String] = [], sessionID: String? = nil, contents: StreamContents = StreamContents(),
+                isHeavyReencode: Bool = false) {
         self.url = url
         self.delivery = delivery
         self.player = player
         self.contents = contents
         self.conversionReasons = conversionReasons
         self.sessionID = sessionID
+        self.isHeavyReencode = isHeavyReencode && delivery == .reencoded
     }
 }
 

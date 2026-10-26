@@ -172,6 +172,9 @@ public final class ChannelPlayer {
     public static var backgroundMeasurementDelay: Duration = .seconds(20)
     public static let stallTimeout: TimeInterval = 30
     public static var transcodeHeadStart: TimeInterval = 20
+    /// How many times the usual head start the heaviest re-encodes get
+    /// (`MediaStream.isHeavyReencode`).
+    public static let heavyHeadStartFactor: Double = 2
     public static let maxTranscodeHeadStart: TimeInterval = 120
     /// Seconds of video to have buffered before a head start begins playing.
     public static let startCushion: TimeInterval = 15
@@ -299,6 +302,8 @@ public final class ChannelPlayer {
         let contents: StreamContents
         /// The server re-encodes it, so tuning in mid-programme gets a head start.
         var reencodes: Bool { delivery == .reencoded }
+        /// Among the heaviest re-encodes: a longer head start.
+        let isHeavyReencode: Bool
         /// Why the server converts it, if it does (for diagnostics).
         let conversionReasons: String?
     }
@@ -529,7 +534,7 @@ public final class ChannelPlayer {
                 current = loaded
                 streamDescription = loaded.description
                 player.append(loaded.item)
-                if needsHeadStart(loaded), let start = headStartTarget(in: tuning.airing) {
+                if needsHeadStart(loaded), let start = headStartTarget(in: tuning.airing, heavy: loaded.isHeavyReencode) {
                     // Let the server get ahead: buffer from `start`, paused, then play on time.
                     seek(to: start.timeIntervalSince(tuning.airing.start), in: tuning.airing)
                     status = .startingSoon(at: start)
@@ -871,10 +876,12 @@ public final class ChannelPlayer {
     }
 
     /// Where to start a re-encoded programme: a head start past live that
-    /// doubles with each failure on this channel. Nil if the programme ends
-    /// too soon for it to be worth it.
-    private func headStartTarget(in airing: Airing) -> Date? {
-        let lead = min(Self.maxTranscodeHeadStart, Self.transcodeHeadStart * pow(2, Double(consecutiveFailures)))
+    /// doubles with each failure on this channel, and starts longer for the
+    /// heaviest re-encodes (`heavyHeadStartFactor`). Nil if the programme
+    /// ends too soon for it to be worth it.
+    private func headStartTarget(in airing: Airing, heavy: Bool) -> Date? {
+        let first = Self.transcodeHeadStart * (heavy ? Self.heavyHeadStartFactor : 1)
+        let lead = min(Self.maxTranscodeHeadStart, first * pow(2, Double(consecutiveFailures)))
         let start = Date.now.addingTimeInterval(lead)
         return start < airing.end.addingTimeInterval(-lead) ? start : nil
     }
@@ -909,6 +916,7 @@ public final class ChannelPlayer {
                             player: source.player,
                             delivery: source.delivery,
                             contents: source.contents,
+                            isHeavyReencode: source.isHeavyReencode,
                             conversionReasons: reasons)
     }
 
