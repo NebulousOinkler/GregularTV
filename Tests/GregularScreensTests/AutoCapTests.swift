@@ -70,6 +70,17 @@ struct AutoCapTests {
         player.stop()
     }
 
+    /// Asking the server for the stream and waiting too long is a busy
+    /// server, not a connection that can't carry the stream: no speed test.
+    @Test func aTimeoutAskingForTheStreamDoesntMeasure() async throws {
+        let streams = FakeStreams(measured: 10_000_000, failingFirst: URLError(.timedOut))
+        let player = try player(streams)
+        player.start()
+        try await waitUntil(8) { streams.caps.count == 2 && player.status == .playing }   // retried after the first backoff
+        #expect(streams.speedTests == 0 && streams.caps.last == StreamingQuality.maximumBitrate)
+        player.stop()
+    }
+
     /// Only the connection's failures measure: a lower quality wouldn't
     /// help a file the player can't show, or the server's own error.
     @Test(arguments: [(URLError(.timedOut) as any Error, true), (UnplayableFile() as any Error, false)])

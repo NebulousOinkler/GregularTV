@@ -68,7 +68,8 @@ import Testing
 /// else, which it repackages; each stream it serves itself is in a session
 /// of its own. The device has `players`, each of which plays every original
 /// file, except those in `addOnOnly`, which only the add-on player does
-/// (any other has them repackaged). Its speed test says `measured`. It records the cap each stream was
+/// (any other has them repackaged). The first stream asked for fails with
+/// `failingFirst`, if given. Its speed test says `measured`. It records the cap each stream was
 /// asked for, the players asked about for it, and each stream it was told
 /// is still wanted.
 final class FakeStreams: StreamSource, @unchecked Sendable {
@@ -77,6 +78,7 @@ final class FakeStreams: StreamSource, @unchecked Sendable {
     private let converting: Set<String>
     private let streaming: Bool
     private let addOnOnly: Set<String>
+    private var failingFirst: (any Error)?
     let players: [MediaStream.Player]
     private var asked: [Int] = []
     private var orders: [[MediaStream.Player]] = []
@@ -85,11 +87,12 @@ final class FakeStreams: StreamSource, @unchecked Sendable {
     private var kept: [String] = []
 
     init(measured: Int = 50_000_000, converting: Set<String> = [], streaming: Bool = false,
-         players: [MediaStream.Player] = [.builtIn], addOnOnly: Set<String> = []) {
+         players: [MediaStream.Player] = [.builtIn], addOnOnly: Set<String> = [], failingFirst: (any Error)? = nil) {
         self.measured = measured
         self.converting = converting
         self.streaming = streaming
         self.addOnOnly = addOnOnly
+        self.failingFirst = failingFirst
         self.players = players
     }
 
@@ -108,6 +111,7 @@ final class FakeStreams: StreamSource, @unchecked Sendable {
             orders.append(players)
             log.append("\(itemID) at \(maxBitrate)")
         }
+        if let failure = lock.withLock({ () -> (any Error)? in defer { failingFirst = nil }; return failingFirst }) { throw failure }
         let url = URL(string: "https://tv.invalid/\(itemID)")!
         let reencodes = converting.contains(itemID)
         let asItIs = players.first { $0 == .addOn || !addOnOnly.contains(itemID) }

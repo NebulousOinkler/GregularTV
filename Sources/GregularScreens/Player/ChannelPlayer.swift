@@ -84,9 +84,10 @@ import Observation
 ///   file, and more than a small server can do in real time. So Auto asks for
 ///   the original, with no cap, as Maximum does, until a programme has
 ///   trouble on the connection: a stall, falling a minute behind live, or a
-///   failure that's the connection's (`ConnectionFailure`), not the server's
-///   own error or a file the player can't show, which a lower quality
-///   wouldn't help. Then it measures *before* retrying (the retry waits
+///   failure that's the connection's (`ErrorKind.connection`, or a timeout
+///   while playing), not the server's own error, a server slow to answer
+///   when asked for the stream, or a file the player can't show, which a
+///   lower quality wouldn't help. Then it measures *before* retrying (the retry waits
 ///   anyway), as the tune-in starts with nothing loaded, so nothing else is
 ///   downloading (not even a commercial the retry lands in), and caps that
 ///   programme at 70% of it. While capped, a speed test in the background every 10 minutes
@@ -474,7 +475,7 @@ public final class ChannelPlayer {
                 status = .playing
             } catch {
                 guard !Task.isCancelled else { return }
-                fail(error, airing: tuning.airing)
+                fail(error, airing: tuning.airing, whileAsking: true)
             }
         }
     }
@@ -869,8 +870,12 @@ public final class ChannelPlayer {
         player.seek(to: airing.mediaOffset + max(0, seconds))
     }
 
-    private func fail(_ error: (any Error)?, airing: Airing) {
-        if (error as? any MediaServiceFailure)?.isSessionExpired == true {
+    /// - Parameter whileAsking: it failed asking the server for the stream,
+    ///   not playing it: a timeout then is a busy server, not a connection
+    ///   that can't carry the stream.
+    private func fail(_ error: (any Error)?, airing: Airing, whileAsking: Bool = false) {
+        let kind = ErrorKind(error)
+        if kind == .signedOut {
             stop()
             onUnauthorized?()
             return
@@ -884,19 +889,11 @@ public final class ChannelPlayer {
         if failedReencode, let failedCap {
             // The server couldn't re-encode fast enough: retry this programme with less work.
             askForLessReencoding(of: airing, from: failedCap)
-        } else if error is any ConnectionFailure || Self.isConnectionError(error) {
+        } else if kind == .connection || (kind == .timedOut && !whileAsking) {
             // The connection may not carry it: measure before the retry.
             measureBeforeRetrying(airing)
         }
         status = .failed(message: FriendlyError.message(for: error), retryAt: .now.addingTimeInterval(delay))
-    }
-
-    /// A network error that says the connection dropped or couldn't keep
-    /// up, where a lower quality may help. Not the server's own errors, an
-    /// address that can't be found, or a secure connection that failed.
-    static func isConnectionError(_ error: (any Error)?) -> Bool {
-        guard let error = error as? URLError else { return false }
-        return [.timedOut, .networkConnectionLost, .notConnectedToInternet, .cannotConnectToHost].contains(error.code)
     }
 
     /// A re-encode the server can't keep up with: ask for less, for this
