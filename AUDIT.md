@@ -29,6 +29,91 @@ What held up well:
   - no `innerHTML` anywhere;
   - vendored, pinned libraries.
 
+## Third audit: 2026-10-26 (the rest of the quality plan, and the iPhone fix)
+
+The whole codebase again, before the rest of the quality plan ships with the fix for iPhones:
+- the iPhone fix (a video the browser couldn't fetch was taken for one it couldn't decode);
+- Remember me off by default;
+- choosing a sound track;
+- converting songs;
+- the speed test limited by time;
+- converted next programmes 90 s ahead;
+- the heaviest re-encodes' head start;
+- the clean-up tasks C3 to C6.
+
+**Scope.** Changed since the second audit: 42 files, about 1,100 lines, in playback, the web's sign-in page and player, and tests. Unchanged since it, and so as it found them:
+- the request gateway and its rules (`JellyfinAPI`, the transports: one comment in `HTTPTransport` aside);
+- the browser's fetch rules and `WholeFile`;
+- sign-in storage (`KeychainStore`, `vault.js`);
+- the editing and song pages;
+- `_headers`;
+- CI, the dependencies and their lockfiles;
+- the privacy and layer checks.
+
+Both checks pass.
+
+### Q1. The second audit's P5 said a misreported decode failure never stops a file playing; it did — resolved
+- **Where:** `VideoDeck` (the `error` event), `ChannelPlayer.fail`.
+- **Risk:**
+  - Before anything loads, a browser reports a video it couldn't fetch at all (a refused connection, a missing file) with the same error as one it can't decode: `MEDIA_ERR_SRC_NOT_SUPPORTED`. The HTML standard says so, and it was checked in Chromium.
+  - Every such failure was taken as the format's. A stream in the safest formats (H.264 and AAC), which every iPhone stream is, had nothing to rule out, so it said "This programme can't be played on this device" at once, for the rest of its slot.
+  - Elsewhere, a network blip ruled out a format the browser plays.
+  - P5 accepted this risk on the grounds that it "never stops a file playing", which was wrong.
+- **Resolved:**
+  - The web deck now fetches the stream's first byte when a video fails before loading (`reach` in `hls-player.js`): sent, it's the format's; refused, the server's; no answer, the connection's.
+  - A "can't decode" on a stream in only the safest formats is retried twice, as any failure, before it says it can't play (`ChannelPlayer.safestFormatRetries`).
+  - Tests: a walkthrough test refuses the first stream requests, and fails on the old code in Chromium, WebKit and Firefox. `UnplayableTests.theRetriesEndAndSaySo` covers the retries.
+  - P5 stands for VLC's and hls.js's media errors, which aren't the browser's own.
+
+### Q2. The web kept sign-ins unless told not to — resolved
+- **Where:** the sign-in page's *Remember me on this browser* (`LoginPage`).
+- **Risk:** a remembered sign-in is encrypted, but readable by anyone with the browser profile's files (M3), and it was kept unless the viewer thought to turn the switch off.
+- **Resolved** (the user's decision, 2026-10-26): keeping it is opt-in. The switch starts off; README and M3 say so. The walkthrough checks it starts off, and that a sign-in not remembered is gone after a reload.
+
+### Q3. The new first-byte check sends a request from the page — reviewed, nothing to change
+- **Where:** `reach` in `hls-player.js`, called by `VideoDeck` only after a video fails before loading.
+- **What it sends:** a request for the first byte of the stream's own URL, which is always on the user's own server (made by `JellyfinClient`, or Jellyfin's `TranscodingUrl` made absolute on the same server). It sends:
+  - the same `ApiKey` the video's own request did (M4);
+  - no cookies, no referrer, no cache;
+  - no redirect followed;
+  - a request marked as home-network for plain http, as hls.js's are.
+
+  It gives up after 10 seconds.
+- **No new exposure:** the server already got the same URL from the video itself, and nothing goes anywhere else.
+
+### Q4. More is read about a programme's sound tracks, and one more request is made — resolved, in the docs
+- **Where:** `MediaSource.soundTrackToCopy(into:)`, `JellyfinClient.withASoundTrackToCopy`.
+- **What changed:**
+  - To choose a sound track the device plays as it is, the app reads each track's channels, language and name from the `PlaybackInfo` answer it already gets. They stay in memory, and the name is used only to skip commentaries.
+  - Where that spares a conversion, it asks `PlaybackInfo` once more, naming the track.
+- **Resolved:** README *Privacy* and PLAN §3 say so. The extra request goes to the user's own server, and only for such a file.
+
+### Q5. Songs a device doesn't play are now converted by the server — reviewed
+- **Where:** `JellyfinClient.wholeFileURL(of:)`, `DeviceProfile.TranscodingProfile.song`.
+- **What changed:** a song is no longer skipped; Jellyfin converts its sound into one AAC file as it's fetched.
+- **Why it's safe:**
+  - Its URL is Jellyfin's `TranscodingUrl`, made absolute on the same server.
+  - It's fetched as before, through `WholeFiles.download` or `checkDownload`: on that server only, capped in size as it arrives.
+  - A conversion that's a stream (`.m3u8`) is refused, not fetched.
+- **The cost to the server:** one sound conversion at a time, plus the next song's, as it's loaded ahead.
+
+### P4, confirmed
+The updated GitHub Actions passed their first run on a pull request (#69: build and deploy rehearsal), and then the deploy to gregular.tv from main.
+
+### The clean-up pass
+- **Coupling:** none; the layer check passes.
+- **One place each:**
+  - the player's waits that tests change (`ChannelPlayer.Timings`, instead of shared values two Apple TV suites left changed);
+  - the player's words (`PlayerText`; decks report a `DeckActivity`, not their own words);
+  - the order players are asked about (`MediaStream.Player.order`);
+  - the fake server's behaviour (`FakeStreams.Treatment`).
+- **Renamed for what it does:** `OriginalFiles` became `WholeFiles`, as a song's file may now be a conversion; `afterBreak` became `standbyProgramme`.
+- **Out of the repository:** the uncommitted quality map, folded into PLAN §7a.
+
+### Not checked
+- Real hardware and a real server (PLAN §7a, *Still open*).
+- The karaoke walkthroughs, which need the keyword.
+
 ## Second audit: 2026-10-25 (the playback rework)
 
 The whole codebase again, before the playback rework (Auto per programme, programme settings, error kinds, delivery kinds, the sound ladder, ladders for the web, ruling out formats a player can't decode, the browser's format checks) ships. Changed since the first audit: 44 files, about 1,800 lines, almost all in playback. Unchanged since it, and so as it found them: the request gateway and its rules, sign-in storage, the local pages, the web headers and scripts, CI, the hosting config and the dependencies (hls.js 1.7.3, SwiftVLC 1.0.0, Wrangler 4.136.3). The privacy and layer checks pass; nothing in the changes or their commit messages names an address, token or password.
@@ -48,7 +133,7 @@ The whole codebase again, before the playback rework (Auto per programme, progra
 - **Risk:** a change that failed in CI was found only after it was merged, when main's build failed and the deploy was skipped (as after #58). Local runs can miss what CI's clean machine catches.
 - **Resolved** (decided 2026-10-25): every pull request (into main, or into another, for a stack) runs `build` (no secrets, no environment) and `deploy-check`, which rehearses the deploy with Wrangler's dry run, also with no secrets. It's `pull_request`, not `pull_request_target`, so a pull request's run gets read access only, whoever opened it. Only `deploy`, on main, has the token.
 
-### P4. The pinned GitHub Actions ran on Node 20 — resolved, to be confirmed by the first pull request's run
+### P4. The pinned GitHub Actions ran on Node 20 — resolved (confirmed 2026-10-26)
 - **Where:** `web.yml`: checkout, upload-artifact, download-artifact and setup-node, pinned at v4.
 - **Risk:** GitHub has deprecated Node 20 for actions and already ran them on Node 24 with a warning; when it's removed, the workflow fails, and with it the deploy.
 - **Resolved** (decided 2026-10-25): checkout v7.0.1, upload-artifact v7.0.2, download-artifact v8.0.2, setup-node v7.1.0, each pinned by commit. Their breaking changes don't touch this workflow: download-artifact's path change is for downloads by ID (this one is by name), and v8 now fails on a checksum mismatch, which is safer. setup-node caches dependencies by itself from v5 when `package.json` names a package manager; it's turned off explicitly in the jobs that install Wrangler, since a shared cache could be poisoned. Every updated action runs in `build` or `deploy-check`, so the first pull request's run checks them all before they reach main.
@@ -56,7 +141,7 @@ The whole codebase again, before the playback rework (Auto per programme, progra
 ### P5. A misreported decode failure rules out a format the player does play — accepted
 - **Where:** `VLCItem` (VLC's error state can be the network's), hls.js's media errors after its one recovery.
 - **Risk:** a transient error reported as "can't decode" rules out a format the player really plays, for the session: those files then go to another player or a conversion, more work for the server, though they still play.
-- **Accepted** (the user's decision, 2026-10-25): it's bounded (P1), forgotten when the app closes, and never stops a file playing. The alternative, retrying a format before ruling it out, would double the wait for a format that really can't be decoded.
+- **Accepted** (the user's decision, 2026-10-25): it's bounded (P1), forgotten when the app closes, and never stops a file playing. (That last was wrong for a browser's own player, whose fetch failures look the same, and for the safest formats: see Q1, the third audit, which fixed both.) The alternative, retrying a format before ruling it out, would double the wait for a format that really can't be decoded.
 
 ### P6. More formats reach the players' own decoders — resolved, by decision
 - **Where:** `PlayableFormats.vlcOnAppleTV` (TrueHD), `PlayableFormats.browser(alsoPlays:)` (HEVC, AV1, AC-3, E-AC-3, Opus, FLAC where the browser confirms them).
