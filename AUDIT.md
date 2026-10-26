@@ -53,6 +53,16 @@ Each was read against every heading of the first audit. The one new thing taken 
 - **Risk:** a custom channel with a studio condition, typed into an Apple TV still on an older version, isn't read.
 - **Resolved:** it fails closed, rejected as a mistyped code rather than misread, as any code it doesn't know is. The same code's version (2) is kept so codes without a studio still read everywhere. PLAN §9c says so.
 
+### S3. CI's installer check failed without saying why — resolved
+- **Where:** `.github/workflows/web.yml`, *Install the Swift toolchain and its WebAssembly SDK*.
+- **Risk:** the step failed twice on 2026-10-26 (#73, #74) within seconds, with nothing in the log, and passed on a re-run each time. A silent failure can't be told from a real one: a download error, Apple's notary check not answering, or an installer signed by someone else.
+- **Resolved:**
+  - The download and the notary check are tried up to three times.
+  - Each failure says which it was, with `pkgutil`'s output.
+  - An installer signed by anyone but Swift Open Source stops the build at once, without retrying.
+  - Every check is still required; nothing is skipped or loosened.
+  - Tested with stand-in tools for each case: success, a notary check that fails twice, a wrong signer, and a download that never works.
+
 ## Fourth audit: 2026-10-26 (the era line-up)
 
 Hours after the third, before the era line-up ships. The third audit read the whole codebase; since then, the only changes are A4 (Q6) and this one:

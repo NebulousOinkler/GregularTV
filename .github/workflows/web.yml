@@ -51,11 +51,26 @@ jobs:
 
       - name: Install the Swift toolchain and its WebAssembly SDK
         run: |
-          curl -fsSLO https://download.swift.org/swiftly/darwin/swiftly.pkg
-          # Only the installer Swift's own team signed and Apple notarized.
-          signature=$(pkgutil --check-signature swiftly.pkg)
-          echo "$signature" | grep -q "Notarization: trusted by the Apple notary service"
-          echo "$signature" | grep -q "Developer ID Installer: Swift Open Source (V9AUD2URP3)"
+          # Only the installer Swift's own team signed and Apple notarized. The
+          # download or Apple's notary check fails now and then, so each is
+          # tried up to three times, and the log says which failed. Signed by
+          # anyone else stops at once.
+          verified=
+          for attempt in 1 2 3; do
+            if ! curl -fsSL --retry 2 -o swiftly.pkg https://download.swift.org/swiftly/darwin/swiftly.pkg; then
+              echo "::warning::Attempt $attempt: couldn't download swiftly.pkg"
+            elif ! signature=$(pkgutil --check-signature swiftly.pkg 2>&1); then
+              echo "::warning::Attempt $attempt: pkgutil found no valid signature"; echo "$signature"
+            elif ! echo "$signature" | grep -q "Developer ID Installer: Swift Open Source (V9AUD2URP3)"; then
+              echo "::error::swiftly.pkg isn't signed by Swift Open Source"; echo "$signature"; exit 1
+            elif ! echo "$signature" | grep -q "Notarization: trusted by the Apple notary service"; then
+              echo "::warning::Attempt $attempt: Apple's notary service didn't confirm it"; echo "$signature"
+            else
+              verified=1; break
+            fi
+            sleep 15
+          done
+          [ -n "$verified" ] || { echo "::error::swiftly.pkg wasn't verified in 3 attempts"; exit 1; }
           installer -pkg swiftly.pkg -target CurrentUserHomeDirectory
           ~/.swiftly/bin/swiftly init --no-modify-profile --skip-install --quiet-shell-followup --assume-yes
           ~/.swiftly/bin/swiftly install "$SWIFT_VERSION" --assume-yes
