@@ -70,13 +70,30 @@ import JavaScriptKit
     }
     #endif
 
-    private static var formats: PlayableFormats { .browser(playsHEVC: playsHEVC) }
+    private static var formats: PlayableFormats { .browser(alsoPlays: alsoPlays) }
 
-    /// Whether this browser plays HEVC (H.265) video, so the server can send it as it is.
-    private static var playsHEVC: Bool {
-        guard let mediaSource = JSObject.global.MediaSource.function else { return false }
-        return mediaSource.isTypeSupported!("video/mp4; codecs=\"hvc1.1.6.L120.90\"").boolean == true
+    /// What this browser says it decodes of `PlayableFormats.browserMayPlay`,
+    /// asked through its own Media Source Extensions, so the server can send
+    /// those as they are. Nothing leaves the browser but the answers, in the
+    /// list of formats sent to the user's own server.
+    private static var alsoPlays: Set<MediaFormat> {
+        guard let mediaSource = JSObject.global.MediaSource.function else { return [] }
+        return Set(PlayableFormats.browserMayPlay.filter { format in
+            mimeTypes[format].map { mediaSource.isTypeSupported!($0).boolean == true } ?? false
+        })
     }
+
+    /// How a browser is asked about each format. HEVC Main 10 and AV1 are
+    /// asked about at 10 bits, as most such files are.
+    private static let mimeTypes: [MediaFormat: String] = [
+        MediaFormat(.video, "hevc", profile: "main"): #"video/mp4; codecs="hvc1.1.6.L120.90""#,
+        MediaFormat(.video, "hevc", profile: "main 10"): #"video/mp4; codecs="hvc1.2.4.L120.90""#,
+        MediaFormat(.video, "av1"): #"video/mp4; codecs="av01.0.08M.10""#,
+        MediaFormat(.sound, "ac3"): #"audio/mp4; codecs="ac-3""#,
+        MediaFormat(.sound, "eac3"): #"audio/mp4; codecs="ec-3""#,
+        MediaFormat(.sound, "opus"): #"audio/mp4; codecs="opus""#,
+        MediaFormat(.sound, "flac"): #"audio/mp4; codecs="flac""#,
+    ]
 }
 
 /// Everything on screen: live TV underneath (when a channel is playing, on

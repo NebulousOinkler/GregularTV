@@ -47,10 +47,18 @@ public protocol StreamSource: Sendable {
     /// The players the device has: the built-in one, and an add-on, if it has one.
     var players: [MediaStream.Player] { get }
 
-    /// How to play `itemID`, at no more than `maxBitrate` bits per second
-    /// (see `StreamingQuality`): as it is, on the first of `players` (in
-    /// order) that plays it so, or else converted for the built-in player.
-    func stream(for itemID: String, maxBitrate: Int, players: [MediaStream.Player]) async throws -> MediaStream
+    /// The most sound channels a stream converted for the built-in player
+    /// carries (more are mixed down).
+    var mostSoundChannels: Int { get }
+
+    /// What a conversion for the built-in player ends up as, which every
+    /// player plays: never ruled out by a failure (`StreamRequest.unplayable`).
+    var safestFormats: Set<MediaFormat> { get }
+
+    /// How to play `itemID`, as `request` asks: as it is, on the first of its
+    /// players (in order) that plays it so, or else converted for the
+    /// built-in player.
+    func stream(for itemID: String, _ request: StreamRequest) async throws -> MediaStream
 
     /// Lets the server stop any work it's doing for `stream` (such as a
     /// transcode) now that the player is finished with it.
@@ -67,13 +75,80 @@ public protocol StreamSource: Sendable {
     func measureBandwidth() async throws -> Int
 }
 
+/// What to ask a server for, for one stream.
+public struct StreamRequest: Sendable, Equatable {
+    /// At most this many bits per second (see `StreamingQuality`).
+    public var maxBitrate: Int
+    /// The players to ask about for playing the file as it is, in order.
+    public var players: [MediaStream.Player]
+    /// Sound the server converts is mixed down to stereo: less work for it.
+    public var stereoSound: Bool
+    /// What each player turned out not to decode, this session: left out of
+    /// what it's said to play, so the server sends something else.
+    public var unplayable: [MediaStream.Player: Set<MediaFormat>]
+
+    public init(maxBitrate: Int, players: [MediaStream.Player], stereoSound: Bool = false,
+                unplayable: [MediaStream.Player: Set<MediaFormat>] = [:]) {
+        self.maxBitrate = maxBitrate
+        self.players = players
+        self.stereoSound = stereoSound
+        self.unplayable = unplayable
+    }
+}
+
+/// A video or sound format, in the names media servers use: a codec such as
+/// "hevc" or "eac3", and for video its profile where it matters, such as
+/// "main 10". Lowercase.
+public struct MediaFormat: Hashable, Sendable, CustomStringConvertible {
+    public enum Kind: Sendable { case video, sound }
+
+    public let kind: Kind
+    public let codec: String
+    /// The video profile, or nil for any (and always for sound).
+    public let profile: String?
+
+    public init(_ kind: Kind, _ codec: String, profile: String? = nil) {
+        self.kind = kind
+        self.codec = codec.lowercased()
+        self.profile = profile?.lowercased()
+    }
+
+    public var description: String { [codec, profile].compactMap { $0 }.joined(separator: " ") }
+}
+
+/// What a stream carries, as the server says: its video and its sound, as
+/// they reach the player (a conversion's output, or the file's own where
+/// it's copied). Read for one thing only: learning what a player can't decode.
+public struct StreamContents: Sendable, Equatable {
+    public var video: MediaFormat?
+    public var sound: MediaFormat?
+
+    public init(video: MediaFormat? = nil, sound: MediaFormat? = nil) {
+        self.video = video
+        self.sound = sound
+    }
+
+    /// Its formats, the sound first: cheaper to convert if it's the one at fault.
+    public var formats: [MediaFormat] { [sound, video].compactMap { $0 } }
+}
+
 /// A playable stream for one item.
 public struct MediaStream: Sendable, Equatable {
+    /// How the server sends it, from no work to the most.
     public enum Delivery: Sendable, Equatable {
         /// The original file, played as it is.
         case original
-        /// Streamed by the server: repackaged, or converted.
-        case converted
+        /// Streamed by the server, with only the container changed: cheap.
+        case repackaged
+        /// Streamed by the server with its sound converted (the video copied
+        /// as it is): the server has to keep up, but with little work.
+        case soundConverted
+        /// Streamed by the server with its video re-encoded (whatever the
+        /// sound): the expensive kind, which a slow server may not keep up with.
+        case reencoded
+
+        /// The server converts it (its sound or its video): it has to keep up.
+        public var isConverted: Bool { self == .soundConverted || self == .reencoded }
     }
 
     /// Which of the device's players plays it.
@@ -89,9 +164,6 @@ public struct MediaStream: Sendable, Equatable {
 
     public let url: URL
     public let delivery: Delivery
-    /// The server has to re-encode it (not just repackage it). That's the
-    /// expensive kind of conversion: a slow server may not keep up.
-    public let reencodes: Bool
     /// Why the server is converting it, in plain words such as "container
     /// not supported" (for diagnostics). Empty for the original file.
     public let conversionReasons: [String]
@@ -99,13 +171,19 @@ public struct MediaStream: Sendable, Equatable {
     /// `StreamSource.release(_:)`. Nil when there's nothing to stop.
     public let sessionID: String?
     public let player: Player
+    /// What it carries, as far as the server says.
+    public let contents: StreamContents
 
-    public init(url: URL, delivery: Delivery, player: Player = .builtIn, reencodes: Bool = false,
-                conversionReasons: [String] = [], sessionID: String? = nil) {
+    /// The server has to re-encode its video: the expensive kind of
+    /// conversion (`Delivery.reencoded`).
+    public var reencodes: Bool { delivery == .reencoded }
+
+    public init(url: URL, delivery: Delivery, player: Player = .builtIn,
+                conversionReasons: [String] = [], sessionID: String? = nil, contents: StreamContents = StreamContents()) {
         self.url = url
         self.delivery = delivery
         self.player = player
-        self.reencodes = reencodes
+        self.contents = contents
         self.conversionReasons = conversionReasons
         self.sessionID = sessionID
     }
@@ -113,6 +191,10 @@ public struct MediaStream: Sendable, Equatable {
 
 /// An error from a media server that says whether signing in again is the
 /// only fix (the server rejected the session).
+/// A player couldn't decode what it was sent: the format's fault, not the
+/// connection's or the server's. (A player's errors say so by conforming.)
+public protocol UnplayableMedia: Error {}
+
 /// A failure that's the connection's: it dropped, or couldn't carry the
 /// stream fast enough. A lower quality may help, where a server's own
 /// error, or a file a player can't show, wouldn't. (A player's or a

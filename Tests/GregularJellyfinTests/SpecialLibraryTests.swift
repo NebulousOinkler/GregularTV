@@ -142,7 +142,7 @@ struct SpecialLibraryTests {
             return (200, #"{ "MediaSources": [{ "Id": "m1", "Container": "mp4", "SupportsDirectPlay": true }] }"#)
         }
         let client = JellyfinClient(credentials: JellyfinFixtures.credentials, identity: JellyfinFixtures.identity,
-                                    formats: .browser(playsHEVC: false), transport: mock)
+                                    formats: .browser(alsoPlays: []), transport: mock)
         let video = MediaItem(id: "m1", kind: .musicVideo, name: "Waterloo", duration: 168)
         #expect(try await client.originalFile(of: video)?.path == "/Videos/m1/stream.mp4")
     }

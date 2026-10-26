@@ -66,3 +66,29 @@ public enum PlayerDeckState: Sendable, Equatable {
     /// (for diagnostics).
     var bufferedInAll: TimeInterval { get }
 }
+
+/// A deck's item stopped for a reason that isn't its format (`UnplayableMedia`)
+/// or the connection (`ConnectionFailure`): it's retried as it is. For any
+/// deck to report.
+public struct PlaybackStopped: LocalizedError {
+    public init() {}
+
+    public var errorDescription: String? {
+        "This programme stopped playing."
+    }
+}
+
+/// A deck couldn't decode what it was sent (`UnplayableMedia`): its player
+/// couldn't read the format, so something else must be sent.
+public struct UnplayableFormat: UnplayableMedia, LocalizedError {
+    /// The device, as "a format … can't show" names it: "Apple TV", "this browser".
+    let device: String
+
+    public init(on device: String) {
+        self.device = device
+    }
+
+    public var errorDescription: String? {
+        "This programme couldn't be played. It may be in a format \(device) can't show."
+    }
+}

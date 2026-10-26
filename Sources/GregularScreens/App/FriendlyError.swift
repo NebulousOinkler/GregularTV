@@ -11,28 +11,28 @@ public enum FriendlyError {
         guard let error else { return "Something went wrong." }
         // The media server's own errors are already written for people.
         if let failure = error as? any MediaServiceFailure { return failure.localizedDescription }
-        if let stall = error as? StallError { return stall.localizedDescription }
-        if let url = error as? URLError { return message(for: url) }
+        // The system's network errors aren't: say what kind of trouble it is (`ErrorKind`).
+        if error is URLError { return message(for: ErrorKind(error)) }
         if error is DecodingError { return "Your server sent a reply the app didn't understand. Is it a \(AppModel.serverName) server?" }
-        // (A player's own errors, such as a format it can't show, come as
-        // LocalizedErrors written for people: see each `PlayerDeck`.)
+        // (The app's own errors, such as a stall or a format a player can't
+        // show, come as LocalizedErrors written for people: see each `PlayerDeck`.)
         return (error as? LocalizedError)?.errorDescription ?? "Something went wrong."
     }
 
-    private static func message(for error: URLError) -> String {
-        switch error.code {
-        case .notConnectedToInternet, .networkConnectionLost:
+    /// A system network error's words, by its kind.
+    private static func message(for kind: ErrorKind) -> String {
+        switch kind {
+        case .offline, .connection:
             "This device isn't connected to the network."
         case .timedOut:
             "Your \(AppModel.serverName) server took too long to respond."
-        case .cannotFindHost, .cannotConnectToHost, .dnsLookupFailed:
+        case .unreachable:
             "Can't reach your \(AppModel.serverName) server. Check that it's switched on and connected."
-        case .secureConnectionFailed, .serverCertificateUntrusted, .serverCertificateHasBadDate,
-             .serverCertificateNotYetValid, .serverCertificateHasUnknownRoot, .clientCertificateRejected:
+        case .insecure:
             "Couldn't make a secure connection to your \(AppModel.serverName) server."
-        case .appTransportSecurityRequiresSecureConnection:
+        case .needsHTTPS:
             "This server needs a secure (https) address."
-        default:
+        case .signedOut, .server, .unplayable, .unknown:
             "Couldn't talk to your \(AppModel.serverName) server."
         }
     }

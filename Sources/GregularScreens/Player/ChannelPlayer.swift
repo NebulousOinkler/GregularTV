@@ -55,35 +55,60 @@ import Observation
 ///   VLC* on Apple TV).
 /// - **Stalls:** if video hasn't moved for 30 s (for example, the server
 ///   can't transcode fast enough), it's treated as a failure and retried.
+///   On a stream the server converts, buffering for `convertedBufferingLimit`
+///   already takes its ladder's next step (below), sooner than a stall.
 /// - **Head start for re-encoding:** tuning into a programme the server has to
 ///   re-encode, the player asks for it from a little ahead of live
 ///   (`transcodeHeadStart`), lets it buffer paused while the screen is blank,
 ///   and starts playing when live reaches that point, once `startCushion` is
 ///   buffered (waiting up to `maxCushionWait` more for it, a little behind
 ///   live). Each stall on the channel doubles the head start, up to
-///   `maxTranscodeHeadStart`. Files that play as-is or are only repackaged
-///   start at once.
+///   `maxTranscodeHeadStart`. A stream whose sound the server converts gets
+///   one too once it couldn't keep up without (below). Files that play as-is
+///   or are only repackaged start at once. Every stream the server converts
+///   buffers up to `convertedForwardBuffer` ahead.
+/// - **A file the player can't decode** (`ErrorKind.unplayable`): the
+///   format it carried is ruled out for that player for the session
+///   (`UnplayableFormats`), and the programme is asked for again at once, for
+///   something else. With nothing left to rule out, it's `cantPlay` until
+///   its slot ends.
+/// - **Sound conversion that can't keep up:** when a programme whose sound
+///   the server converts (the video copied as it is) fails, stalls, buffers
+///   too long or falls a minute behind live, the retry asks for less sound
+///   work (`ProgrammeSettings.askForLessSoundWork`): stereo, which is less
+///   to make, where there's surround to mix down; then a head start. Never a
+///   lower bitrate, which would make the server re-encode the video too, so
+///   Auto doesn't measure. (The add-on player can't help: it was asked
+///   before the server converted anything.) A browser has no surround to
+///   mix down, so its first step is the head start. After both, the trouble
+///   may be the connection's.
 /// - **Re-encoding that can't keep up:** when a programme the server re-encodes
-///   fails, stalls or falls a minute behind live, the retry asks for less
-///   work: 720p, then a step lower each further time, for that programme
-///   only (shown in Settings as its fix). The server's processor is the limit, not the connection, so
-///   Auto doesn't re-measure first.
+///   fails, stalls, buffers too long or falls a minute behind live, the retry
+///   asks for less work: 720p, then a step lower each further time, for that
+///   programme only (shown in Settings as its fix). The server's processor
+///   is the limit, not the connection, so Auto doesn't re-measure first. At
+///   the lowest, there's nothing less to ask for: then it may be the
+///   connection's.
 /// - **Too little left to re-encode:** a programme the server would re-encode
 ///   isn't started with under `minReencodedTimeLeft` to go, since starting a
 ///   transcode costs the server a lot for a minute of video. The screen is
 ///   blank with "Up next" instead.
 /// - **Programme fixes** (`ProgrammeFix`, from Settings) try a lower quality
-///   for just the programme on now, if it keeps having trouble. Changing
-///   channel, changing quality, or the next programme starting puts it back
-///   to standard.
+///   for just the programme on now, if it keeps having trouble.
+/// - **One programme's settings** (`ProgrammeSettings`): its fix, the
+///   viewer's choice of player, and Auto's cap after its trouble are one
+///   value, with one rule. The next programme starting, or changing
+///   channel, clears all of it; changing quality clears what's about
+///   quality and keeps the choice of player.
 /// - **Quality** caps the bitrate the server sends. A cap below the file's
 ///   own bitrate makes the server re-encode, far more work than sending the
 ///   file, and more than a small server can do in real time. So Auto asks for
 ///   the original, with no cap, as Maximum does, until a programme has
 ///   trouble on the connection: a stall, falling a minute behind live, or a
-///   failure that's the connection's (`ConnectionFailure`), not the server's
-///   own error or a file the player can't show, which a lower quality
-///   wouldn't help. Then it measures *before* retrying (the retry waits
+///   failure that's the connection's (`ErrorKind.connection`, or a timeout
+///   while playing), not the server's own error, a server slow to answer
+///   when asked for the stream, or a file the player can't show, which a
+///   lower quality wouldn't help. Then it measures *before* retrying (the retry waits
 ///   anyway), as the tune-in starts with nothing loaded, so nothing else is
 ///   downloading (not even a commercial the retry lands in), and caps that
 ///   programme at 70% of it. While capped, a speed test in the background every 10 minutes
@@ -111,6 +136,9 @@ public final class ChannelPlayer {
         /// Buffering ahead of live while the server re-encodes; plays at `at`.
         case startingSoon(at: Date)
         case failed(message: String, retryAt: Date)
+        /// Nothing this device plays can show what's on (`UnplayableFormats`):
+        /// blank, saying so, until it ends, with no more retries for it.
+        case cantPlay(until: Date)
 
         public var isPaused: Bool { if case .paused = self { true } else { false } }
     }
@@ -128,7 +156,6 @@ public final class ChannelPlayer {
     public static let prepareNextLead: TimeInterval = 30
     public static let maxDriftBehindLive: TimeInterval = 60
     public static let maxRetryDelay: TimeInterval = 60
-    public static let autoRemeasureInterval: TimeInterval = 600
     /// How long after starting a programme Auto's background speed test waits,
     /// so it doesn't compete with the video for bandwidth while it starts.
     public static var backgroundMeasurementDelay: Duration = .seconds(20)
@@ -139,11 +166,14 @@ public final class ChannelPlayer {
     public static let startCushion: TimeInterval = 15
     /// How much longer than the head start to wait for that cushion.
     public static let maxCushionWait: TimeInterval = 30
-    /// How far ahead a re-encoded programme keeps buffering, so it builds a
-    /// reserve whenever the server gets ahead.
-    public static let reencodedForwardBuffer: TimeInterval = 60
+    /// How far ahead a stream the server converts (its video or its sound)
+    /// keeps buffering, so it builds a reserve whenever the server gets ahead.
+    public static let convertedForwardBuffer: TimeInterval = 60
     /// With "Step down quality", buffering this long steps down again.
     public static let stepDownAfterBuffering: TimeInterval = 4
+    /// Buffering this long on a stream the server converts takes its
+    /// ladder's next step (`askForLessWork`), without waiting for a stall.
+    public static let convertedBufferingLimit: TimeInterval = 10
     /// A re-encoded programme with less than this left isn't started.
     public static let minReencodedTimeLeft: TimeInterval = 180
     /// How often the server hears the player still wants its streams: well
@@ -167,17 +197,16 @@ public final class ChannelPlayer {
     /// What the schedule says is on this channel. The UI shows this.
     public private(set) var airing: Airing? {
         didSet {
-            // A fix is for one programme: the next one plays as standard.
-            if let airing, !airing.isFiller, let fixed = fixedProgramme, !fixed.airing.isSameProgramme(as: airing) {
-                clearProgrammeFix()
-            }
-            if let airing, !airing.isFiller, let preferred = addOnFirst, !preferred.isSameProgramme(as: airing) {
-                addOnFirst = nil
+            // Settings are for one programme: the next one starts with none.
+            if let airing, !airing.isFiller, let programmeSettings, !programmeSettings.apply(to: airing) {
+                clearProgrammeSettings()
             }
         }
     }
     /// The fix in use for the programme on now.
-    public private(set) var programmeFix: ProgrammeFix = .standard
+    public var programmeFix: ProgrammeFix {
+        fixableProgramme.flatMap { settings(for: $0).fix?.kind } ?? .standard
+    }
     /// The programme on now, if one is (not a commercial or a gap). Fixes apply to it.
     public var fixableProgramme: Airing? {
         airing.flatMap { $0.isFiller ? nil : $0 }
@@ -205,10 +234,12 @@ public final class ChannelPlayer {
     private var current: LoadedAiring?
     private var next: LoadedAiring?
     private var isPreparingNext = false
-    /// The programme a fix applies to, and the cap it's playing at.
-    private var fixedProgramme: (airing: Airing, cap: Int)?
-    /// The programme the viewer asked the add-on player to play, every part of it.
-    private var addOnFirst: Airing?
+    /// What applies to the programme on now only: fixes, the choice of
+    /// player, Auto's cap (`ProgrammeSettings`). Nil until one is set.
+    private var programmeSettings: ProgrammeSettings?
+    /// What this device's players turned out not to decode, for as long as
+    /// this player lasts (the watching session), across channels.
+    private var unplayable = UnplayableFormats()
     /// When the current fixed programme started buffering, for stepping down again.
     private var bufferingSince: Date?
     /// The programme after the current commercial break, buffering in
@@ -222,14 +253,8 @@ public final class ChannelPlayer {
     private var standbyHandoff: Task<Void, Never>?
     /// Failures since video last actually played, on this channel. Sets the retry backoff.
     private var consecutiveFailures = 0
-    /// Auto's cap for the programme that had trouble, and when it was
-    /// measured. Nil until then, and for every other programme: no cap.
-    private var autoBitrate: (bitsPerSecond: Int, measuredAt: Date, programme: Airing)?
     /// A background speed test that's waiting or running (Auto only).
     private var measurementTask: Task<Void, Never>?
-    /// The programme that had trouble on the connection, in Auto: measure
-    /// for it as the next tune-in starts.
-    private var measureFirst: Airing?
     /// When the playhead last moved, for spotting stalls.
     private var lastProgress: (position: Double, at: Date)?
     private var tuneTask: Task<Void, Never>?
@@ -249,8 +274,12 @@ public final class ChannelPlayer {
         let cap: Int
         /// The player it's on.
         let player: MediaStream.Player
+        /// How the server sends it (`MediaStream.Delivery`).
+        let delivery: MediaStream.Delivery
+        /// What it carries, for learning what the player can't decode.
+        let contents: StreamContents
         /// The server re-encodes it, so tuning in mid-programme gets a head start.
-        let reencodes: Bool
+        var reencodes: Bool { delivery == .reencoded }
         /// Why the server converts it, if it does (for diagnostics).
         let conversionReasons: String?
     }
@@ -310,27 +339,16 @@ public final class ChannelPlayer {
     public func switchTo(_ schedule: ChannelSchedule) {
         self.schedule = schedule
         consecutiveFailures = 0   // a new channel starts with the shortest retry wait
-        clearProgrammeFix()
-        clearAutoCap()   // and with the original
-        addOnFirst = nil
+        clearProgrammeSettings()   // and with none of the last one's settings
         tune()
     }
 
     /// Applies a fix to the programme on now and restarts it. Does nothing
     /// during a commercial or a gap.
     public func setProgrammeFix(_ fix: ProgrammeFix) {
-        guard let programme = fixableProgramme else { return }
-        switch fix {
-        case .standard:
-            guard programmeFix != .standard else { return }
-            clearProgrammeFix()
-        case .stepDown:
-            let from = fixedProgramme?.cap ?? current?.cap ?? StreamingQuality.maximumBitrate
-            fixedProgramme = (programme, StreamingQuality.bitrate(below: from) ?? StreamingQuality.lowestBitrate)
-        case .hd720:
-            fixedProgramme = (programme, StreamingQuality.hd720.fixedBitrate!)
-        }
-        programmeFix = fix
+        guard let programme = fixableProgramme, fix != .standard || programmeFix != .standard else { return }
+        let from = settings(for: programme).fix?.cap ?? current?.cap ?? StreamingQuality.maximumBitrate
+        updateSettings(for: programme) { $0.setFix(fix, from: from) }
         tune()
     }
 
@@ -339,8 +357,7 @@ public final class ChannelPlayer {
 
     /// The viewer asked for the programme on now on the add-on player.
     public var prefersAddOn: Bool {
-        guard let programme = fixableProgramme, let addOnFirst else { return false }
-        return addOnFirst.isSameProgramme(as: programme)
+        fixableProgramme.map { settings(for: $0).prefersAddOn } ?? false
     }
 
     /// The programme on now is on the add-on player: chosen for it, or
@@ -361,14 +378,50 @@ public final class ChannelPlayer {
     public func setPrefersAddOn(_ on: Bool) -> Bool {
         guard let programme = fixableProgramme, hasAddOnPlayer, on != prefersAddOn else { return false }
         if on, programmeIsOnAddOn { return false }
-        addOnFirst = on ? programme : nil
+        updateSettings(for: programme) { $0.prefersAddOn = on }
         tune()
         return true
     }
 
-    private func clearProgrammeFix() {
-        fixedProgramme = nil
-        programmeFix = .standard
+    /// The device mixes sound down from surround, so stereo can be asked for
+    /// to make a sound conversion less work.
+    public var offersStereoSound: Bool { streams.mostSoundChannels > 2 }
+
+    /// Sound the server converts for the programme on now is mixed down to stereo.
+    public var stereoSound: Bool {
+        fixableProgramme.map { settings(for: $0).stereoSound } ?? false
+    }
+
+    /// Asks for the programme on now with stereo sound, or no longer, and
+    /// restarts it. It only matters when the server converts the sound:
+    /// stereo is less work for it to make. Until the programme ends, or the
+    /// channel changes. False if nothing changes: no programme on, no
+    /// surround to mix down, or already so.
+    @discardableResult
+    public func setStereoSound(_ on: Bool) -> Bool {
+        guard let programme = fixableProgramme, offersStereoSound, on != stereoSound else { return false }
+        updateSettings(for: programme) { $0.stereoSound = on }
+        tune()
+        return true
+    }
+
+    /// `airing`'s programme's settings: none set, if the ones held are another's.
+    private func settings(for airing: Airing) -> ProgrammeSettings {
+        programmeSettings.flatMap { $0.apply(to: airing) ? $0 : nil } ?? ProgrammeSettings(programme: airing)
+    }
+
+    /// Changes `programme`'s settings. The ones held for another programme go.
+    private func updateSettings(for programme: Airing, _ change: (inout ProgrammeSettings) -> Void) {
+        var updated = settings(for: programme)
+        change(&updated)
+        programmeSettings = updated
+    }
+
+    /// The next programme, or another channel: none of the last one's settings,
+    /// and no speed test waiting for it.
+    private func clearProgrammeSettings() {
+        programmeSettings = nil
+        cancelMeasurement()
     }
 
     /// Re-tunes at the new quality. Choosing the quality that's already set
@@ -376,9 +429,10 @@ public final class ChannelPlayer {
     public func setQuality(_ quality: StreamingQuality) {
         guard quality != self.quality else { return }
         self.quality = quality
-        clearProgrammeFix()
-        // Any speed test belongs to Auto: stop it, and forget its result.
-        clearAutoCap()
+        // Fixes and Auto's measurement go (any speed test belongs to Auto);
+        // the choice of player stays.
+        programmeSettings?.clearQuality()
+        cancelMeasurement()
         tune()
     }
 
@@ -407,7 +461,7 @@ public final class ChannelPlayer {
         guard let current, player.currentItem === current.item, !current.item.hasFailed,
               !tuning.isInPadding, tuning.airing == current.airing,
               current.airing.end.timeIntervalSince(now) > Self.prepareNextLead else { return false }
-        if current.reencodes, secondsBehindLive(in: current.airing, at: now) > current.item.bufferedAhead { return false }
+        if needsHeadStart(current), secondsBehindLive(in: current.airing, at: now) > current.item.bufferedAhead { return false }
         seek(to: now.timeIntervalSince(current.airing.start), in: current.airing)
         lastProgress = nil   // the stall watchdog starts afresh: the pause wasn't a stall
         player.play()
@@ -432,6 +486,11 @@ public final class ChannelPlayer {
             status = .betweenProgrammes(until: tuning.airing.slotEnd)
             return
         }
+        // Nothing here plays this programme (any part of it): don't ask again.
+        if !tuning.airing.isFiller, settings(for: tuning.airing).cantPlay {
+            status = .cantPlay(until: tuning.airing.slotEnd)
+            return
+        }
 
         tuneTask = Task {
             do {
@@ -451,7 +510,7 @@ public final class ChannelPlayer {
                 current = loaded
                 streamDescription = loaded.description
                 player.append(loaded.item)
-                if loaded.reencodes, let start = headStartTarget(in: tuning.airing) {
+                if needsHeadStart(loaded), let start = headStartTarget(in: tuning.airing) {
                     // Let the server get ahead: buffer from `start`, paused, then play on time.
                     seek(to: start.timeIntervalSince(tuning.airing.start), in: tuning.airing)
                     status = .startingSoon(at: start)
@@ -477,7 +536,7 @@ public final class ChannelPlayer {
                 status = .playing
             } catch {
                 guard !Task.isCancelled else { return }
-                fail(error, airing: tuning.airing)
+                fail(error, airing: tuning.airing, whileAsking: true)
             }
         }
     }
@@ -493,7 +552,7 @@ public final class ChannelPlayer {
         case .betweenProgrammes(let until):
             if now >= until, !startHeldNext() { tune() }
             return
-        case .failed(_, let until):
+        case .failed(_, let until), .cantPlay(let until):
             if now >= until { tune() }
             return
         case .playing:
@@ -558,13 +617,20 @@ public final class ChannelPlayer {
         }
         isBuffering = player.state == .waiting
 
-        // "Step down quality": buffering for a few seconds steps down again.
-        if programmeFix == .stepDown, isBuffering, let fixed = fixedProgramme, fixed.airing.isSameProgramme(as: current.airing) {
+        // Buffering: with "Step down quality", a few seconds steps down again;
+        // on a stream the server converts, a little longer takes its ladder's
+        // next step (a lower re-encode, stereo, a head start), not waiting
+        // for a stall or falling a minute behind.
+        if isBuffering {
             let since = bufferingSince ?? now
             bufferingSince = since
-            if now.timeIntervalSince(since) > Self.stepDownAfterBuffering,
-               let lower = StreamingQuality.bitrate(below: fixed.cap) {
-                fixedProgramme = (fixed.airing, lower)
+            let buffered = now.timeIntervalSince(since)
+            if settings(for: current.airing).fix?.kind == .stepDown, buffered > Self.stepDownAfterBuffering,
+               programmeSettings?.stepDownAgain() == true {
+                tune()
+                return
+            }
+            if buffered > Self.convertedBufferingLimit, askForLessWork(on: current) {
                 tune()
                 return
             }
@@ -588,13 +654,11 @@ public final class ChannelPlayer {
         }
 
         // A long buffering stall left us well behind live, so jump back. If
-        // the server re-encodes it, its processor is the limit: ask it for
-        // less work. Otherwise the connection may not carry this stream, so
-        // Auto measures it first.
+        // the server converts it, its processor is the limit: ask it for less
+        // work (`askForLessWork`). Otherwise the connection may not carry this
+        // stream, so Auto measures it first.
         if player.state == .playing, behindLive > Self.maxDriftBehindLive {
-            if current.reencodes, !current.airing.isFiller {
-                askForLessReencoding(of: current.airing, from: current.cap)
-            } else {
+            if !askForLessWork(on: current) {
                 measureBeforeRetrying(current.airing)
             }
             tune()
@@ -742,6 +806,13 @@ public final class ChannelPlayer {
         #endif
     }
 
+    /// The server has to get ahead of `loaded` before it plays: a re-encode,
+    /// or a sound conversion that couldn't keep up without a head start
+    /// (`ProgrammeSettings.soundHeadStart`).
+    private func needsHeadStart(_ loaded: LoadedAiring) -> Bool {
+        loaded.reencodes || (loaded.delivery == .soundConverted && settings(for: loaded.airing).soundHeadStart)
+    }
+
     /// Where to start a re-encoded programme: a head start past live that
     /// doubles with each failure on this channel. Nil if the programme ends
     /// too soon for it to be worth it.
@@ -755,9 +826,14 @@ public final class ChannelPlayer {
         let order = players(for: airing)
         let (source, cap) = airing.isFiller ? try await commercialSource(for: airing.item, players: order)
                                             : try await programmeSource(for: airing, players: order)
-        let method = source.delivery == .original ? "direct play" : "streamed by the server"
+        let method = switch source.delivery {
+        case .original: "direct play"
+        case .repackaged: "repackaged by the server"
+        case .soundConverted: "sound converted by the server"
+        case .reencoded: "re-encoded by the server"
+        }
         let label = airing.isFiller ? "Commercial"
-            : fixedProgramme.map({ $0.airing.isSameProgramme(as: airing) }) == true ? "This programme only"
+            : settings(for: airing).fix != nil ? "This programme only"
             : quality == .auto ? "Auto" : quality.label
         let reasons = source.conversionReasons.isEmpty ? nil : source.conversionReasons.joined(separator: ", ")
         // Stop at the scheduled length, so programmes and commercials keep to
@@ -767,22 +843,27 @@ public final class ChannelPlayer {
         // last part stopped, even when it's queued and starts by itself.
         let item = player.makeItem(url: source.url, on: source.player,
                                    from: airing.mediaOffset, to: airing.mediaOffset + airing.length,
-                                   bufferAhead: source.reencodes ? Self.reencodedForwardBuffer : nil)
+                                   bufferAhead: source.delivery.isConverted ? Self.convertedForwardBuffer : nil)
         return LoadedAiring(airing: airing,
                             item: item,
                             unreleased: source,
                             description: "\(label) · up to \(Self.mbps(cap)) · \(method)",
                             cap: cap,
                             player: source.player,
-                            reencodes: source.reencodes,
+                            delivery: source.delivery,
+                            contents: source.contents,
                             conversionReasons: reasons)
     }
 
-    /// Programmes use the viewer's quality setting, or the programme fix's cap.
+    /// Programmes use their settings' cap (`ProgrammeSettings.cap(at:)`).
+    /// While Auto's cap is old, a background speed test may raise it.
     private func programmeSource(for airing: Airing, players: [MediaStream.Player]) async throws -> (MediaStream, cap: Int) {
-        let fixedCap = fixedProgramme.flatMap { $0.airing.isSameProgramme(as: airing) ? $0.cap : nil }
-        let cap = if let fixedCap { fixedCap } else { await maxBitrate(for: airing) }
-        return (try await streams.stream(for: airing.item.id, maxBitrate: cap, players: players), cap)
+        let settings = settings(for: airing)
+        if quality == .auto, settings.needsRemeasuring(at: .now) { measureInBackground(for: airing) }
+        let cap = settings.cap(at: quality)
+        let request = StreamRequest(maxBitrate: cap, players: players, stereoSound: settings.stereoSound,
+                                    unplayable: unplayable.byPlayer)
+        return (try await streams.stream(for: airing.item.id, request), cap)
     }
 
     /// Commercials never start a speed test, and are asked for with no
@@ -791,30 +872,14 @@ public final class ChannelPlayer {
     /// is converted by the server, as a programme is.
     private func commercialSource(for item: MediaItem, players: [MediaStream.Player]) async throws -> (MediaStream, cap: Int) {
         let cap = StreamingQuality.maximumBitrate
-        return (try await streams.stream(for: item.id, maxBitrate: cap, players: players), cap)
+        return (try await streams.stream(for: item.id, StreamRequest(maxBitrate: cap, players: players, unplayable: unplayable.byPlayer)), cap)
     }
 
     /// The players to ask about for `airing`, in order: the device's own
     /// first, unless the viewer asked for the add-on player for it.
     private func players(for airing: Airing) -> [MediaStream.Player] {
-        let order: [MediaStream.Player] = addOnFirst?.isSameProgramme(as: airing) == true ? [.addOn, .builtIn] : [.builtIn, .addOn]
+        let order: [MediaStream.Player] = settings(for: airing).prefersAddOn ? [.addOn, .builtIn] : [.builtIn, .addOn]
         return order.filter(streams.players.contains)
-    }
-
-    /// The bitrate cap for `programme` at the current quality setting.
-    ///
-    /// Fixed qualities return their cap and never measure. Auto has no cap
-    /// until a programme has trouble on the connection, then measures
-    /// before tuning in again (`measureIfTroubled()`). Once capped, it
-    /// returns that programme's cap straight away, and schedules a
-    /// background re-measure, which may raise it, when the cap is over 10
-    /// minutes old.
-    private func maxBitrate(for programme: Airing) async -> Int {
-        if let fixed = quality.fixedBitrate { return fixed }
-        if let capped = autoCap(for: programme), Date.now.timeIntervalSince(capped.measuredAt) >= Self.autoRemeasureInterval {
-            measureInBackground(for: programme)
-        }
-        return autoCap(for: programme)?.bitsPerSecond ?? StreamingQuality.maximumBitrate
     }
 
     /// In Auto, after a programme's connection trouble: measures for it now,
@@ -823,30 +888,17 @@ public final class ChannelPlayer {
     /// commercial, when the retry lands in a break), which understates the
     /// connection.
     private func measureIfTroubled() async {
-        guard let programme = measureFirst else { return }
-        measureFirst = nil
+        guard let troubled = programmeSettings, troubled.measuresFirst else { return }
+        programmeSettings?.measuresFirst = false
         cancelMeasurement()
-        await measureBandwidth(for: programme, raiseOnly: false)
-    }
-
-    /// Auto's cap, if it's for `programme`.
-    private func autoCap(for programme: Airing) -> (bitsPerSecond: Int, measuredAt: Date)? {
-        guard let autoBitrate, autoBitrate.programme.isSameProgramme(as: programme) else { return nil }
-        return (autoBitrate.bitsPerSecond, autoBitrate.measuredAt)
+        await measureBandwidth(for: troubled.programme, raiseOnly: false)
     }
 
     /// In Auto, a programme had trouble on the connection: measure for it
     /// before tuning in again. Not a commercial, which has no cap.
     private func measureBeforeRetrying(_ airing: Airing) {
         guard quality == .auto, !airing.isFiller else { return }
-        measureFirst = airing
-    }
-
-    /// Back to the original, with no speed test waiting.
-    private func clearAutoCap() {
-        cancelMeasurement()
-        autoBitrate = nil
-        measureFirst = nil
+        updateSettings(for: airing) { $0.measuresFirst = true }
     }
 
     /// Runs the speed test after `backgroundMeasurementDelay`, unless one is already pending.
@@ -861,17 +913,15 @@ public final class ChannelPlayer {
         }
     }
 
-    /// Sets Auto's cap for `programme` from a speed test, or with
-    /// `raiseOnly` (a test run while video plays), only raises it. A cap at
-    /// the maximum is no cap. A test that fails leaves the cap as it was.
+    /// Sets Auto's cap for `programme` from a speed test
+    /// (`ProgrammeSettings.measured`). A test that fails leaves the cap as it was.
     private func measureBandwidth(for programme: Airing, raiseOnly: Bool) async {
         guard quality == .auto else { return }
         let measured = try? await streams.measureBandwidth()
-        // Dropped if cancelled, or if the viewer left Auto meanwhile.
-        guard !Task.isCancelled, quality == .auto, let measured else { return }
-        let cap = StreamingQuality.autoBitrate(measured: measured)
-        let newCap = raiseOnly ? autoCap(for: programme).map { max($0.bitsPerSecond, cap) } : cap
-        autoBitrate = newCap.flatMap { $0 < StreamingQuality.maximumBitrate ? ($0, .now, programme) : nil }
+        // Dropped if cancelled, if the viewer left Auto meanwhile, or if
+        // another programme is on now.
+        guard !Task.isCancelled, quality == .auto, let measured, programmeSettings?.apply(to: programme) == true else { return }
+        programmeSettings?.measured(measured, raiseOnly: raiseOnly, at: .now)
     }
 
     private func cancelMeasurement() {
@@ -902,43 +952,58 @@ public final class ChannelPlayer {
         player.seek(to: airing.mediaOffset + max(0, seconds))
     }
 
-    private func fail(_ error: (any Error)?, airing: Airing) {
-        if (error as? any MediaServiceFailure)?.isSessionExpired == true {
+    /// - Parameter whileAsking: it failed asking the server for the stream,
+    ///   not playing it: a timeout then is a busy server, not a connection
+    ///   that can't carry the stream.
+    private func fail(_ error: (any Error)?, airing: Airing, whileAsking: Bool = false) {
+        let kind = ErrorKind(error)
+        if kind == .signedOut {
             stop()
             onUnauthorized?()
             return
         }
-        let failedReencode = current.map { $0.airing == airing && $0.reencodes && !airing.isFiller } ?? false
-        let failedCap = current?.cap
+        let failed = current.flatMap { $0.airing == airing ? $0 : nil }
         unloadEverything()
         self.airing = airing
+        // The player couldn't decode it: rule out what it carried and ask
+        // again at once, for something else (no backoff: the server isn't
+        // at fault). With nothing left to rule out, it can't be played here.
+        if kind == .unplayable, let failed {
+            if unplayable.learn(from: failed.contents, on: failed.player, safest: streams.safestFormats) { return tune() }
+            if !airing.isFiller { updateSettings(for: airing) { $0.cantPlay = true } }
+            status = .cantPlay(until: airing.slotEnd)
+            return
+        }
         let delay = min(Self.maxRetryDelay, 5 * pow(2, Double(consecutiveFailures)))
         consecutiveFailures += 1
-        if failedReencode, let failedCap {
-            // The server couldn't re-encode fast enough: retry this programme with less work.
-            askForLessReencoding(of: airing, from: failedCap)
-        } else if error is any ConnectionFailure || Self.isConnectionError(error) {
+        if let failed, askForLessWork(on: failed) {
+            // The server couldn't convert it fast enough: the retry asks for less.
+        } else if kind == .connection || (kind == .timedOut && !whileAsking) {
             // The connection may not carry it: measure before the retry.
             measureBeforeRetrying(airing)
         }
         status = .failed(message: FriendlyError.message(for: error), retryAt: .now.addingTimeInterval(delay))
     }
 
-    /// A network error that says the connection dropped or couldn't keep
-    /// up, where a lower quality may help. Not the server's own errors, an
-    /// address that can't be found, or a secure connection that failed.
-    static func isConnectionError(_ error: (any Error)?) -> Bool {
-        guard let error = error as? URLError else { return false }
-        return [.timedOut, .networkConnectionLost, .notConnectedToInternet, .cannotConnectToHost].contains(error.code)
-    }
-
-    /// A re-encode the server can't keep up with: 720p first, then a step
-    /// lower each time, down to the lowest, for this programme only.
-    private func askForLessReencoding(of airing: Airing, from cap: Int) {
-        let hd720 = StreamingQuality.hd720.fixedBitrate!
-        let lower = cap > hd720 ? hd720 : StreamingQuality.bitrate(below: cap) ?? StreamingQuality.lowestBitrate
-        fixedProgramme = (airing, lower)
-        programmeFix = lower == hd720 ? .hd720 : .stepDown
+    /// The server converting `loaded` couldn't keep up: ask it for less
+    /// work, for this programme only. A re-encode asks for a lower quality
+    /// (`ProgrammeSettings.askForLessReencoding`); a sound conversion asks
+    /// for stereo, then a head start (`askForLessSoundWork`). False if
+    /// the server isn't converting it (the original, or only repackaged), it's
+    /// a commercial, or there's nothing less to ask for: then the trouble may
+    /// be the connection's.
+    private func askForLessWork(on loaded: LoadedAiring) -> Bool {
+        guard !loaded.airing.isFiller else { return false }
+        var asked = false
+        switch loaded.delivery {
+        case .reencoded:
+            updateSettings(for: loaded.airing) { asked = $0.askForLessReencoding(from: loaded.cap) }
+        case .soundConverted:
+            updateSettings(for: loaded.airing) { asked = $0.askForLessSoundWork(offersStereo: offersStereoSound) }
+        case .original, .repackaged:
+            break
+        }
+        return asked
     }
 
     private func unloadEverything() {

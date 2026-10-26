@@ -32,7 +32,7 @@ struct JellyfinPrivacyTests {
         _ = try await client.lyrics(for: "abc")
         _ = try await client.originalFile(of: MediaItem(id: "abc", kind: .song, name: "Song", duration: 200))
         try await client.stopTranscoding(playSessionID: "p")
-        await client.keepAlive(MediaStream(url: URL(string: "https://tv.invalid/s")!, delivery: .converted, sessionID: "p"))
+        await client.keepAlive(MediaStream(url: URL(string: "https://tv.invalid/s")!, delivery: .repackaged, sessionID: "p"))
         await client.signOut(clearing: InMemoryCredentialStore())
 
         #expect(mock.requests.count >= 6)
@@ -51,7 +51,7 @@ struct JellyfinPrivacyTests {
         let mock = MockJellyfin()
         mock.on("POST", "/Sessions/Playing/Ping", status: 204)
         let client = JellyfinFixtures.client(mock)
-        await client.keepAlive(MediaStream(url: URL(string: "https://tv.invalid/s")!, delivery: .converted, sessionID: "p"))
+        await client.keepAlive(MediaStream(url: URL(string: "https://tv.invalid/s")!, delivery: .repackaged, sessionID: "p"))
         await client.keepAlive(MediaStream(url: URL(string: "https://tv.invalid/f")!, delivery: .original))
 
         let request = try #require(mock.requests.first)
