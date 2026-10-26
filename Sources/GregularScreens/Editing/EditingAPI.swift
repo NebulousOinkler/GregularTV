@@ -68,7 +68,8 @@ extension LocalPage {
         let choices = app.libraryChoices
         return .json(State(
             document: app.userChannels,
-            library: .init(genres: choices.genres, series: choices.seriesNames, tags: choices.tags, films: choices.movieNames,
+            library: .init(genres: choices.genres, series: choices.seriesNames, tags: choices.tags, studios: choices.studios,
+                           films: choices.movieNames,
                            firstYear: choices.years?.lowerBound, lastYear: choices.years?.upperBound),
             channels: app.lineupChannels.map { .init(number: $0.number, name: $0.name) },
             customNumbers: .init(from: CustomChannel.numbers.lowerBound, to: CustomChannel.numbers.upperBound),
@@ -80,7 +81,7 @@ extension LocalPage {
 
     struct State: Encodable {
         struct Library: Encodable {
-            let genres, series, tags, films: [String]
+            let genres, series, tags, studios, films: [String]
             let firstYear, lastYear: Int?
         }
         struct ChannelName: Encodable {

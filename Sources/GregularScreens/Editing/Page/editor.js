@@ -37,7 +37,7 @@ function use(newState) {
   doc = JSON.parse(JSON.stringify(state.document));
   dirty = false;
   $("dirty").textContent = "";
-  for (const [id, names] of [["genre", state.library.genres], ["series", state.library.series], ["tag", state.library.tags], ["film", state.library.films]]) {
+  for (const [id, names] of [["genre", state.library.genres], ["series", state.library.series], ["tag", state.library.tags], ["studio", state.library.studios], ["film", state.library.films]]) {
     $("list-" + id).replaceChildren(...names.map((name) => el("option", { value: name })));
   }
   render();
@@ -51,7 +51,7 @@ function render() {
 
 // Channels
 
-const kinds = { genre: "Genre", series: "Series", tag: "Tag", years: "Years" };
+const kinds = { genre: "Genre", series: "Series", tag: "Tag", studio: "Studio", years: "Years" };
 const joins = { anyOf: "Any of", allOf: "All of", noneOf: "None of" };
 
 function describe(match) {

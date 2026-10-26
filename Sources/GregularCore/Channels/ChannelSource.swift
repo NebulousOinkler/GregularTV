@@ -23,6 +23,7 @@ public enum ChannelSourceRegistry {
             SeriesSource.self,
             YearRangeSource.self,
             TagSource.self,
+            StudioSource.self,
             AllOfSource.self,
             AnyOfSource.self,
             NotSource.self,

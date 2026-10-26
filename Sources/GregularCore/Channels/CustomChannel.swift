@@ -14,8 +14,8 @@ import Foundation
 ///
 /// **Privacy.** A custom channel is saved on the device (as its channel
 /// code, in `AppPreferences`) because the viewer typed or picked it: its
-/// rule may name a genre, series or tag from the library, and nothing else
-/// from the library is kept.
+/// rule may name a genre, series, tag or studio from the library, and
+/// nothing else from the library is kept.
 public struct CustomChannel: Sendable, Hashable {
     /// Which programmes the channel plays: conditions, each joined to the
     /// rest one of three ways. A programme is on the channel when it matches
@@ -35,6 +35,7 @@ public struct CustomChannel: Sendable, Hashable {
             case series(String)
             case tag(String)
             case years(from: Int?, to: Int?)
+            case studio(String)
         }
 
         public struct Condition: Sendable, Hashable {
@@ -61,6 +62,7 @@ public struct CustomChannel: Sendable, Hashable {
         public static func series(_ name: String) -> Rule { Rule([Condition(.anyOf, .series(name))]) }
         public static func tag(_ name: String) -> Rule { Rule([Condition(.anyOf, .tag(name))]) }
         public static func years(from: Int?, to: Int?) -> Rule { Rule([Condition(.anyOf, .years(from: from, to: to))]) }
+        public static func studio(_ name: String) -> Rule { Rule([Condition(.anyOf, .studio(name))]) }
 
         /// The conditions joined one way.
         public func conditions(_ mode: Mode) -> [Match] {
@@ -120,7 +122,7 @@ extension CustomChannel {
         }
         for condition in rule.conditions {
             switch condition.match {
-            case .genre(let text), .series(let text), .tag(let text):
+            case .genre(let text), .series(let text), .tag(let text), .studio(let text):
                 if text.trimmingCharacters(in: .whitespaces).isEmpty { problems.append("Channel \(number): a condition names nothing.") }
             case .years(nil, nil):
                 problems.append("Channel \(number): \"years\" needs a \"from\", a \"to\", or both.")
@@ -157,6 +159,7 @@ extension CustomChannel.Rule.Match {
         case .series(let name): SeriesSource(anyOf: [name])
         case .tag(let name): TagSource(anyOf: [name])
         case .years(let from, let to): YearRangeSource(from: from, to: to)
+        case .studio(let name): StudioSource(anyOf: [name])
         }
     }
 }
@@ -184,10 +187,11 @@ extension CustomChannel {
             case .series: 1
             case .tag: 2
             case .years: 3
+            case .studio: 4
             }
             writer.byte(condition.mode.rawValue << 4 | kind)
             switch condition.match {
-            case .genre(let text), .series(let text), .tag(let text): writer.text(text)
+            case .genre(let text), .series(let text), .tag(let text), .studio(let text): writer.text(text)
             case .years(let from, let to):
                 writer.number(from ?? 0)
                 writer.number(to ?? 0)
@@ -217,6 +221,7 @@ extension CustomChannel {
                 case 3:
                     guard let from = reader.number(), let to = reader.number() else { return nil }
                     match = .years(from: from == 0 ? nil : from, to: to == 0 ? nil : to)
+                case 4: guard let text = reader.text() else { return nil }; match = .studio(text)
                 default: return nil
                 }
                 conditions.append(Rule.Condition(mode, match))

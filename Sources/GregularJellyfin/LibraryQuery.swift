@@ -23,9 +23,9 @@ struct LibraryQuery: Sendable {
     let userID: String
 
     func fetchAll() async throws -> [MediaItem] {
-        // Episodes rarely carry genres or tags themselves, so they inherit them from their series.
-        async let seriesList = fetchPages(types: "Series", fields: "Genres,Tags")
-        async let playable = fetchPages(types: "Episode,Movie", fields: "Genres,Tags")
+        // Episodes rarely carry genres, tags or studios themselves, so they inherit them from their series.
+        async let seriesList = fetchPages(types: "Series", fields: "Genres,Tags,Studios")
+        async let playable = fetchPages(types: "Episode,Movie", fields: "Genres,Tags,Studios")
         let seriesMetadata = Dictionary(try await seriesList.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
 
         var seen = Set<String>()
@@ -136,6 +136,8 @@ struct ItemDTO: Decodable, Sendable {
     let premiereDate: String?
     let genres: [String]?
     let tags: [String]?
+    /// Only the names are used; the IDs alongside them are dropped.
+    let studios: [Named]?
     let artists: [String]?
     let album: String?
     let hasLyrics: Bool?
@@ -146,9 +148,16 @@ struct ItemDTO: Decodable, Sendable {
     /// Bytes of text it holds, for `LibraryQuery.mostText`.
     var textSize: Int {
         let texts = [id, name, type, seriesId, seriesName, premiereDate, album, container, parentId].compactMap { $0 }
-            + (genres ?? []) + (tags ?? []) + (artists ?? [])
+            + (genres ?? []) + (tags ?? []) + studioNames + (artists ?? [])
         return texts.reduce(0) { $0 + $1.utf8.count }
     }
+
+    /// One of `studios`: Jellyfin sends each as a name and an ID.
+    struct Named: Decodable, Sendable {
+        let name: String?
+    }
+
+    var studioNames: [String] { (studios ?? []).compactMap(\.name) }
 
     /// Nil for item types we don't play, or items with no runtime.
     /// - Parameter folders: the folders it's in within its library, outermost first.
@@ -170,6 +179,7 @@ struct ItemDTO: Decodable, Sendable {
             premiereDate: premiereDate.flatMap(Self.parseDate),
             genres: Self.union(genres, series?.genres),
             tags: Self.union(tags, series?.tags),
+            studios: Self.union(studioNames, series?.studioNames),
             artists: artists ?? [],
             album: album,
             folders: folders,

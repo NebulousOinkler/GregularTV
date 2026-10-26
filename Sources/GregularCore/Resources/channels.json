@@ -88,17 +88,25 @@
                   { "type": "years", "from": 1997 } ] },
       "strategy": "shuffled-mix", "films": 0.4, "needsVariety": true, "filler": "shuffle", "seed": 14, "padTo": 30 },
 
-    { "number": 15, "name": "Field Trip",
+    { "number": 15, "name": "Viewers Like You",
       "source": { "type": "all-of", "sources": [
-                  { "type": "genre", "anyOf": ["Documentary", "Nature", "History", "Travel", "Sport", "Music"] },
-                  { "type": "years", "from": 1990 } ] },
+                  { "type": "years", "from": 1960 },
+                  { "type": "any-of", "sources": [
+                    { "type": "genre", "anyOf": ["Documentary", "Nature", "History", "Science", "Music", "Arts"] },
+                    { "type": "all-of", "sources": [
+                      { "type": "genre", "anyOf": ["Drama"] },
+                      { "type": "studio", "anyOf": ["BBC", "BBC One", "BBC Two", "BBC Three", "BBC Four", "ITV", "ITV1", "ITVX",
+                                                    "Channel 4", "PBS", "Masterpiece", "BBC Films", "BBC Film", "Film4",
+                                                    "Film4 Productions", "Channel Four Films", "Merchant Ivory Productions",
+                                                    "Working Title Films"] } ] } ] },
+                  { "type": "not", "source": { "type": "genre", "anyOf": ["Kids", "Children", "Horror"] } } ] },
       "strategy": "shuffled-mix", "films": 0.25, "needsVariety": true, "filler": "shuffle", "seed": 15, "padTo": 30 },
 
-    { "number": 16, "name": "Daytime",
+    { "number": 16, "name": "Workshop", "itemTypes": ["Episode"],
       "source": { "type": "all-of", "sources": [
-                  { "type": "genre", "anyOf": ["Game Show", "Talk", "Talk Show", "Soap", "Food", "Home and Garden", "Reality", "Reality-TV"] },
-                  { "type": "years", "from": 1990 } ] },
-      "strategy": "shuffled-mix", "films": 0.1, "needsVariety": true, "filler": "shuffle", "seed": 16, "padTo": 30 },
+                  { "type": "genre", "anyOf": ["Food", "Home and Garden", "Travel"] },
+                  { "type": "years", "from": 1960 } ] },
+      "strategy": "shuffled-shows", "needsVariety": true, "filler": "shuffle", "seed": 16, "padTo": 30 },
 
     { "number": 17, "name": "Silver Screen", "itemTypes": ["Movie"],
       "source": { "type": "years", "from": 1930, "to": 1966 },

@@ -55,6 +55,17 @@ struct TagSource: ChannelSource {
     }
 }
 
+/// `{ "type": "studio", "anyOf": ["BBC One", "ITV"] }`: the networks and
+/// companies that made it (an episode's are its series'), case-insensitive.
+struct StudioSource: ChannelSource {
+    static let type = "studio"
+    let anyOf: [String]
+
+    func matches(_ item: MediaItem) -> Bool {
+        item.studios.contains { anyOf.containsIgnoringCase($0) }
+    }
+}
+
 extension [String] {
     func containsIgnoringCase(_ value: String) -> Bool {
         contains { $0.caseInsensitiveCompare(value) == .orderedSame }

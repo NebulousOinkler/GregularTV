@@ -40,11 +40,12 @@ public struct EditingDocument: Codable, Sendable, Equatable {
         public var noneOf: [MatchEntry]?
     }
 
-    /// One of `genre`, `series`, `tag` or `years`.
+    /// One of `genre`, `series`, `tag`, `studio` or `years`.
     public struct MatchEntry: Codable, Sendable, Equatable {
         public var genre: String?
         public var series: String?
         public var tag: String?
+        public var studio: String?
         public var years: YearsEntry?
     }
 
@@ -163,15 +164,16 @@ extension EditingDocument.MatchEntry {
         case .series(let name): series = name
         case .tag(let name): tag = name
         case .years(let from, let to): years = EditingDocument.YearsEntry(from: from, to: to)
+        case .studio(let name): studio = name
         }
     }
 
     func match(onChannel number: Int) throws -> CustomChannel.Rule.Match {
         let named = [genre.map(CustomChannel.Rule.Match.genre), series.map(CustomChannel.Rule.Match.series),
-                     tag.map(CustomChannel.Rule.Match.tag),
+                     tag.map(CustomChannel.Rule.Match.tag), studio.map(CustomChannel.Rule.Match.studio),
                      years.map { CustomChannel.Rule.Match.years(from: $0.from, to: $0.to) }].compactMap { $0 }
         guard named.count == 1, let match = named.first else {
-            throw EditingDocument.Problem(description: "Channel \(number): each condition is one \"genre\", \"series\", \"tag\" or \"years\".")
+            throw EditingDocument.Problem(description: "Channel \(number): each condition is one \"genre\", \"series\", \"tag\", \"studio\" or \"years\".")
         }
         return match
     }

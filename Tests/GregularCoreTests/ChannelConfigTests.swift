@@ -26,12 +26,11 @@ struct ChannelConfigTests {
         #expect(lineup.channels.contains { $0.filmShare == nil && $0.itemTypes == [.movie] }, "Some channels are films only")
     }
 
-    /// Every themed channel keeps to an era, so a channel never jumps
-    /// decades from one programme to the next: the years it takes are one
-    /// unbroken run, no longer than Silver Screen's talkies-to-1966 (counted
-    /// to 2026 for a channel that runs on to now).
-    @Test func everyThemedChannelKeepsToAnEra() throws {
-        let probes = [["Comedy"], ["Drama"], ["Animation", "Family"], ["Science Fiction"], ["Documentary"], ["Game Show"], []]
+    /// Every themed channel keeps to its years: one unbroken run, from a
+    /// first year no earlier than Silver Screen's talkies (1930), to a last
+    /// year or to now.
+    @Test func everyThemedChannelKeepsToItsYears() throws {
+        let probes = [["Comedy"], ["Drama"], ["Animation", "Family"], ["Science Fiction"], ["Documentary"], ["Food"], []]
         for channel in try ChannelLineup.bundled().channels where channel.needsVariety {
             let kind: MediaItem.Kind = channel.itemTypes.contains(.episode) ? .episode : .movie
             let years = (1900...2026).filter { year in
@@ -42,7 +41,7 @@ struct ChannelConfigTests {
             }
             let first = try #require(years.first, "\(channel.name) takes no year")
             #expect(years == Array(first...years.last!), "\(channel.name) takes years with a gap")
-            #expect(years.count <= 37, "\(channel.name) spans \(years.count) years")
+            #expect(first >= 1930, "\(channel.name) has no first year after 1930")
         }
     }
 
@@ -72,6 +71,26 @@ struct ChannelConfigTests {
         #expect(try channels(airing: Fixtures.movie("Creature", year: 1975, genres: ["Horror"])) == ["Late Show"])
         #expect(try channels(airing: Fixtures.movie("Slasher", year: 1985, genres: ["Horror"])) == ["Late Show", "Video Store"])
         #expect(try channels(airing: Fixtures.movie("Alien", year: 1979, genres: ["Horror", "Science Fiction"])) == ["Late Show", "Sci-Fi Syndicate"])
+    }
+
+    /// The public-television channel has documentaries, and drama from
+    /// British networks and film companies (its Masterpiece side), by studio.
+    @Test func publicTelevisionHasBritishDramaByStudio() throws {
+        func drama(_ studio: String) -> MediaItem {
+            MediaItem(id: studio, kind: .episode, name: "E", duration: 3000, seriesID: studio, seriesName: studio,
+                      productionYear: 2012, genres: ["Drama"], studios: [studio])
+        }
+        #expect(try channels(airing: drama("BBC One")) == ["Next Episode", "Viewers Like You"])
+        #expect(try channels(airing: drama("bbc one")) == ["Next Episode", "Viewers Like You"], "Studios match ignoring case")
+        #expect(try channels(airing: drama("NBC")) == ["Next Episode"])
+        let costumeFilm = MediaItem(id: "f", kind: .movie, name: "F", duration: 7000, productionYear: 1995,
+                                    genres: ["Drama", "Romance"], studios: ["Merchant Ivory Productions"])
+        #expect(try channels(airing: costumeFilm).contains("Viewers Like You"))
+        #expect(try channels(airing: Fixtures.movie("Wild Coasts", year: 2005, genres: ["Documentary"])).contains("Viewers Like You"))
+        // How-to and cooking shows have Workshop, which plays no films.
+        let cooking = Fixtures.episode("Kitchen", s: 1, e: 1, genres: ["Food"], year: 2005)
+        #expect(try channels(airing: cooking).contains("Workshop"))
+        #expect(try !channels(airing: Fixtures.movie("Chef", year: 2014, genres: ["Food"])).contains("Workshop"))
     }
 
     /// "Comedy or the series Bravo, but nothing tagged Christmas", nested.

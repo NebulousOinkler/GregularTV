@@ -415,7 +415,7 @@ public final class AppModel {
         }
     }
 
-    /// The library's genres, series, tags, films and years, to pick from
+    /// The library's genres, series, tags, studios, films and years, to pick from
     /// (none until the library has loaded).
     public var libraryChoices: LibraryChoices {
         LibraryChoices(library)

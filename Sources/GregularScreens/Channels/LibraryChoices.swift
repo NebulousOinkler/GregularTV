@@ -7,6 +7,7 @@ public struct LibraryChoices: Sendable {
     public let genres: [String]
     public let seriesNames: [String]
     public let tags: [String]
+    public let studios: [String]
     public let movieNames: [String]
     /// The earliest and latest production years.
     public let years: ClosedRange<Int>?
@@ -15,6 +16,7 @@ public struct LibraryChoices: Sendable {
         genres = Self.distinct(library.flatMap(\.genres))
         seriesNames = Self.distinct(library.compactMap(\.seriesName))
         tags = Self.distinct(library.flatMap(\.tags))
+        studios = Self.distinct(library.flatMap(\.studios))
         movieNames = Self.distinct(library.filter { $0.kind == .movie }.map(\.name))
         let allYears = library.compactMap(\.productionYear)
         years = allYears.min().flatMap { low in allYears.max().map { low...$0 } }
