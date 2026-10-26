@@ -92,7 +92,8 @@ public struct JellyfinClient: Sendable {
     ///
     /// The first of `players` that plays the file as it is plays it so (the
     /// add-on player only if the device has one). If none can, the server
-    /// converts it for the device's own player.
+    /// converts it for the device's own player: with another sound track,
+    /// if that spares converting the sound (`withASoundTrackToCopy`).
     /// - Parameters:
     ///   - maxBitrate: the quality cap in bits per second (see `StreamingQuality`).
     ///   - players: the players to ask about, in order. A player the
@@ -108,7 +109,7 @@ public struct JellyfinClient: Sendable {
     ) async throws -> PlaybackSource {
         let formats = (stereoSound ? formats.withStereoSound : formats).without(unplayable[.builtIn] ?? [])
         let addOnFormats = addOnFormats?.without(unplayable[.addOn] ?? [])
-        var ownAnswer: (info: PlaybackInfoResponse, source: PlaybackInfoResponse.MediaSource)?
+        var ownAnswer: Answer?
         for player in players {
             switch player {
             case .addOn:
@@ -122,29 +123,54 @@ public struct JellyfinClient: Sendable {
                 ownAnswer = answer
             }
         }
-        let (info, source) = if let ownAnswer { ownAnswer } else {
+        let answer = if let ownAnswer { ownAnswer } else {
             try await playbackInfo(for: itemID, formats: formats, maxBitrate: maxBitrate)
         }
-        if let transcodingURL = source.transcodingUrl, let url = serverRelativeURL(transcodingURL) {
-            return PlaybackSource(url: url, method: .hls, playSessionID: info.playSessionId, source: source.contents)
+        let (stream, soundTrack) = await withASoundTrackToCopy(answer, itemID: itemID, formats: formats, maxBitrate: maxBitrate)
+        if let url = stream.url {
+            return PlaybackSource(url: url, method: .hls, playSessionID: stream.answer.info.playSessionId,
+                                  source: stream.answer.source.contents(soundTrack: soundTrack))
         }
         throw JellyfinError.noPlayableSource(itemID: itemID)
     }
 
+    /// Jellyfin's answer about playing an item: the answer, and the item's own media source in it.
+    private typealias Answer = (info: PlaybackInfoResponse, source: PlaybackInfoResponse.MediaSource)
+
+    /// A conversion Jellyfin offers, and where it is (nil if it offers none).
+    private typealias Conversion = (answer: Answer, url: URL?)
+
+    /// `answer`'s conversion, or, where it converts the sound and another of
+    /// the file's sound tracks would be copied as it is
+    /// (`MediaSource.soundTrackToCopy(into:)`), the conversion with that
+    /// track, and its index. That costs one more request, and the server
+    /// only repackages the file rather than converting its sound. Its answer
+    /// is taken only if it does spare the sound; otherwise, or if asking
+    /// fails, the first one stands.
+    private func withASoundTrackToCopy(_ answer: Answer, itemID: String, formats: PlayableFormats,
+                                       maxBitrate: Int) async -> (Conversion, soundTrack: Int?) {
+        let first = (answer: answer, url: answer.source.transcodingUrl.flatMap(serverRelativeURL))
+        guard let url = first.url, PlaybackSource(url: url, method: .hls, playSessionID: nil).convertsSound,
+              let track = answer.source.soundTrackToCopy(into: formats),
+              let other = try? await playbackInfo(for: itemID, formats: formats, maxBitrate: maxBitrate, soundTrack: track),
+              !other.source.supportsDirectPlay,
+              let otherURL = other.source.transcodingUrl.flatMap(serverRelativeURL),
+              !PlaybackSource(url: otherURL, method: .hls, playSessionID: nil).convertsSound
+        else { return (first, nil) }
+        return ((other, otherURL), track)
+    }
+
     /// The original file of `itemID`, as `answer` has it, on `player`.
-    private func directPlay(_ itemID: String, _ answer: (info: PlaybackInfoResponse, source: PlaybackInfoResponse.MediaSource),
-                            on player: MediaStream.Player) -> PlaybackSource {
+    private func directPlay(_ itemID: String, _ answer: Answer, on player: MediaStream.Player) -> PlaybackSource {
         PlaybackSource(url: directPlayURL(itemID: itemID, source: answer.source, playSessionID: answer.info.playSessionId, isSong: false),
-                       method: .directPlay, player: player, playSessionID: answer.info.playSessionId, source: answer.source.contents)
+                       method: .directPlay, player: player, playSessionID: answer.info.playSessionId, source: answer.source.contents())
     }
 
     /// What Jellyfin says about playing an item on a player that plays
-    /// `formats`: its answer, and the item's own media source in it. Asking
-    /// starts nothing on the server; a transcode starts only when its
-    /// stream is fetched.
-    private func playbackInfo(
-        for itemID: String, formats: PlayableFormats, maxBitrate: Int
-    ) async throws -> (info: PlaybackInfoResponse, source: PlaybackInfoResponse.MediaSource) {
+    /// `formats`, with `soundTrack` if one is named. Asking starts nothing on
+    /// the server; a transcode starts only when its stream is fetched.
+    private func playbackInfo(for itemID: String, formats: PlayableFormats, maxBitrate: Int,
+                              soundTrack: Int? = nil) async throws -> Answer {
         let info: PlaybackInfoResponse = try await api.post(
             "/Items/\(JellyfinAPI.segment(itemID))/PlaybackInfo",
             query: [
@@ -152,9 +178,9 @@ public struct JellyfinClient: Sendable {
                 URLQueryItem(name: "maxStreamingBitrate", value: String(maxBitrate)),
                 URLQueryItem(name: "mediaSourceId", value: itemID),
                 URLQueryItem(name: "subtitleStreamIndex", value: "-1"),
-            ],
+            ] + (soundTrack.map { [URLQueryItem(name: "audioStreamIndex", value: String($0))] } ?? []),
             body: PlaybackInfoRequest(itemID: itemID, userId: credentials.userID, formats: formats, maxBitrate: maxBitrate,
-                                      secure: credentials.serverURL.scheme?.lowercased() == "https"))
+                                      secure: credentials.serverURL.scheme?.lowercased() == "https", soundTrack: soundTrack))
         guard let source = info.mediaSources.first else { throw JellyfinError.noPlayableSource(itemID: itemID) }
         return (info, source)
     }

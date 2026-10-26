@@ -51,13 +51,18 @@ public struct PlaybackSource: Sendable, Equatable {
         return convertsVideo ? .reencoded : convertsSound ? .soundConverted : .repackaged
     }
 
+    /// Reasons that only change the container: the file's own, or a sound
+    /// track other than its first, which a player plays only from a stream
+    /// that carries that track alone (`DeviceProfile.CodecProfile.firstSoundTrackOnly`).
+    private static let repackagingReasons: Set<String> = ["ContainerNotSupported", "SecondaryAudioNotSupported"]
+
     /// The video is re-encoded: a reason that isn't the container's or the sound's.
     private var convertsVideo: Bool {
-        method == .hls && transcodeReasons.contains { $0 != "ContainerNotSupported" && !Self.isSoundReason($0) }
+        method == .hls && transcodeReasons.contains { !Self.repackagingReasons.contains($0) && !Self.isSoundReason($0) }
     }
 
     /// The sound is converted.
-    private var convertsSound: Bool {
+    var convertsSound: Bool {
         method == .hls && transcodeReasons.contains(where: Self.isSoundReason)
     }
 
@@ -123,12 +128,12 @@ struct DeviceProfile: Encodable {
         let breakOnNonKeyFrames = true
     }
 
-    /// `PlayableFormats.CodecLimit`: what one video codec must be, beyond
-    /// its name, to play as it is (or be copied into a stream).
+    /// What a file must be, beyond its codecs' names, to play as it is (or
+    /// be copied into a stream).
     struct CodecProfile: Encodable {
         struct Condition: Encodable {
-            let condition = "EqualsAny"
-            /// "VideoProfile" or "VideoCodecTag".
+            var condition = "EqualsAny"
+            /// Such as "VideoProfile" or "VideoCodecTag".
             let property: String
             /// The values allowed, separated by "|".
             let value: String
@@ -136,16 +141,32 @@ struct DeviceProfile: Encodable {
             let isRequired = false
         }
 
-        let type = "Video"
-        let codec: String
+        /// "Video", or "VideoAudio" for a video file's sound.
+        var type = "Video"
+        /// Nil for every codec.
+        var codec: String?
         let conditions: [Condition]
 
+        /// `PlayableFormats.CodecLimit`: one video codec's profiles and tags.
         init(_ limit: PlayableFormats.CodecLimit) {
             codec = limit.codec
             conditions = [limit.profiles.map { Condition(property: "VideoProfile", value: $0.joined(separator: "|")) },
                           limit.tags.map { Condition(property: "VideoCodecTag", value: $0.joined(separator: "|")) }]
                 .compactMap { $0 }
         }
+
+        private init(type: String, conditions: [Condition]) {
+            self.type = type
+            self.conditions = conditions
+        }
+
+        /// A file plays as it is only with its first sound track: a player
+        /// plays the file's own choice of track, so a stream asked for with
+        /// another (`PlaybackInfoRequest.audioStreamIndex`) comes repackaged,
+        /// carrying that track alone. Jellyfin's web app says the same for
+        /// browsers that can't switch tracks.
+        static let firstSoundTrackOnly = CodecProfile(
+            type: "VideoAudio", conditions: [Condition(condition: "Equals", property: "IsSecondaryAudio", value: "false")])
     }
 
     struct SubtitleProfile: Encodable {
@@ -173,8 +194,11 @@ struct DeviceProfile: Encodable {
 
     /// `maxBitrate` is the quality cap. A file over it can't be played
     /// directly, and transcodes are limited to it.
-    /// - Parameter secure: the server is on https.
-    init(formats: PlayableFormats, maxBitrate: Int, secure: Bool) {
+    /// - Parameters:
+    ///   - secure: the server is on https.
+    ///   - choosingSoundTrack: the request names a sound track
+    ///     (`CodecProfile.firstSoundTrackOnly`).
+    init(formats: PlayableFormats, maxBitrate: Int, secure: Bool, choosingSoundTrack: Bool = false) {
         name = "\(ClientIdentity.clientName) (\(formats.name))"
         maxStreamingBitrate = maxBitrate
         maxStaticBitrate = maxBitrate
@@ -188,7 +212,7 @@ struct DeviceProfile: Encodable {
         transcodingProfiles = [TranscodingProfile(videoCodec: formats.convertedVideoCodecs.joined(separator: ","),
                                                   audioCodec: formats.convertedAudioCodecs.joined(separator: ","),
                                                   maxAudioChannels: String(formats.mostAudioChannels))]
-        codecProfiles = formats.codecLimits.map(CodecProfile.init)
+        codecProfiles = formats.codecLimits.map(CodecProfile.init) + (choosingSoundTrack ? [.firstSoundTrackOnly] : [])
     }
 }
 
@@ -212,12 +236,16 @@ struct PlaybackInfoRequest: Encodable {
     /// the video. That forces a full video transcode, which low-power servers
     /// such as a Raspberry Pi can't sustain.
     let subtitleStreamIndex = -1
+    /// The sound track to play, by its index in the file; nil for Jellyfin's
+    /// own choice (`MediaSource.defaultAudioStreamIndex`).
+    let audioStreamIndex: Int?
 
-    init(itemID: String, userId: String, formats: PlayableFormats, maxBitrate: Int, secure: Bool) {
+    init(itemID: String, userId: String, formats: PlayableFormats, maxBitrate: Int, secure: Bool, soundTrack: Int? = nil) {
         mediaSourceId = itemID
         self.userId = userId
-        deviceProfile = DeviceProfile(formats: formats, maxBitrate: maxBitrate, secure: secure)
+        deviceProfile = DeviceProfile(formats: formats, maxBitrate: maxBitrate, secure: secure, choosingSoundTrack: soundTrack != nil)
         maxStreamingBitrate = maxBitrate
+        audioStreamIndex = soundTrack
     }
 }
 
@@ -228,23 +256,69 @@ struct PlaybackInfoResponse: Decodable {
         let supportsDirectPlay: Bool
         let transcodingUrl: String?
         let mediaStreams: [Stream]?
+        /// The sound track Jellyfin plays when none is named: the file's
+        /// default, or the one in the language the user prefers.
+        let defaultAudioStreamIndex: Int?
 
-        /// One of the file's tracks: only what says whether a player can decode it.
+        /// One of the file's tracks: what says whether a player can decode
+        /// it, and for a sound track, what it's in (its language, and its
+        /// name, which says if it's a commentary), to choose one like Jellyfin's own.
         struct Stream: Decodable {
             let type: String?
+            let index: Int?
             let codec: String?
             let profile: String?
             let isDefault: Bool?
+            let channels: Int?
+            let language: String?
+            let title: String?
+
+            /// Its language, with "und" (undetermined) as none.
+            var languageCode: String {
+                let code = language?.lowercased() ?? ""
+                return code == "und" ? "" : code
+            }
+
+            /// A commentary or a description for the blind, by its name:
+            /// never a substitute for the programme's own sound.
+            var isAside: Bool {
+                let name = title?.lowercased() ?? ""
+                return name.contains("commentary") || name.contains("descri")
+            }
         }
 
-        /// The file's video, and the sound track that plays (its default, or else its first).
-        var contents: StreamContents {
-            let streams = mediaStreams ?? []
-            let video = streams.first { $0.type == "Video" }
-            let sounds = streams.filter { $0.type == "Audio" }
-            let sound = sounds.first { $0.isDefault == true } ?? sounds.first
+        private var soundTracks: [Stream] { (mediaStreams ?? []).filter { $0.type == "Audio" } }
+
+        /// The sound track Jellyfin plays when none is named: by its index,
+        /// else the file's default, else its first.
+        var defaultSoundTrack: Stream? {
+            soundTracks.first { $0.index != nil && $0.index == defaultAudioStreamIndex }
+                ?? soundTracks.first { $0.isDefault == true } ?? soundTracks.first
+        }
+
+        /// The file's video, and the sound track that plays: `soundTrack`
+        /// (by index), or else Jellyfin's own choice.
+        func contents(soundTrack: Int? = nil) -> StreamContents {
+            let video = mediaStreams?.first { $0.type == "Video" }
+            let sound = soundTracks.first { soundTrack != nil && $0.index == soundTrack } ?? defaultSoundTrack
             return StreamContents(video: video?.codec.map { MediaFormat(.video, $0, profile: video?.profile) },
                                   sound: sound?.codec.map { MediaFormat(.sound, $0) })
+        }
+
+        /// Another sound track a conversion for `formats` copies as it is,
+        /// where Jellyfin's own choice it would convert: in the same
+        /// language, not an aside, with no more channels than a conversion
+        /// keeps; the one with the most channels, then the first. Nil if there's none.
+        func soundTrackToCopy(into formats: PlayableFormats) -> Int? {
+            guard let chosen = defaultSoundTrack else { return nil }
+            let copies = { (track: Stream) in
+                track.codec.map { formats.convertedAudioCodecs.contains($0.lowercased()) } == true
+                    && (track.channels ?? .max) <= formats.mostAudioChannels
+            }
+            guard !copies(chosen) else { return nil }
+            return soundTracks
+                .filter { $0.index != nil && $0.index != chosen.index && $0.languageCode == chosen.languageCode && !$0.isAside && copies($0) }
+                .max { ($0.channels ?? 0, -$0.index!) < ($1.channels ?? 0, -$1.index!) }?.index
         }
     }
 

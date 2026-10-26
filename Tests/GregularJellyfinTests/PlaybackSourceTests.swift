@@ -15,6 +15,7 @@ struct PlaybackSourceTests {
             (.directPlay, "", .original),
             (.hls, "", .repackaged),
             (.hls, "TranscodeReasons=ContainerNotSupported", .repackaged),
+            (.hls, "TranscodeReasons=ContainerNotSupported,SecondaryAudioNotSupported", .repackaged),
             (.hls, "TranscodeReasons=ContainerNotSupported,AudioCodecNotSupported", .soundConverted),
             (.hls, "TranscodeReasons=AudioChannelsNotSupported", .soundConverted),
             (.hls, "TranscodeReasons=UnknownAudioStreamInfo", .soundConverted),

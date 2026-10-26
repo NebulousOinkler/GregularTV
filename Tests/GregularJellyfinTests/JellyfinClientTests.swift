@@ -368,6 +368,85 @@ struct JellyfinPlaybackTests {
         #expect(client.safestFormats == [MediaFormat(.video, "h264"), MediaFormat(.sound, "aac")])
     }
 
+    /// A file whose own sound track would be converted (DTS, for Apple TV),
+    /// with another in the same language a conversion copies as it is.
+    private static let tracks = #"""
+        "DefaultAudioStreamIndex": 1,
+        "MediaStreams": [{ "Type": "Video", "Index": 0, "Codec": "h264", "Profile": "High" },
+                         { "Type": "Audio", "Index": 1, "Codec": "dts", "Channels": 6, "Language": "eng", "IsDefault": true },
+                         { "Type": "Audio", "Index": 2, "Codec": "aac", "Channels": 2, "Language": "eng", "Title": "Director's Commentary" },
+                         { "Type": "Audio", "Index": 3, "Codec": "ac3", "Channels": 2, "Language": "fre" },
+                         { "Type": "Audio", "Index": 4, "Codec": "aac", "Channels": 2, "Language": "eng" },
+                         { "Type": "Audio", "Index": 5, "Codec": "ac3", "Channels": 6, "Language": "eng" }]
+        """#
+
+    private static func conversion(_ reasons: String) -> String {
+        #"{ "MediaSources": [{ "Id": "abc", "SupportsDirectPlay": false, "TranscodingUrl": "/videos/abc/master.m3u8?VideoCodec=h264&AudioCodec=aac,ac3&TranscodeReasons=\#(reasons)", \#(tracks) }], "PlaySessionId": "p" }"#
+    }
+
+    /// Where its own track would be converted, the conversion is asked for
+    /// again with the track it copies: the same language, not the
+    /// commentary, the most channels. Only the container changes then.
+    @Test func aSoundTrackItCopiesSparesConvertingTheSound() async throws {
+        mock.on("POST", "/Items/abc/PlaybackInfo") { request in
+            let profile = request.jsonBody["DeviceProfile"] as? [String: Any]
+            let sound = (profile?["CodecProfiles"] as? [[String: Any]] ?? []).first { $0["Type"] as? String == "VideoAudio" }
+            let condition = (sound?["Conditions"] as? [[String: Any]])?.first
+            guard let track = request.queryValue("audioStreamIndex") else {
+                #expect(sound == nil && request.jsonBody["AudioStreamIndex"] == nil, "Jellyfin's own choice first")
+                return (200, Self.conversion("ContainerNotSupported,AudioCodecNotSupported"))
+            }
+            #expect(track == "5" && request.jsonBody["AudioStreamIndex"] as? Int == 5)
+            #expect(condition?["Property"] as? String == "IsSecondaryAudio" && condition?["Value"] as? String == "false")
+            return (200, Self.conversion("ContainerNotSupported,SecondaryAudioNotSupported"))
+        }
+        let stream = try await JellyfinFixtures.client(mock).playbackSource(for: "abc", players: [.builtIn]).mediaStream
+        #expect(mock.requests.count == 2)
+        #expect(stream.delivery == .repackaged && stream.sessionID == "p")
+        #expect(stream.contents == StreamContents(video: MediaFormat(.video, "h264", profile: "high"), sound: MediaFormat(.sound, "ac3")))
+    }
+
+    /// With stereo sound, only a two-channel track copies as it is.
+    @Test func withStereoSoundATwoChannelTrackIsCopied() async throws {
+        mock.on("POST", "/Items/abc/PlaybackInfo") { request in
+            if let track = request.queryValue("audioStreamIndex") { #expect(track == "4") }
+            return (200, Self.conversion(request.queryValue("audioStreamIndex") == nil ? "AudioCodecNotSupported" : "SecondaryAudioNotSupported"))
+        }
+        _ = try await JellyfinFixtures.client(mock).playbackSource(for: "abc", players: [.builtIn], stereoSound: true)
+        #expect(mock.requests.count == 2)
+    }
+
+    /// An answer that still converts the sound, or plays the file as it is
+    /// (whose player would play its own track), isn't taken: the first stands.
+    @Test func aSecondAnswerThatDoesntSpareTheSoundIsntTaken() async throws {
+        for second in [Self.conversion("SecondaryAudioNotSupported,AudioChannelsNotSupported"),
+                       #"{ "MediaSources": [{ "Id": "abc", "Container": "mp4", "SupportsDirectPlay": true, \#(Self.tracks) }] }"#] {
+            let mock = MockJellyfin()
+            mock.on("POST", "/Items/abc/PlaybackInfo") { request in
+                (200, request.queryValue("audioStreamIndex") == nil ? Self.conversion("AudioCodecNotSupported") : second)
+            }
+            let stream = try await JellyfinFixtures.client(mock).playbackSource(for: "abc", players: [.builtIn]).mediaStream
+            #expect(mock.requests.count == 2)
+            #expect(stream.delivery == .soundConverted && stream.contents.sound == MediaFormat(.sound, "aac"))
+        }
+    }
+
+    /// No second request where the sound isn't converted, or where no track
+    /// in the same language copies (only the French one, or the commentary).
+    @Test func noSecondRequestWithoutATrackToCopy() async throws {
+        let noOther = #"""
+            "MediaStreams": [{ "Type": "Audio", "Index": 1, "Codec": "dts", "Channels": 6, "Language": "eng", "IsDefault": true },
+                             { "Type": "Audio", "Index": 2, "Codec": "aac", "Channels": 2, "Language": "eng", "Title": "Commentary" },
+                             { "Type": "Audio", "Index": 3, "Codec": "ac3", "Channels": 6, "Language": "fre" }]
+            """#
+        mock.on("POST", "/Items/video/PlaybackInfo", json: Self.conversion("VideoCodecNotSupported"))
+        mock.on("POST", "/Items/other/PlaybackInfo", json: #"{ "MediaSources": [{ "Id": "other", "SupportsDirectPlay": false, "TranscodingUrl": "/videos/other/master.m3u8?TranscodeReasons=AudioCodecNotSupported", \#(noOther) }] }"#)
+        let client = JellyfinFixtures.client(mock)
+        #expect(try await client.playbackSource(for: "video", players: [.builtIn]).mediaStream.delivery == .reencoded)
+        #expect(try await client.playbackSource(for: "other", players: [.builtIn]).mediaStream.delivery == .soundConverted)
+        #expect(mock.requests.count == 2)
+    }
+
     /// What a player turned out not to decode is left out of what Jellyfin hears it plays.
     @Test func whatsRuledOutIsLeftOutOfTheProfile() async throws {
         mock.on("POST", "/Items/abc/PlaybackInfo") { request in
