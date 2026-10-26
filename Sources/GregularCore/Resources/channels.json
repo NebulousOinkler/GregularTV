@@ -6,65 +6,110 @@
       "source": { "type": "all" },
       "strategy": "shuffled-mix", "films": 0.35, "filler": "shuffle", "seed": 1, "padTo": 30 },
 
-    { "number": 2, "name": "Comedy",
-      "source": { "type": "genre", "anyOf": ["Comedy", "Sitcom", "Stand-Up", "Stand-up Comedy"] },
-      "strategy": "shuffled-mix", "films": 0.35, "needsVariety": true, "filler": "shuffle", "seed": 2, "padTo": 30 },
+    { "number": 2, "name": "Rabbit Ears",
+      "source": { "type": "all-of", "sources": [
+                  { "type": "years", "from": 1950, "to": 1979 },
+                  { "type": "not", "source": { "type": "genre", "anyOf": ["Horror"] } } ] },
+      "strategy": "shuffled-mix", "films": 0.1, "needsVariety": true, "filler": "shuffle", "seed": 2, "padTo": 30 },
 
-    { "number": 3, "name": "Drama",
-      "source": { "type": "genre", "anyOf": ["Drama", "Romance", "Soap"] },
-      "strategy": "shuffled-mix", "films": 0.4, "needsVariety": true, "filler": "shuffle", "seed": 3, "padTo": 30 },
+    { "number": 3, "name": "Primetime Gold",
+      "source": { "type": "all-of", "sources": [
+                  { "type": "years", "from": 1978, "to": 1996 },
+                  { "type": "not", "source": { "type": "genre", "anyOf": ["Kids", "Children", "Documentary", "Horror"] } } ] },
+      "strategy": "shuffled-mix", "films": 0.15, "needsVariety": true, "filler": "shuffle", "seed": 3, "padTo": 30 },
 
-    { "number": 4, "name": "Animation",
-      "source": { "type": "genre", "anyOf": ["Animation", "Anime"] },
-      "strategy": "shuffled-mix", "films": 0.3, "needsVariety": true, "filler": "shuffle", "seed": 4, "padTo": 30 },
+    { "number": 4, "name": "Sweeps Week",
+      "source": { "type": "all-of", "sources": [
+                  { "type": "years", "from": 1994, "to": 2010 },
+                  { "type": "not", "source": { "type": "genre", "anyOf": ["Kids", "Children", "Documentary", "Horror"] } } ] },
+      "strategy": "shuffled-mix", "films": 0.15, "needsVariety": true, "filler": "shuffle", "seed": 4, "padTo": 30 },
 
-    { "number": 5, "name": "Sci-Fi & Fantasy",
-      "source": { "type": "genre", "anyOf": ["Science Fiction", "Sci-Fi", "Sci-Fi & Fantasy", "Fantasy"] },
-      "strategy": "shuffled-mix", "films": 0.4, "needsVariety": true, "filler": "shuffle", "seed": 5, "padTo": 30 },
+    { "number": 5, "name": "Next Episode",
+      "source": { "type": "all-of", "sources": [
+                  { "type": "years", "from": 2008 },
+                  { "type": "not", "source": { "type": "genre", "anyOf": ["Kids", "Children", "Documentary", "Horror"] } } ] },
+      "strategy": "shuffled-mix", "films": 0.15, "needsVariety": true, "filler": "shuffle", "seed": 5, "padTo": 30 },
 
-    { "number": 6, "name": "Kids & Family",
-      "source": { "type": "genre", "anyOf": ["Family", "Kids", "Children"] },
-      "strategy": "shuffled-mix", "films": 0.35, "needsVariety": true, "filler": "shuffle", "seed": 6, "padTo": 30 },
+    { "number": 6, "name": "Saturday Morning",
+      "source": { "type": "all-of", "sources": [
+                  { "type": "genre", "anyOf": ["Animation", "Anime"] },
+                  { "type": "genre", "anyOf": ["Family", "Kids", "Children"] },
+                  { "type": "years", "from": 1960, "to": 1993 },
+                  { "type": "not", "source": { "type": "genre", "anyOf": ["Horror"] } } ] },
+      "strategy": "shuffled-mix", "films": 0.2, "needsVariety": true, "filler": "shuffle", "seed": 6, "padTo": 30 },
 
-    { "number": 7, "name": "Real Life",
-      "source": { "type": "genre", "anyOf": ["Documentary", "Reality", "Reality-TV", "Food", "Travel", "Home and Garden",
-                                             "Game Show", "Talk", "Talk Show", "History", "Nature", "Sport", "Music"] },
-      "strategy": "shuffled-mix", "films": 0.25, "needsVariety": true, "filler": "shuffle", "seed": 7, "padTo": 30 },
+    { "number": 7, "name": "After School",
+      "source": { "type": "all-of", "sources": [
+                  { "type": "genre", "anyOf": ["Family", "Kids", "Children"] },
+                  { "type": "years", "from": 1986, "to": 2006 },
+                  { "type": "not", "source": { "type": "genre", "anyOf": ["Horror"] } } ] },
+      "strategy": "shuffled-mix", "films": 0.3, "needsVariety": true, "filler": "shuffle", "seed": 7, "padTo": 30 },
 
-    { "number": 8, "name": "Crime & Mystery",
-      "source": { "type": "genre", "anyOf": ["Crime", "Mystery", "Thriller", "Suspense"] },
-      "strategy": "shuffled-mix", "films": 0.4, "needsVariety": true, "filler": "shuffle", "seed": 8, "padTo": 30 },
+    { "number": 8, "name": "Family Room",
+      "source": { "type": "all-of", "sources": [
+                  { "type": "genre", "anyOf": ["Family", "Kids", "Children"] },
+                  { "type": "years", "from": 2005 },
+                  { "type": "not", "source": { "type": "genre", "anyOf": ["Horror"] } } ] },
+      "strategy": "shuffled-mix", "films": 0.35, "needsVariety": true, "filler": "shuffle", "seed": 8, "padTo": 30 },
 
-    { "number": 9, "name": "Action & Adventure",
-      "source": { "type": "genre", "anyOf": ["Action", "Adventure", "Action & Adventure", "War", "War & Politics", "Western"] },
-      "strategy": "shuffled-mix", "films": 0.45, "needsVariety": true, "filler": "shuffle", "seed": 9, "padTo": 30 },
+    { "number": 9, "name": "Late Show",
+      "source": { "type": "all-of", "sources": [
+                  { "type": "years", "from": 1968, "to": 1990 },
+                  { "type": "not", "source": { "type": "genre", "anyOf": ["Kids", "Children", "Documentary", "Nature", "History"] } } ] },
+      "strategy": "shuffled-mix", "films": 0.5, "needsVariety": true, "filler": "shuffle", "seed": 9, "padTo": 30 },
 
     { "number": 10, "name": "Movies", "itemTypes": ["Movie"],
       "source": { "type": "all" },
       "strategy": "shuffled-shows", "filler": "shuffle", "seed": 10, "padTo": 30 },
 
-    { "number": 11, "name": "Action Movies", "itemTypes": ["Movie"],
-      "source": { "type": "genre", "anyOf": ["Action", "Adventure", "War", "Western"] },
-      "strategy": "shuffled-shows", "needsVariety": true, "filler": "shuffle", "seed": 11, "padTo": 30 },
+    { "number": 11, "name": "Laugh Track",
+      "source": { "type": "all-of", "sources": [
+                  { "type": "genre", "anyOf": ["Comedy", "Sitcom", "Stand-Up", "Stand-up Comedy"] },
+                  { "type": "years", "from": 1978, "to": 1999 },
+                  { "type": "not", "source": { "type": "genre", "anyOf": ["Kids", "Children", "Horror"] } } ] },
+      "strategy": "shuffled-mix", "films": 0.35, "needsVariety": true, "filler": "shuffle", "seed": 11, "padTo": 30 },
 
-    { "number": 12, "name": "Comedy Movies", "itemTypes": ["Movie"],
-      "source": { "type": "genre", "anyOf": ["Comedy"] },
-      "strategy": "shuffled-shows", "needsVariety": true, "filler": "shuffle", "seed": 12, "padTo": 30 },
+    { "number": 12, "name": "Punchline",
+      "source": { "type": "all-of", "sources": [
+                  { "type": "genre", "anyOf": ["Comedy", "Sitcom", "Stand-Up", "Stand-up Comedy"] },
+                  { "type": "years", "from": 1998 },
+                  { "type": "not", "source": { "type": "genre", "anyOf": ["Kids", "Children", "Horror"] } } ] },
+      "strategy": "shuffled-mix", "films": 0.35, "needsVariety": true, "filler": "shuffle", "seed": 12, "padTo": 30 },
 
-    { "number": 13, "name": "Horror & Thriller", "itemTypes": ["Movie"],
-      "source": { "type": "genre", "anyOf": ["Horror", "Thriller"] },
-      "strategy": "shuffled-shows", "needsVariety": true, "filler": "shuffle", "seed": 13, "padTo": 30 },
+    { "number": 13, "name": "Sci-Fi Syndicate",
+      "source": { "type": "all-of", "sources": [
+                  { "type": "genre", "anyOf": ["Science Fiction", "Sci-Fi", "Sci-Fi & Fantasy", "Fantasy"] },
+                  { "type": "years", "from": 1966, "to": 1999 } ] },
+      "strategy": "shuffled-mix", "films": 0.4, "needsVariety": true, "filler": "shuffle", "seed": 13, "padTo": 30 },
 
-    { "number": 14, "name": "Classics", "itemTypes": ["Movie"],
-      "source": { "type": "years", "to": 1979 },
-      "strategy": "shuffled-shows", "needsVariety": true, "filler": "shuffle", "seed": 14, "padTo": 30 },
+    { "number": 14, "name": "Other Worlds",
+      "source": { "type": "all-of", "sources": [
+                  { "type": "genre", "anyOf": ["Science Fiction", "Sci-Fi", "Sci-Fi & Fantasy", "Fantasy"] },
+                  { "type": "years", "from": 1997 } ] },
+      "strategy": "shuffled-mix", "films": 0.4, "needsVariety": true, "filler": "shuffle", "seed": 14, "padTo": 30 },
 
-    { "number": 15, "name": "Sci-Fi & Fantasy Movies", "itemTypes": ["Movie"],
-      "source": { "type": "genre", "anyOf": ["Science Fiction", "Fantasy"] },
-      "strategy": "shuffled-shows", "needsVariety": true, "filler": "shuffle", "seed": 15, "padTo": 30 },
+    { "number": 15, "name": "Field Trip",
+      "source": { "type": "all-of", "sources": [
+                  { "type": "genre", "anyOf": ["Documentary", "Nature", "History", "Travel", "Sport", "Music"] },
+                  { "type": "years", "from": 1990 } ] },
+      "strategy": "shuffled-mix", "films": 0.25, "needsVariety": true, "filler": "shuffle", "seed": 15, "padTo": 30 },
 
-    { "number": 16, "name": "Drama & Romance Movies", "itemTypes": ["Movie"],
-      "source": { "type": "genre", "anyOf": ["Drama", "Romance"] },
-      "strategy": "shuffled-shows", "needsVariety": true, "filler": "shuffle", "seed": 16, "padTo": 30 }
+    { "number": 16, "name": "Daytime",
+      "source": { "type": "all-of", "sources": [
+                  { "type": "genre", "anyOf": ["Game Show", "Talk", "Talk Show", "Soap", "Food", "Home and Garden", "Reality", "Reality-TV"] },
+                  { "type": "years", "from": 1990 } ] },
+      "strategy": "shuffled-mix", "films": 0.1, "needsVariety": true, "filler": "shuffle", "seed": 16, "padTo": 30 },
+
+    { "number": 17, "name": "Silver Screen", "itemTypes": ["Movie"],
+      "source": { "type": "years", "from": 1930, "to": 1966 },
+      "strategy": "shuffled-shows", "needsVariety": true, "filler": "shuffle", "seed": 17 },
+
+    { "number": 18, "name": "Video Store", "itemTypes": ["Movie"],
+      "source": { "type": "years", "from": 1980, "to": 1999 },
+      "strategy": "shuffled-shows", "needsVariety": true, "filler": "shuffle", "seed": 18, "padTo": 30 },
+
+    { "number": 19, "name": "Premiere", "itemTypes": ["Movie"],
+      "source": { "type": "years", "from": 1998 },
+      "strategy": "shuffled-shows", "needsVariety": true, "filler": "shuffle", "seed": 19 }
   ]
 }

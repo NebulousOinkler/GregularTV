@@ -15,7 +15,7 @@ struct CommercialsTests {
     @Test func bundledLineupNamesTheCommercialsLibraryAndUsesItEverywhere() throws {
         let lineup = try ChannelLineup.bundled()
         #expect(lineup.commercialsLibrary == "Commercials")
-        #expect(lineup.channels.allSatisfy { $0.fillerID == "shuffle" })
+        #expect(lineup.channels.allSatisfy { $0.fillerID == ShuffledCommercials.id })
     }
 
     @Test func turningCommercialsOffLeavesProgrammeTimesExactlyTheSame() throws {

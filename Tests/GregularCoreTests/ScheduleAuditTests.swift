@@ -159,7 +159,7 @@ struct ScheduleAudit {
     // MARK: 3. A realistic library, a month on every bundled channel
 
     /// A made-up library: `seriesCount` series and `filmCount` films, with
-    /// typical lengths and TMDB's genre names.
+    /// typical lengths, TMDB's genre names, and years.
     static func realisticLibrary(seriesCount: Int = 90, filmCount: Int = 450) -> (programmes: [MediaItem], commercials: [MediaItem]) {
         var rng = SeededRandom(seed: 2026)
         let tvGenres = ["Comedy", "Drama", "Animation", "Sci-Fi & Fantasy", "Family", "Kids", "Documentary", "Reality",
@@ -172,11 +172,13 @@ struct ScheduleAudit {
             let minutes = showMinutes[rng.int(below: showMinutes.count)]
             let episodes = [6, 10, 13, 22, 40, 66, 100, 180, 250][rng.int(below: 9)]
             let genres = (0..<(1 + rng.int(below: 2))).map { _ in tvGenres[rng.int(below: tvGenres.count)] }
+            // A season a year, from a first year that leans recent, as libraries do.
+            let firstYear = 2025 - Int(Double(rng.int(below: 1000)) / 1000 * Double(rng.int(below: 1000)) / 1000 * 55)
             items += (1...episodes).map { e in
                 MediaItem(id: "show\(s)-\(e)", kind: .episode, name: "Show \(s) \(e)",
                           duration: minutes * 60 + Double(rng.int(below: 90)) - 45,
                           seriesID: "show\(s)", seriesName: "Show \(s)", seasonNumber: 1 + e / 20, episodeNumber: e % 20,
-                          genres: genres)
+                          productionYear: min(2026, firstYear + e / 20), genres: genres)
             }
         }
         for m in 0..<filmCount {
@@ -240,7 +242,7 @@ extension ScheduleAudit {
         let start = Date(timeIntervalSince1970: 1_790_000_000)
         let f = DateFormatter(); f.dateFormat = "EEE HH:mm"; f.timeZone = DayBoundary.standard.timeZone
         for schedule in lineup.schedules(for: library, fillerPool: clips, code: code)
-        where [1, 10, 14].contains(schedule.channel.number) {
+        where [1, 10, 17, 19].contains(schedule.channel.number) {
             let programmes = schedule.programmes(from: start, to: start.addingTimeInterval(4 * 86_400)).filter { $0.start >= start }
             Self.line("— ch\(schedule.channel.number) run \(schedule.run(containing: start).duration / 3600) h")
             var seen: [String: Date] = [:]

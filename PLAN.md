@@ -221,6 +221,8 @@ The registry is one list (`StrategyRegistry.all`).
 ### Future hook: time-of-day programming
 A second, optional protocol, `DaypartStrategy`, can wrap strategies ("cartoons 7–10am, movies after 8pm"). It isn't in v1, but `ChannelSchedule` asks for "the airing at time T" instead of assuming one flat list, so adding dayparts later doesn't need a rewrite.
 
+**A possible later step (decided 2026-10-26: not now).** TV before streaming was organised by audience and time of day: a network's day ran morning news, daytime soaps and game shows, after-school kids' shows, early-evening reruns, prime-time first runs and movie nights, then late-night talk and a late movie; an independent station ran cartoons, reruns and movies; a kids' channel became a classic-sitcom channel at night. The era line-up (§9) gets as close as one all-day shuffle per channel can. The next step would make each default channel a network whose day is time blocks, each with its own source, and could add a "TV year" setting that sets every channel's eras around one year. Both need this hook built.
+
 ## 6. Schedule engine math
 
 - **Runs:**
@@ -316,36 +318,43 @@ v1: a bundled `Resources/channels.json` that users edit by hand and then rebuild
 
 **Rules that apply to every channel:**
 - If a channel's rule matches no items in your library, the channel is **hidden automatically** and doesn't show as a dead channel. So the defaults can include many genres, and you only see the ones your library supports.
-- **Variety decides the rest, from the library connected (`ChannelVariety`).** A channel marked `needsVariety` (every default channel but the two catch-alls, 1 and 10) is also hidden when its programmes can't fill a day without repeating too soon: a series at most about once a day, a film at most about once every three days (one pass of the shuffle each way). So a small library shows fewer, broader channels, and a large one shows them all.
+- **Variety decides the rest, from the library connected (`ChannelVariety`).** A channel marked `needsVariety` (every default channel but the two catch-alls, 1 and 10) is also hidden when its programmes can't fill a day without repeating too soon: a series at most about once a day, a film at most about once every three days (one pass of the shuffle each way). A mixed channel is hidden, too, when its series can't carry at least half the TV airtime it asks for (`ChannelVariety.leastTVCarried`), so a classic-TV channel in a library with no classic TV doesn't become a film channel. So a small library shows fewer, broader channels, and a large one shows them all.
 - A genre rule can list alternatives, such as `["Science Fiction", "Sci-Fi", "Sci-Fi & Fantasy"]`, because metadata providers name genres differently.
 - Channel numbers are fixed by config, so hidden channels leave gaps, like real TV. The surfer skips the gaps.
 
-**Default line-up (2026-10-01):**
+**Default line-up (2026-10-26): eras, laid out like a cable line-up before streaming.**
 
-Every default channel uses the `shuffle` commercials and 30-minute slots (`padTo`), each with its own seed. Channels 1–9 mix TV and films with the `shuffled-mix` strategy; channels 10–16 are films only, with `shuffled-shows`. Themes kept their old numbers where they still exist (Documentary and Reality became Real Life, on 7), so set times saved on a channel stay with its theme; Movies, Comedy Movies, Horror & Thriller and Classics (10, 12–14) are unchanged, programme for programme, while they have the variety to stay on. Genre lists include TMDB's and TheTVDB's names for the same theme, since TV and films are tagged differently (`Sci-Fi & Fantasy` for a series, `Science Fiction` for a film).
+Mixing programmes from decades apart on one channel felt like a jolt, so every themed channel keeps to an era. The line-up follows how US TV was organised from the mid 1980s to the early 2000s, when a home had about 20 to 60 channels and watched about 14: channels were brands for an audience, not genre filters. Broadcast networks aired broad prime time (sitcom blocks, dramas, a couple of movie nights a week); independent stations filled their days with reruns and movies; kids' channels and Saturday mornings had cartoons; cable channels had comedy, sci-fi, factual and lifestyle programming; classic-TV channels (Nick at Nite, TV Land) kept old shows in their own home; movie channels split into classics (AMC, TCM) and premium (HBO). Reruns lagged first runs by years, not decades, so each era starts a few years early. Names say what a channel plays, the way cable brands did, without using any real brand.
 
-| # | Name | Source rule | Films (share of airtime asked) |
-|---|---|---|---|
-| 1 | Gregular | everything | 35% |
-| 2 | Comedy | Comedy/Sitcom/Stand-Up | 35% |
-| 3 | Drama | Drama/Romance/Soap | 40% |
-| 4 | Animation | Animation/Anime | 30% |
-| 5 | Sci-Fi & Fantasy | Science Fiction/Sci-Fi/Sci-Fi & Fantasy/Fantasy | 40% |
-| 6 | Kids & Family | Family/Kids/Children | 35% |
-| 7 | Real Life | Documentary/Reality/Food/Travel/Home and Garden/Game Show/Talk/History/Nature/Sport/Music | 25% |
-| 8 | Crime & Mystery | Crime/Mystery/Thriller/Suspense | 40% |
-| 9 | Action & Adventure | Action/Adventure/Action & Adventure/War/War & Politics/Western | 45% |
-| 10 | Movies | every film | films only |
-| 11 | Action Movies | Action/Adventure/War/Western | films only |
-| 12 | Comedy Movies | Comedy | films only |
-| 13 | Horror & Thriller | Horror/Thriller | films only |
-| 14 | Classics | made before 1980 | films only |
-| 15 | Sci-Fi & Fantasy Movies | Science Fiction/Fantasy | films only |
-| 16 | Drama & Romance Movies | Drama/Romance | films only |
+Built only from the existing tools: each channel is an `all-of` its era's `years`, its genres, and `not` the genres that don't belong (kids' channels need Kids, Family or Children; the network, comedy, family and classic-TV channels leave out Kids, Children and Horror; the networks also leave out Documentary), with the film share from the kind of channel it's modelled on. Every channel has the same shuffled commercials; Silver Screen and Premiere leave out `padTo`, as a custom channel with half-hour slots off does, so their films follow each other with no breaks but the day boundary's. Numbers kept no themes from the 2026-10-01 line-up except Gregular (1) and Movies (10), so set times saved on 2–9 or 11–19 stay on the number, under a new theme. An episode counts by its own year (its series' year if it has none), so a long-running show's eras air on different channels.
+
+| # | Name | Modelled on | Source rule | Years | Films |
+|---|---|---|---|---|---|
+| 1 | Gregular | the house channel | everything | any | 35% |
+| 2 | Rabbit Ears | Nick at Nite, TV Land | everything but Horror | 1950–1979 | 10% |
+| 3 | Primetime Gold | the Big Three networks | everything but Kids/Children/Documentary/Horror | 1978–1996 | 15% |
+| 4 | Sweeps Week | networks, mid 90s to 2000s | the same | 1994–2010 | 15% |
+| 5 | Next Episode | networks today | the same | 2008– | 15% |
+| 6 | Saturday Morning | Saturday-morning cartoons | Animation/Anime, and Family/Kids/Children, but not Horror | 1960–1993 | 20% |
+| 7 | After School | 90s kids' cable | Family/Kids/Children, not Horror | 1986–2006 | 30% |
+| 8 | Family Room | family TV today | the same | 2005– | 35% |
+| 9 | Late Show | independent stations, superstations | everything but Kids/Children/Documentary/Nature/History | 1968–1990 | 50% |
+| 10 | Movies | | every film | any | films only |
+| 11 | Laugh Track | comedy cable | Comedy/Sitcom/Stand-Up, not Kids/Children/Horror | 1978–1999 | 35% |
+| 12 | Punchline | comedy today | the same | 1998– | 35% |
+| 13 | Sci-Fi Syndicate | the Sci-Fi Channel, syndicated sci-fi | Science Fiction/Sci-Fi/Sci-Fi & Fantasy/Fantasy | 1966–1999 | 40% |
+| 14 | Other Worlds | sci-fi today | the same | 1997– | 40% |
+| 15 | Field Trip | Discovery, History, PBS | Documentary/Nature/History/Travel/Sport/Music | 1990– | 25% |
+| 16 | Daytime | daytime TV, TLC, HGTV, Food | Game Show/Talk/Soap/Food/Home and Garden/Reality | 1990– | 10% |
+| 17 | Silver Screen | AMC, TCM | every film | 1930–1966 | films only, no slots |
+| 18 | Video Store | premium movies in the VHS era | every film | 1980–1999 | films only |
+| 19 | Premiere | premium movie channels | every film | 1998– | films only, no slots |
+
+`ChannelConfigTests` checks each themed channel's years are one unbroken run of at most 37 years (to 2026), and where a comedy, a cartoon for grown-ups, a kids' show and horror films land.
 
 **The mix (`ShuffledMix`, id `shuffled-mix`).** Under `shuffled-shows` every title gets one turn per pass, so a library with far more films than series fills a mixed channel with films. A mixed channel instead asks for a share of its airtime for films (`"films": 0.35`), and the library can move it: if the series can't fill their part without one coming round more than about once a day, films take the rest, and the other way round (`ChannelVariety.filmShare(wanted:)`). The share of airtime becomes a share of slots (films are longer, so they take fewer slots than their airtime). Positions come in blocks of 10, each with exactly its share of film slots at shuffled places, so films don't arrive on a fixed beat. The series and the films each keep their own Shuffled Shows order (§9b), counted by how many slots of that kind came before: every series once per pass of the series, one episode further each pass, and every film once per pass of the films. It also tells the engine its average slot (films' share at the films' average, the rest at the series'), for where each run's stream starts.
 
-What a medium library gives (`SCHEDULE_AUDIT=1 swift test --filter ScheduleAudit`, 90 series and 450 films made up with typical lengths and genres): every channel is on; mixed channels with plenty of series air their asked share, and themed ones with few series lean towards films (Comedy with 6 series: about 73% films). A library of 25 series and 120 films shows 7 of the 16.
+What a medium library gives (`SCHEDULE_AUDIT=1 swift test --filter ScheduleAudit`, 90 series and 450 films made up with typical lengths, genres and years, the series leaning recent): 7 of the 19 channels are on (Gregular, Sweeps Week, Next Episode, and the four film channels: Movies, Silver Screen, Video Store, Premiere), each mixed one near its asked share. A library of 25 series and 120 films shows 4 (Gregular, Next Episode, Movies, Silver Screen). The made-up library spreads its series evenly over 13 genres and over 55 years, so every era of every genre is thin; a real library, bunched in the genres and years its household likes, shows more of the channels for those. (The 2026-10-01 line-up, without eras, showed all 16 and 7 of 16.)
 
 Source types available: `all`, `genre`, `series`, `years`, `tag` (all matched case-insensitively by name), and `all-of`, `any-of` and `not`, which combine other sources (`{ "type": "not", "source": { "type": "tag", "anyOf": ["Christmas"] } }`) and nest to any depth. A channel's optional `itemTypes` narrows any source to `Episode` or `Movie`. The config format looks like this:
 

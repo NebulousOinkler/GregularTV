@@ -118,7 +118,7 @@ public struct ChannelSchedule: Sendable {
         let slotLength = { Self.slotLength(of: $0, padToMinutes: channel.padToMinutes) }
         let variety = ChannelVariety(shows: content.series, slotLength: slotLength)
         // A themed channel this library can't fill with enough variety is hidden.
-        guard !channel.needsVariety || variety.fillsADay else { return nil }
+        guard !channel.needsVariety || variety.fillsAThemedChannel(askingForFilms: channel.filmShare) else { return nil }
         if let wanted = channel.filmShare {
             content.filmSlotShare = variety.filmSlotShare(forAirtime: variety.filmShare(wanted: wanted))
         }

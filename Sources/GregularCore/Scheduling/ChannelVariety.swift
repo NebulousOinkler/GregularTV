@@ -3,8 +3,11 @@
 /// - **Whether a themed channel is shown.** A channel with `needsVariety`
 ///   (every bundled channel but the two catch-alls) is hidden when its
 ///   programmes can't fill a day without repeating sooner than the limits
-///   below. So a small library shows fewer, broader channels, and a big one
-///   shows them all, with nothing to set.
+///   below. A mixed channel is also hidden when its series can't carry at
+///   least half the TV airtime it asks for (`leastTVCarried`), so it stays a
+///   TV channel instead of becoming a film channel in a library with few of
+///   its series. So a small library shows fewer, broader channels, and a big
+///   one shows them all, with nothing to set.
 /// - **A mixed channel's film share.** The channel asks for a share of the
 ///   airtime (`Channel.filmShare`); if its series or its films can't carry
 ///   their part without repeating too soon, the other side takes the rest.
@@ -44,6 +47,18 @@ public struct ChannelVariety: Sendable {
 
     /// Enough to fill a day without anything coming round too soon.
     public var fillsADay: Bool { seriesPerDay + filmsPerDay >= Self.day }
+
+    /// The least of a mixed channel's TV airtime its series must carry.
+    public static let leastTVCarried = 0.5
+
+    /// Enough for a themed channel asking for `filmShare` of its airtime for
+    /// films (nil for a channel that doesn't mix): it fills a day, and a
+    /// mixed channel's series carry at least `leastTVCarried` of its TV airtime.
+    public func fillsAThemedChannel(askingForFilms filmShare: Double?) -> Bool {
+        guard fillsADay else { return false }
+        guard let filmShare, filmShare < 1 else { return true }
+        return seriesPerDay >= Self.leastTVCarried * (1 - filmShare) * Self.day
+    }
 
     /// The share of airtime for films, from the share `wanted`: no more than
     /// the films can carry, and no less than the series leave over.
