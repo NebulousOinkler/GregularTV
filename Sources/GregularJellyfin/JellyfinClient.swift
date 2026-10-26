@@ -194,24 +194,25 @@ public struct JellyfinClient: Sendable {
         return (info, source)
     }
 
-    /// The fastest a measurement reports: 2 Gbps, far beyond any stream.
-    static let fastestMeasured = 2_000_000_000
-
     /// Measures how fast the server can send data right now, in bits per
-    /// second, by downloading `bytes` of test data from Jellyfin's bitrate
-    /// test endpoint. It reflects both the network and how busy the server is.
-    public func measureBandwidth(bytes: Int) async throws -> Int {
+    /// second, with test data from Jellyfin's bitrate test endpoint, in
+    /// downloads that grow until one is long enough to time (`SpeedTest`).
+    /// It reflects both the network and how busy the server is.
+    public func measureBandwidth() async throws -> Int {
         // Warm-up: the first request pays for DNS, TCP and the TLS handshake
         // (slow through a relay such as Tailscale Funnel). Timing it would make
-        // the server look far slower than it streams. The timed request then
-        // reuses the open connection.
-        try await api.call("GET", "/Playback/BitrateTest", query: [URLQueryItem(name: "size", value: "64000")])
-        let start = ContinuousClock.now
+        // the server look far slower than it streams. The timed requests then
+        // reuse the open connection.
+        try await bitrateTest(bytes: 64_000)
+        return try await SpeedTest.measure { bytes in
+            let start = ContinuousClock.now
+            try await bitrateTest(bytes: bytes)
+            return ContinuousClock.now - start
+        }
+    }
+
+    private func bitrateTest(bytes: Int) async throws {
         try await api.call("GET", "/Playback/BitrateTest", query: [URLQueryItem(name: "size", value: String(bytes))])
-        let seconds = max(0.001, (ContinuousClock.now - start) / .seconds(1))
-        // Capped: a server on the same machine can measure faster than a
-        // 32-bit Int holds (WebAssembly's), far beyond any stream's need.
-        return Int(min(Double(bytes * 8) / seconds, Double(Self.fastestMeasured)))
     }
 
     /// Stops the server's transcode for a play session. Call it when changing
@@ -332,10 +333,6 @@ extension JellyfinClient: StreamSource {
     public func keepAlive(_ stream: MediaStream) async {
         guard let session = stream.sessionID else { return }
         try? await keepTranscoding(playSessionID: session)
-    }
-
-    public func measureBandwidth() async throws -> Int {
-        try await measureBandwidth(bytes: 3_000_000)
     }
 }
 

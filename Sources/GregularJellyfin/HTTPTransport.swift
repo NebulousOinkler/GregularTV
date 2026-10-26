@@ -59,7 +59,7 @@ public struct ServerReply: Sendable {
 public enum TransportRules {
     /// The most one reply may be (bytes), unless a request says otherwise.
     /// Far more than any real one (a page of 500 programmes is about 300 KB,
-    /// the speed test 3 MB), so only a server sending far too much hits it.
+    /// the speed test's largest 12 MB), so only a server sending far too much hits it.
     public static let largestResponse = 16 * 1024 * 1024
 
     /// Whether a redirect from `from` to `to` may be followed: only to the

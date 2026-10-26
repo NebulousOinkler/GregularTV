@@ -169,22 +169,20 @@ struct JellyfinPlaybackTests {
         _ = try await JellyfinFixtures.client(mock).playbackSource(for: "abc", maxBitrate: 4_000_000)
     }
 
-    @Test func bandwidthTestWarmsUpThenTimesRequestedSize() async throws {
+    /// A warm-up, then the test's downloads in order of size, as many as
+    /// it takes for one to be long enough to time (`SpeedTestTests` checks
+    /// where it stops; here that depends on how fast the machine running
+    /// the test is). A server on the same machine answers faster than a
+    /// 32-bit Int (WebAssembly's) can count: the measurement is capped, not a crash.
+    @Test func bandwidthTestWarmsUpThenGrows() async throws {
         mock.on("GET", "/Playback/BitrateTest") { request in
             (200, String(repeating: "x", count: Int(request.queryValue("size")!)!))
         }
-        #expect(try await JellyfinFixtures.client(mock).measureBandwidth(bytes: 1000) > 0)
-        #expect(mock.requests.map { $0.queryValue("size") } == ["64000", "1000"])
-    }
-
-    /// A server on the same machine answers faster than a 32-bit Int
-    /// (WebAssembly's) can count: the measurement is capped, not a crash.
-    @Test func aBlindinglyFastServerIsCappedNotOverflowing() async throws {
-        mock.on("GET", "/Playback/BitrateTest") { request in
-            (200, String(repeating: "x", count: Int(request.queryValue("size")!)!))
-        }
-        let measured = try await JellyfinFixtures.client(mock).measureBandwidth(bytes: 3_000_000)
-        #expect(measured > 0 && measured <= JellyfinClient.fastestMeasured)
+        let measured = try await JellyfinFixtures.client(mock).measureBandwidth()
+        #expect(measured > 0 && measured <= SpeedTest.fastest)
+        let sizes = mock.requests.compactMap { $0.queryValue("size").flatMap(Int.init) }
+        #expect(sizes.first == 64_000 && sizes.count >= 2)
+        #expect(Array(sizes.dropFirst()) == Array(SpeedTest.sizes.prefix(sizes.count - 1)))
     }
 
     /// A browser plays H.264 and AAC in MP4, and from a plain http server
