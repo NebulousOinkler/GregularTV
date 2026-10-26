@@ -29,6 +29,49 @@ What held up well:
   - no `innerHTML` anywhere;
   - vendored, pinned libraries.
 
+## Second audit: 2026-10-25 (the playback rework)
+
+The whole codebase again, before the playback rework (Auto per programme, programme settings, error kinds, delivery kinds, the sound ladder, ladders for the web, ruling out formats a player can't decode, the browser's format checks) ships. Changed since the first audit: 44 files, about 1,800 lines, almost all in playback. Unchanged since it, and so as it found them: the request gateway and its rules, sign-in storage, the local pages, the web headers and scripts, CI, the hosting config and the dependencies (hls.js 1.7.3, SwiftVLC 1.0.0, Wrangler 4.136.3). The privacy and layer checks pass; nothing in the changes or their commit messages names an address, token or password.
+
+### P1. A server could keep the decode-failure retries going — resolved
+- **Where:** `UnplayableFormats`, `ChannelPlayer.fail`.
+- **Risk:** after a decode failure the app rules out a format the stream carried and asks again at once, with no wait. "It always ends" rested on the server describing each file the same way each time. A misbehaving server that named a different format on each attempt would get endless immediate requests, and the list of ruled-out formats would grow without end.
+- **Resolved:** at most 8 formats are ruled out for each player in a session (`UnplayableFormats.mostPerPlayer`); after that, the programme can't be played here, until its slot ends. `UnplayableTests.thereIsAMostPerPlayer`.
+
+### P2. The privacy section said formats were read only after a failure — resolved
+- **Where:** README, *Privacy*.
+- **Risk:** each stream's video and sound formats are read from Jellyfin's reply for every stream (kept while it plays), not only when one fails. The docs understated what the app reads.
+- **Resolved:** README says so, and gives the most formats ruled out per player.
+
+### P3. Pull requests weren't checked by CI — resolved
+- **Where:** `.github/workflows/web.yml` (only pushes to main, by design: "tested locally").
+- **Risk:** a change that failed in CI was found only after it was merged, when main's build failed and the deploy was skipped (as after #58). Local runs can miss what CI's clean machine catches.
+- **Resolved** (decided 2026-10-25): every pull request (into main, or into another, for a stack) runs `build` (no secrets, no environment) and `deploy-check`, which rehearses the deploy with Wrangler's dry run, also with no secrets. It's `pull_request`, not `pull_request_target`, so a pull request's run gets read access only, whoever opened it. Only `deploy`, on main, has the token.
+
+### P4. The pinned GitHub Actions ran on Node 20 — resolved, to be confirmed by the first pull request's run
+- **Where:** `web.yml`: checkout, upload-artifact, download-artifact and setup-node, pinned at v4.
+- **Risk:** GitHub has deprecated Node 20 for actions and already ran them on Node 24 with a warning; when it's removed, the workflow fails, and with it the deploy.
+- **Resolved** (decided 2026-10-25): checkout v7.0.1, upload-artifact v7.0.2, download-artifact v8.0.2, setup-node v7.1.0, each pinned by commit. Their breaking changes don't touch this workflow: download-artifact's path change is for downloads by ID (this one is by name), and v8 now fails on a checksum mismatch, which is safer. setup-node caches dependencies by itself from v5 when `package.json` names a package manager; it's turned off explicitly in the jobs that install Wrangler, since a shared cache could be poisoned. Every updated action runs in `build` or `deploy-check`, so the first pull request's run checks them all before they reach main.
+
+### P5. A misreported decode failure rules out a format the player does play — accepted
+- **Where:** `VLCItem` (VLC's error state can be the network's), hls.js's media errors after its one recovery.
+- **Risk:** a transient error reported as "can't decode" rules out a format the player really plays, for the session: those files then go to another player or a conversion, more work for the server, though they still play.
+- **Accepted** (the user's decision, 2026-10-25): it's bounded (P1), forgotten when the app closes, and never stops a file playing. The alternative, retrying a format before ruling it out, would double the wait for a format that really can't be decoded.
+
+### P6. More formats reach the players' own decoders — resolved, by decision
+- **Where:** `PlayableFormats.vlcOnAppleTV` (TrueHD), `PlayableFormats.browser(alsoPlays:)` (HEVC, AV1, AC-3, E-AC-3, Opus, FLAC where the browser confirms them).
+- **Risk:** a larger attack surface in decoders the app doesn't own (libVLC's, the browser's).
+- **Resolved:** each is a format a film library really holds, confirmed by the browser itself or common enough in VLC (decided 2026-10-25, task A4); M5's rule (no rare readers) holds.
+
+### The clean-up pass
+- **Coupling:** none found; the layer check passes, and the new types sit in the layer that owns them (`MediaFormat`, `StreamContents`, `StreamRequest` in Core; `ProgrammeSettings`, `UnplayableFormats`, `ErrorKind` in Screens).
+- **Duplication removed:** the "couldn't be played" error was two near-copies, one per platform: now one `UnplayableFormat` in Screens, naming the device. `PlayableFormats` spelled out its whole initializer for each changed copy: now copies change only what differs.
+- **Dead code removed:** `MediaStream.Delivery.isStreamed`, used only by tests.
+- **Still to do** (tasks C3 to C6): timings passed in rather than set by tests; the diagnostics and deck words into `Text/`; the fake server's options as one table; QUALITY_MAP.md folded into PLAN.
+
+### Still open from the first audit
+- **Deploys don't wait for approval:** the `gregular.tv` environment still has no required reviewer (checked 2026-10-25), so merging to main goes live at once.
+
 ## High
 
 ### H1. A special mode's keyword is still in the repository's history — accepted

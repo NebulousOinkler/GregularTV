@@ -31,6 +31,17 @@ struct UnplayableTests {
         #expect(addOn && unplayable.byPlayer[.addOn] == [eac3], "Each player is its own")
     }
 
+    /// A server that names a different format each time can't keep the
+    /// immediate retries going: there's a most per player.
+    @Test func thereIsAMostPerPlayer() {
+        var unplayable = UnplayableFormats()
+        var learned = 0
+        for n in 0..<100 where unplayable.learn(from: StreamContents(sound: MediaFormat(.sound, "made-up-\(n)")), on: .builtIn, safest: safest) {
+            learned += 1
+        }
+        #expect(learned == UnplayableFormats.mostPerPlayer)
+    }
+
     /// End to end: the sound, then the video, converted; then it can't be
     /// played here, until its slot ends, and isn't asked for again.
     @Test func theRetriesEndAndSaySo() async throws {
