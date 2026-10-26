@@ -37,6 +37,10 @@ public struct MediaItem: Sendable, Hashable, Identifiable {
     /// because servers such as Jellyfin rarely set genres on individual episodes.
     public let genres: [String]
     public let tags: [String]
+    /// The networks and companies that made it, such as "BBC One" for a
+    /// series or "Merchant Ivory Productions" for a film. Episodes inherit
+    /// their series', as with genres.
+    public let studios: [String]
     /// For songs and music videos: who performs it, and the album it's on.
     public let artists: [String]
     public let album: String?
@@ -64,6 +68,7 @@ public struct MediaItem: Sendable, Hashable, Identifiable {
         premiereDate: Date? = nil,
         genres: [String] = [],
         tags: [String] = [],
+        studios: [String] = [],
         artists: [String] = [],
         album: String? = nil,
         folders: [String] = [],
@@ -82,6 +87,7 @@ public struct MediaItem: Sendable, Hashable, Identifiable {
         self.premiereDate = premiereDate
         self.genres = genres
         self.tags = tags
+        self.studios = studios
         self.artists = artists
         self.album = album
         self.folders = folders

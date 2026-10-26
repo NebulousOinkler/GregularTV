@@ -88,7 +88,7 @@ struct EditingPageTests {
     static let document = """
     { "channels": [
         { "number": 30, "name": "Laughs", "plays": "both",
-          "rule": { "anyOf": [{ "genre": "Comedy" }, { "series": "Taskmaster" }], "noneOf": [{ "tag": "Christmas" }] } } ],
+          "rule": { "anyOf": [{ "genre": "Comedy" }, { "series": "Taskmaster" }, { "studio": "BBC Two" }], "noneOf": [{ "tag": "Christmas" }] } } ],
       "setTimes": [
         { "channel": 30, "timeZone": "America/New_York",
           "programmes": [{ "series": "Taskmaster", "at": ["18:00", "18:30"], "days": ["Mon", "Feb 2"] }] } ] }
@@ -101,7 +101,7 @@ struct EditingPageTests {
         #expect(response.status == 200)
         #expect(page.lastChange != nil)
         let channel = try #require(app.customChannels.first)
-        #expect(channel.name == "Laughs" && channel.rule.summary == "Comedy or Taskmaster, not Christmas")
+        #expect(channel.name == "Laughs" && channel.rule.summary == "Comedy or Taskmaster or BBC Two, not Christmas")
         #expect(app.setTimes.first?.programmes.first?.days == ["Mon", "Feb 2"])
         #expect(app.setTimes.first?.timeZone.identifier == "America/New_York")
         // What's saved reads back as the same document.

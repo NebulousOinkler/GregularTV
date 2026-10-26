@@ -14,21 +14,21 @@ struct JellyfinLibraryTests {
         #"{ "Id": "\#(id)", "Name": "Ep \#(number)", "Type": "Episode", "RunTimeTicks": 13200000000, "SeriesId": "s1", "SeriesName": "Alpha", "ParentIndexNumber": \#(season), "IndexNumber": \#(number) }"#
     }
 
-    @Test func fetchesAllPagesAndInheritsSeriesGenres() async throws {
+    @Test func fetchesAllPagesAndInheritsSeriesGenresTagsAndStudios() async throws {
         mock.on("GET", "/Items") { request in
             #expect(request.queryValue("userId") == "user-1")
             #expect(request.queryValue("IsMissing") == "false")
             #expect(request.queryValue("EnableUserData") == "false")
-            #expect(request.queryValue("Fields") == "Genres,Tags")
+            #expect(request.queryValue("Fields") == "Genres,Tags,Studios")
 
             switch (request.queryValue("IncludeItemTypes"), request.queryValue("StartIndex")) {
             case ("Series", _):
-                return (200, self.page([#"{ "Id": "s1", "Name": "Alpha", "Type": "Series", "Genres": ["Comedy"], "Tags": ["Fav"], "ProductionYear": 2001 }"#], total: 1))
+                return (200, self.page([#"{ "Id": "s1", "Name": "Alpha", "Type": "Series", "Genres": ["Comedy"], "Tags": ["Fav"], "Studios": [{ "Name": "BBC Two", "Id": "st1" }], "ProductionYear": 2001 }"#], total: 1))
             case ("Episode,Movie", "0"):
                 return (200, self.page([self.episode("e1", season: 1, number: 1), self.episode("e2", season: 1, number: 2)], total: 4))
             case ("Episode,Movie", "2"):
                 return (200, self.page([
-                    #"{ "Id": "m1", "Name": "Film", "Type": "Movie", "RunTimeTicks": 60000000000, "ProductionYear": 1999, "Genres": ["Drama"] }"#,
+                    #"{ "Id": "m1", "Name": "Film", "Type": "Movie", "RunTimeTicks": 60000000000, "ProductionYear": 1999, "Genres": ["Drama"], "Studios": [{ "Name": "Film4", "Id": "st2" }, { "Id": "st3" }] }"#,
                     #"{ "Id": "m2", "Name": "No runtime", "Type": "Movie" }"#,
                 ], total: 4))
             default:
@@ -46,8 +46,10 @@ struct JellyfinLibraryTests {
         #expect(e1.seriesName == "Alpha" && e1.seasonNumber == 1 && e1.episodeNumber == 1)
         #expect(e1.genres == ["Comedy"])
         #expect(e1.tags == ["Fav"])
+        #expect(e1.studios == ["BBC Two"], "An episode has its series' studios")
         #expect(e1.productionYear == 2001)
         #expect(items[2].genres == ["Drama"] && items[2].productionYear == 1999)
+        #expect(items[2].studios == ["Film4"], "Only names are kept; one with no name is left out")
     }
 
     /// A library several pages long, served the way Jellyfin pages it

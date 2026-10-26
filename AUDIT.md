@@ -29,6 +29,30 @@ What held up well:
   - no `innerHTML` anywhere;
   - vendored, pinned libraries.
 
+## Fifth audit: 2026-10-26 (studios, public television and how-to)
+
+Since the fourth audit (hours before), the only changes are:
+- the `studio` rule;
+- two bundled channels (Viewers Like You and Workshop, in place of Field Trip and Daytime);
+- tests and docs.
+
+Each was read against every heading of the first audit. The one new thing taken from the server is a field, below. There's no new request, host, listener, stored file, log, dependency or file format. The privacy and layer checks pass, and nothing in the changes names an address, token or password.
+
+### S1. The library request asks for one more field — resolved
+- **Where:** `LibraryQuery` (`Fields=Genres,Tags,Studios`, for series, episodes and films), `ItemDTO.studios`, `MediaItem.studios`.
+- **Risk:** more data from the server held by the app. Jellyfin sends each studio as a name and an ID.
+- **Resolved:**
+  - Only the names are kept, in memory with the rest of the library, and the IDs are dropped.
+  - They count towards the listing's text cap (`ItemDTO.textSize`, `LibraryQuery.mostText`), as genres and tags do.
+  - They're used for the `studio` rule, and offered on the editing page (put on the page as text).
+  - A custom channel's code keeps a studio's name only when the viewer picks it, as with a genre.
+  - The README's privacy section and editing-page note say so; `JellyfinClientTests` checks the field is asked for and only names are kept.
+
+### S2. An older app can't read a code with a studio in it — resolved, by failing closed
+- **Where:** `CustomChannel.init(code:)` (condition kind 4).
+- **Risk:** a custom channel with a studio condition, typed into an Apple TV still on an older version, isn't read.
+- **Resolved:** it fails closed, rejected as a mistyped code rather than misread, as any code it doesn't know is. The same code's version (2) is kept so codes without a studio still read everywhere. PLAN §9c says so.
+
 ## Fourth audit: 2026-10-26 (the era line-up)
 
 Hours after the third, before the era line-up ships. The third audit read the whole codebase; since then, the only changes are A4 (Q6) and this one:

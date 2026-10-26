@@ -126,13 +126,13 @@ Nineteen channels ship in `channels.json`, laid out like a cable line-up from be
 | 12 | Punchline | comedy | 1998 on | 35% |
 | 13 | Sci-Fi Syndicate | sci-fi and fantasy | 1966–1999 | 40% |
 | 14 | Other Worlds | sci-fi and fantasy | 1997 on | 40% |
-| 15 | Field Trip | documentaries, nature, history, travel, sport, music | 1990 on | 25% |
-| 16 | Daytime | game shows, talk, soaps, cooking, home, reality | 1990 on | 10% |
+| 15 | Viewers Like You | public television: documentaries, nature, history, science, music and arts, and drama from British networks and film companies | 1960 on | 25% |
+| 16 | Workshop | how-to: cooking, home and garden, travel | 1960 on | TV only |
 | 17 | Silver Screen | classic films, back to back | 1930–1966 | films only |
 | 18 | Video Store | films | 1980–1999 | films only |
 | 19 | Premiere | films, back to back | 1998 on | films only |
 
-It's for every age. The kids' channels take only what's tagged Kids, Family or Children, so a cartoon for grown-ups airs with the comedies. The network, comedy, family and classic-TV channels leave out Kids, Children and Horror, so preschool shows and horror films stay off them. These go by your library's genres, as tagged. Silver Screen and Premiere have no half-hour slots, so their films follow each other with no breaks, except for the one at the day boundary (below).
+It's for every age. The kids' channels take only what's tagged Kids, Family or Children, so a cartoon for grown-ups airs with the comedies. The network, comedy, family and classic-TV channels leave out Kids, Children and Horror, so preschool shows and horror films stay off them. These go by your library's genres, as tagged. Viewers Like You finds its drama by studio: the networks and companies Jellyfin lists for a series or film, such as BBC One, ITV or Merchant Ivory. Silver Screen and Premiere have no half-hour slots, so their films follow each other with no breaks, except for the one at the day boundary (below).
 
 The line-up changed on 2026-10-26, from genres to eras: only Gregular (1) and Movies (10) kept their themes. Set times saved on another bundled channel stay on its number, under its new theme, and don't air while that channel is hidden.
 
@@ -149,7 +149,7 @@ Your own channels and set times are made on the **editing page**, in a web brows
 
 **To edit:** turn on **Settings › Edit from a phone or computer › Editing page**, then choose **Open the Editing Page**. The TV shows an address (like `http://192.168.1.20:8080`) and a six-digit code. Open the address, type the code, make your changes, and choose **Save to Apple TV**: the channels are rebuilt straight away.
 
-**A channel** has a name, a number from 20 to 99, episodes or movies or both, and a rule of up to 20 conditions on genres, series, tags and years (your library's names are suggested as you type). Each condition joins the rest one of three ways:
+**A channel** has a name, a number from 20 to 99, episodes or movies or both, and a rule of up to 20 conditions on genres, series, tags, studios (the networks and companies that made a programme, such as BBC One) and years (your library's names are suggested as you type). Each condition joins the rest one of three ways:
 - **Any of:** a programme needs to match at least one of these (none of them means everything).
 - **All of:** it must match every one.
 - **None of:** it's left out.
@@ -158,7 +158,7 @@ So "any of Comedy and Taskmaster, none of Christmas" is comedy or Taskmaster, bu
 
 **Sharing:** the page's **JSON** tab shows all your channels and set times as one document. Copy it, and paste it into another Apple TV's page (then **Use This JSON** and save) to have the same there: with the same schedule code, both show the same programmes.
 
-**The page only exists while its screen is open on the TV**, and closing the screen stops it. It answers only devices on your home network, at the address shown, with the code. Five wrong codes from one device shut that device out, and 20 in all lock the page, until you close and reopen the screen. The page isn't encrypted, so use it on a network you trust. It loads nothing from the internet, and it never sees your Jellyfin address, password or token: only your genre, series, tag and film names, and the first and last year in your library (to suggest years). Everything it saves is checked before it's used.
+**The page only exists while its screen is open on the TV**, and closing the screen stops it. It answers only devices on your home network, at the address shown, with the code. Five wrong codes from one device shut that device out, and 20 in all lock the page, until you close and reopen the screen. The page isn't encrypted, so use it on a network you trust. It loads nothing from the internet, and it never sees your Jellyfin address, password or token: only your genre, series, tag, studio and film names, and the first and last year in your library (to suggest years). Everything it saves is checked before it's used.
 
 ## Programmes at set times
 
@@ -346,7 +346,7 @@ Gregular TV is built to know as little as possible about your Jellyfin server, a
 | For each server you're signed in to: its address, access token and user ID, the one watched last first | Keychain, this device only (excluded from backups and iCloud) | To reconnect without signing in again, and to list your servers on the main page |
 | A random device ID for each sign-in | Keychain, with the sign-in | Jellyfin requires one. Each sign-in has its own, so two servers can't tell they're talking to the same Apple TV |
 | Last channel number, streaming quality, schedule code, the diagnostics, commercials, editing-page and frame-rate switches | App preferences | Client settings; no server data |
-| Your custom channels, packed as short codes | App preferences | What you typed or picked: a name, a number, and the genres, series, tags and years in its rule |
+| Your custom channels, packed as short codes | App preferences | What you typed or picked: a name, a number, and the genres, series, tags, studios and years in its rule |
 | Your set times, packed as short codes | App preferences | What you typed or picked: a channel number, the series or film names, the times and days, and your time zone |
 
 **Never stored:** your password (it's used for one sign-in request only), your library (titles, episodes, artwork; a custom channel or set time keeps only the names you picked for it), schedules, watch history, or logs. The library is fetched into memory at launch and is gone when the app quits. Schedules are recomputed from each channel's seed and the clock, so there's nothing to save.
@@ -357,7 +357,7 @@ Gregular TV is built to know as little as possible about your Jellyfin server, a
 
 **Never reported to Jellyfin:** your watch history. The app makes no playback-reporting calls, so nothing appears under "Now Playing" and your watched status and resume points are untouched. It never opens the live connection Jellyfin sends remote control over, so other Jellyfin apps can't control it.
 
-**The editing page** (off unless you turn it on): while its screen is open, a browser on your home network can see your channels and set times and the genre, series, tag and film names the editors offer, as the Apple TV's own Settings shows them. Nothing about the server itself, and nothing is kept or sent anywhere else.
+**The editing page** (off unless you turn it on): while its screen is open, a browser on your home network can see your channels and set times and the genre, series, tag, studio and film names the editors offer, as the Apple TV's own Settings shows them. Nothing about the server itself, and nothing is kept or sent anywhere else.
 
 **What Jellyfin can still see:** a sign-in in its activity log, this Apple TV (named just "Apple TV") in its device list, and the stream requests themselves, as for any client. Those say which programme each stream is, since the server has to know what to send, and its logs may keep them. Stream addresses carry the sign-in as `ApiKey`, as with every Jellyfin client (a player can't be given a header for every request), so they can also appear in Jellyfin's and a reverse proxy's logs, where anyone who reads them could use it until it's signed out. So sign in with an account without administrator rights (the app asks before using one), keep those logs private, and sign out, or remove the device in Jellyfin's dashboard, to cancel it. Before signing in (checking an address), and when the main page asks a server its name, the app sends nothing about this device.
 

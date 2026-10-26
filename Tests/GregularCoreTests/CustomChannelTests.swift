@@ -11,6 +11,9 @@ struct CustomChannelTests {
         CustomChannel(number: 70, name: "Golden Age", kinds: [.movie], rule: .years(from: 1930, to: 1959)),
         CustomChannel(number: 71, name: "Since 2000", rule: .years(from: 2000, to: nil)),
         CustomChannel(number: 99, name: "Holidays", rule: .tag("Christmas"), halfHourSlots: false, commercials: false),
+        CustomChannel(number: 60, name: "From Britain", rule: CustomChannel.Rule([
+            .init(.anyOf, .studio("BBC One")), .init(.anyOf, .studio("ITV")), .init(.noneOf, .genre("Reality")),
+        ])),
         CustomChannel(number: 50, name: "Mixed", rule: CustomChannel.Rule([
             .init(.anyOf, .genre("Comedy")), .init(.anyOf, .series("Bravo")),
             .init(.allOf, .years(from: 1990, to: nil)), .init(.noneOf, .tag("Christmas")),

@@ -34,7 +34,7 @@ extension CustomChannel.Rule.Match {
     /// "Comedy", "Taskmaster", "1950–1979".
     public var label: String {
         switch self {
-        case .genre(let name), .series(let name), .tag(let name): name
+        case .genre(let name), .series(let name), .tag(let name), .studio(let name): name
         case .years(let from, let to): "\(from.map(String.init) ?? "Any year")–\(to.map(String.init) ?? "now")"
         }
     }
