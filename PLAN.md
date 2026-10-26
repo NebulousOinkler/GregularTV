@@ -344,7 +344,7 @@ Built from the existing tools: each channel is an `all-of` its era's `years`, it
 | 12 | Punchline | comedy today | the same | 1998– | 35% |
 | 13 | Sci-Fi Syndicate | the Sci-Fi Channel, syndicated sci-fi | Science Fiction/Sci-Fi/Sci-Fi & Fantasy/Fantasy | 1966–1999 | 40% |
 | 14 | Other Worlds | sci-fi today | the same | 1997– | 40% |
-| 15 | Viewers Like You | PBS | Documentary/Nature/History/Science/Music/Arts, or Drama from a British network or film company (`studio`: BBC One, ITV, Channel 4, PBS, Masterpiece, BBC Films, Film4, Merchant Ivory, Working Title…), not Kids/Children/Horror | 1960– | 25% |
+| 15 | Viewers Like You | PBS | Documentary/Nature/History/Science/Music/Arts, or Drama/Comedy/Sitcom/Crime/Mystery/History/War/Romance/Food/Reality from a British network or film company (`studio`: BBC One, ITV, Channel 4, Channel 5, PBS, Masterpiece, BBC Films, Film4, Merchant Ivory, Working Title…), not Kids/Children/Horror | 1960– | 25% |
 | 16 | Workshop | Create, Food Network | Food/Home and Garden/Travel | 1960– | TV only |
 | 17 | Silver Screen | AMC, TCM | every film | 1930–1966 | films only, no slots |
 | 18 | Video Store | premium movies in the VHS era | every film | 1980–1999 | films only |

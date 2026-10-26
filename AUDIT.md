@@ -53,6 +53,9 @@ Each was read against every heading of the first audit. The one new thing taken 
 - **Risk:** a custom channel with a studio condition, typed into an Apple TV still on an older version, isn't read.
 - **Resolved:** it fails closed, rejected as a mistyped code rather than misread, as any code it doesn't know is. The same code's version (2) is kept so codes without a studio still read everywhere. PLAN §9c says so.
 
+### Later the same day
+Viewers Like You was widened to British comedy, mystery, history, food and reality (for baking shows), as well as drama, and two more networks (Channel 5, BBC Scotland). It's a change to `channels.json` data only, read by the same rules, so nothing above changes.
+
 ### S3. CI's installer check failed without saying why — resolved
 - **Where:** `.github/workflows/web.yml`, *Install the Swift toolchain and its WebAssembly SDK*.
 - **Risk:** the step failed twice on 2026-10-26 (#73, #74) within seconds, with nothing in the log, and passed on a re-run each time. A silent failure can't be told from a real one: a download error, Apple's notary check not answering, or an installer signed by someone else.
