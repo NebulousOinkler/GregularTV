@@ -125,11 +125,10 @@ struct ChannelPlayerDeckTests {
     /// so it doesn't stop once the player has buffered enough; not while
     /// paused, which can last hours.
     @Test func theServerIsToldItsConversionIsStillWanted() async throws {
-        let interval = ChannelPlayer.keepAliveInterval
-        ChannelPlayer.keepAliveInterval = 0   // every heartbeat
-        defer { ChannelPlayer.keepAliveInterval = interval }
+        var timings = ChannelPlayer.Timings()
+        timings.keepAliveInterval = 0   // every heartbeat
         let streams = FakeStreams(streaming: true)
-        let player = try Fixture.surfer(streams: streams).player
+        let player = try Fixture.surfer(streams: streams, timings: timings).player
         player.start()
         try await Fixture.settle(player)
         try await waitUntil(3) { streams.keptAlive.count >= 2 }
@@ -202,12 +201,11 @@ struct ChannelPlayerDeckTests {
     /// server re-encodes comes back asking for less work (720p): the server
     /// couldn't keep up. One sent as it is comes back the same.
     @Test func fallingBehindLiveAsksTheServerForLessOnlyWhenItReencodes() async throws {
-        let headStart = ChannelPlayer.transcodeHeadStart
-        ChannelPlayer.transcodeHeadStart = 0   // play a re-encode at once
-        defer { ChannelPlayer.transcodeHeadStart = headStart }
+        var timings = ChannelPlayer.Timings()
+        timings.transcodeHeadStart = 0   // play a re-encode at once
         for reencodes in [true, false] {
             let streams = FakeStreams(converting: reencodes ? ["m1", "m2", "m3"] : [])   // whichever film is on
-            let player = try Fixture.surfer(streams: streams).player
+            let player = try Fixture.surfer(streams: streams, timings: timings).player
             player.start()
             let deck = try await Fixture.playingDeck(player)
             deck.position -= ChannelPlayer.maxDriftBehindLive + 30

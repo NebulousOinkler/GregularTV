@@ -6,8 +6,9 @@ import GregularJellyfin
 
 /// The app's tests play on real AVFoundation decks, as the app does.
 extension ChannelPlayer {
-    convenience init(schedule: ChannelSchedule, streams: any StreamSource, quality: StreamingQuality) {
-        self.init(schedule: schedule, streams: streams, quality: quality, decks: TVDeck.pair())
+    convenience init(schedule: ChannelSchedule, streams: any StreamSource, quality: StreamingQuality,
+                     timings: ChannelPlayer.Timings = ChannelPlayer.Timings()) {
+        self.init(schedule: schedule, streams: streams, quality: quality, decks: TVDeck.pair(), timings: timings)
     }
 }
 

@@ -159,19 +159,13 @@ public final class ChannelPlayer {
     public static let convertedNextLead: TimeInterval = 90
     public static let maxDriftBehindLive: TimeInterval = 60
     public static let maxRetryDelay: TimeInterval = 60
-    /// The first retry's wait; each further failure doubles it, up to `maxRetryDelay`.
-    public static var firstRetryDelay: TimeInterval = 5
     /// A stream in only the formats every player plays (`StreamSource.safestFormats`)
     /// that's reported as one the player can't decode is retried as any
     /// failure this many times in a row before it's taken as unplayable
     /// here: a browser reports a stream it couldn't fetch at all as one it
     /// can't decode (the same error), and these formats it does decode.
     public static let safestFormatRetries = 2
-    /// How long after starting a programme Auto's background speed test waits,
-    /// so it doesn't compete with the video for bandwidth while it starts.
-    public static var backgroundMeasurementDelay: Duration = .seconds(20)
     public static let stallTimeout: TimeInterval = 30
-    public static var transcodeHeadStart: TimeInterval = 20
     /// How many times the usual head start the heaviest re-encodes get
     /// (`MediaStream.isHeavyReencode`).
     public static let heavyHeadStartFactor: Double = 2
@@ -190,9 +184,25 @@ public final class ChannelPlayer {
     public static let convertedBufferingLimit: TimeInterval = 10
     /// A re-encoded programme with less than this left isn't started.
     public static let minReencodedTimeLeft: TimeInterval = 180
-    /// How often the server hears the player still wants its streams: well
-    /// inside the minute after which Jellyfin stops a transcode.
-    public static var keepAliveInterval: TimeInterval = 20
+
+    /// The player's waits that a test shortens, passed in, so each test's
+    /// are its own (a shared, changeable one could leak into another test).
+    public struct Timings: Sendable {
+        /// The first retry's wait; each further failure doubles it, up to `maxRetryDelay`.
+        public var firstRetryDelay: TimeInterval = 5
+        /// How long after starting a programme Auto's background speed test
+        /// waits, so it doesn't compete with the video for bandwidth while it starts.
+        public var backgroundMeasurementDelay: Duration = .seconds(20)
+        /// How far past live a re-encoded programme starts, before failures double it.
+        public var transcodeHeadStart: TimeInterval = 20
+        /// How often the server hears the player still wants its streams: well
+        /// inside the minute after which Jellyfin stops a transcode.
+        public var keepAliveInterval: TimeInterval = 20
+
+        public init() {}
+    }
+
+    public let timings: Timings
 
     /// Two decks, each with its own picture. One is on screen (`player`);
     /// the other is standby, buffering the next programme
@@ -308,10 +318,14 @@ public final class ChannelPlayer {
         let conversionReasons: String?
     }
 
-    /// - Parameter decks: two decks (see `PlayerDeck`). They start empty.
-    public init(schedule: ChannelSchedule, streams: any StreamSource, quality: StreamingQuality, decks: [any PlayerDeck]) {
+    /// - Parameters:
+    ///   - decks: two decks (see `PlayerDeck`). They start empty.
+    ///   - timings: the app's own, unless a test shortens them.
+    public init(schedule: ChannelSchedule, streams: any StreamSource, quality: StreamingQuality, decks: [any PlayerDeck],
+                timings: Timings = Timings()) {
         precondition(decks.count == 2, "ChannelPlayer plays on two decks")
         self.decks = decks
+        self.timings = timings
         self.schedule = schedule
         self.streams = streams
         self.quality = quality
@@ -710,7 +724,7 @@ public final class ChannelPlayer {
     /// buffered ahead or waiting its turn. Not while paused.
     private func keepStreamsAlive(at now: Date) {
         guard !status.isPaused,
-              now.timeIntervalSince(lastKeepAlive ?? .distantPast) >= Self.keepAliveInterval else { return }
+              now.timeIntervalSince(lastKeepAlive ?? .distantPast) >= timings.keepAliveInterval else { return }
         lastKeepAlive = now
         let held = [current, next, standbyProgramme, earlyNext].compactMap { $0?.unreleased }.filter { $0.sessionID != nil }
         guard !held.isEmpty else { return }
@@ -880,7 +894,7 @@ public final class ChannelPlayer {
     /// heaviest re-encodes (`heavyHeadStartFactor`). Nil if the programme
     /// ends too soon for it to be worth it.
     private func headStartTarget(in airing: Airing, heavy: Bool) -> Date? {
-        let first = Self.transcodeHeadStart * (heavy ? Self.heavyHeadStartFactor : 1)
+        let first = timings.transcodeHeadStart * (heavy ? Self.heavyHeadStartFactor : 1)
         let lead = min(Self.maxTranscodeHeadStart, first * pow(2, Double(consecutiveFailures)))
         let start = Date.now.addingTimeInterval(lead)
         return start < airing.end.addingTimeInterval(-lead) ? start : nil
@@ -966,11 +980,12 @@ public final class ChannelPlayer {
         updateSettings(for: airing) { $0.measuresFirst = true }
     }
 
-    /// Runs the speed test after `backgroundMeasurementDelay`, unless one is already pending.
+    /// Runs the speed test after `Timings.backgroundMeasurementDelay`, unless one is already pending.
     private func measureInBackground(for programme: Airing) {
         guard quality == .auto, measurementTask == nil else { return }
+        let delay = timings.backgroundMeasurementDelay
         measurementTask = Task { [weak self] in
-            try? await Task.sleep(for: Self.backgroundMeasurementDelay)
+            try? await Task.sleep(for: delay)
             guard !Task.isCancelled else { return }
             await self?.measureBandwidth(for: programme, raiseOnly: true)
             // A cancelled task leaves the slot alone: a newer one may be in it.
@@ -1042,7 +1057,7 @@ public final class ChannelPlayer {
                 return
             }
         }
-        let delay = min(Self.maxRetryDelay, Self.firstRetryDelay * pow(2, Double(consecutiveFailures)))
+        let delay = min(Self.maxRetryDelay, timings.firstRetryDelay * pow(2, Double(consecutiveFailures)))
         consecutiveFailures += 1
         if let failed, askForLessWork(on: failed) {
             // The server couldn't convert it fast enough: the retry asks for less.

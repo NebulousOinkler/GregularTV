@@ -172,13 +172,14 @@ final class FakeStreams: StreamSource, @unchecked Sendable {
 
 enum Fixture {
     /// Two channels of hour-long films, `elapsed` seconds into one.
-    @MainActor static func surfer(elapsed: TimeInterval = 600, streams: FakeStreams = FakeStreams()) throws -> ChannelSurfer {
+    @MainActor static func surfer(elapsed: TimeInterval = 600, streams: FakeStreams = FakeStreams(),
+                                  timings: ChannelPlayer.Timings = ChannelPlayer.Timings()) throws -> ChannelSurfer {
         let items = (1...3).map { MediaItem(id: "m\($0)", kind: .movie, name: "Film \($0)", duration: 3600) }
         let channels = try ChannelSchedule.testing([1, 2], epoch: Date.now.addingTimeInterval(-elapsed), items: items)
         let preferences = AppPreferences.testing()
         preferences.streamingQuality = .hd10
         return ChannelSurfer(channels: channels, startingWith: channels[0], streams: streams,
-                             preferences: preferences, decks: FakeDeck.pair())
+                             preferences: preferences, decks: FakeDeck.pair(), timings: timings)
     }
 
     /// An app named "Test Device", signed in to whatever `store` holds,

@@ -50,12 +50,11 @@ struct UnplayableTests {
     /// couldn't fetch), `safestFormatRetries` times, and after that it can't
     /// be played here.
     @Test func theRetriesEndAndSaySo() async throws {
-        let firstRetryDelay = ChannelPlayer.firstRetryDelay
-        ChannelPlayer.firstRetryDelay = 0.05
-        defer { ChannelPlayer.firstRetryDelay = firstRetryDelay }
+        var timings = ChannelPlayer.Timings()
+        timings.firstRetryDelay = 0.05
         let file = StreamContents(video: hevc10, sound: eac3)
         let streams = FakeStreams(files: ["m1": file, "m2": file, "m3": file])   // whichever film is on
-        let player = try Fixture.surfer(streams: streams).player
+        let player = try Fixture.surfer(streams: streams, timings: timings).player
         player.start()
         let isCantPlay = { if case .cantPlay = player.status { true } else { false } }
         let ruledOut: [Set<MediaFormat>] = [[], [eac3]] + Array(repeating: [eac3, hevc10], count: ChannelPlayer.safestFormatRetries + 1)
