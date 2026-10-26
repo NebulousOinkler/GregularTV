@@ -94,9 +94,11 @@
                   { "type": "any-of", "sources": [
                     { "type": "genre", "anyOf": ["Documentary", "Nature", "History", "Science", "Music", "Arts"] },
                     { "type": "all-of", "sources": [
-                      { "type": "genre", "anyOf": ["Drama"] },
-                      { "type": "studio", "anyOf": ["BBC", "BBC One", "BBC Two", "BBC Three", "BBC Four", "ITV", "ITV1", "ITVX",
-                                                    "Channel 4", "PBS", "Masterpiece", "BBC Films", "BBC Film", "Film4",
+                      { "type": "genre", "anyOf": ["Drama", "Comedy", "Sitcom", "Crime", "Mystery", "History", "War",
+                                                   "War & Politics", "Romance", "Food", "Reality", "Reality-TV"] },
+                      { "type": "studio", "anyOf": ["BBC", "BBC One", "BBC Two", "BBC Three", "BBC Four", "BBC Scotland",
+                                                    "ITV", "ITV1", "ITVX", "Channel 4", "Channel 5",
+                                                    "PBS", "Masterpiece", "BBC Films", "BBC Film", "Film4",
                                                     "Film4 Productions", "Channel Four Films", "Merchant Ivory Productions",
                                                     "Working Title Films"] } ] } ] },
                   { "type": "not", "source": { "type": "genre", "anyOf": ["Kids", "Children", "Horror"] } } ] },
