@@ -67,7 +67,7 @@ The whole codebase again, before the playback rework (Auto per programme, progra
 - **Coupling:** none found; the layer check passes, and the new types sit in the layer that owns them (`MediaFormat`, `StreamContents`, `StreamRequest` in Core; `ProgrammeSettings`, `UnplayableFormats`, `ErrorKind` in Screens).
 - **Duplication removed:** the "couldn't be played" error was two near-copies, one per platform: now one `UnplayableFormat` in Screens, naming the device. `PlayableFormats` spelled out its whole initializer for each changed copy: now copies change only what differs.
 - **Dead code removed:** `MediaStream.Delivery.isStreamed`, used only by tests.
-- **Still to do** (tasks C3 to C6): timings passed in rather than set by tests; the diagnostics and deck words into `Text/`; the fake server's options as one table; QUALITY_MAP.md folded into PLAN.
+- **Done since** (tasks C3 to C6, 2026-10-26): timings passed in rather than set by tests (`ChannelPlayer.Timings`); the player's words in `Text/` (`PlayerText`; decks report a `DeckActivity`); the player order in one place and the fake server's options as one table; the quality map folded into PLAN §7a.
 
 ### Still open from the first audit
 - **Deploys don't wait for approval:** the `gregular.tv` environment still has no required reviewer (checked 2026-10-25), so merging to main goes live at once.

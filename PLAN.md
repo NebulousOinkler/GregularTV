@@ -266,6 +266,41 @@ A second, optional protocol, `DaypartStrategy`, can wrap strategies ("cartoons 7
   - **Tests:** `StreamStabilityTests` counts re-tunes to check this.
 - **Drift correction:** coming back to the foreground or switching channels uses the same "tune to live" path, so it's one code path for every case.
 
+## 7a. Stream quality: where each decision lives
+
+Every place the app decides, asks for, or reacts to a stream's quality, by type (the decisions themselves, with their dates, are in §12). How one programme gets played:
+
+1. **What can play:** `PlayableFormats`, one per player: `.appleTV`, `.vlcOnAppleTV`, and `.browser(alsoPlays:)`, from what the browser confirms through `MediaSource.isTypeSupported` (`WebApp`). Each request turns it into Jellyfin's `DeviceProfile` (`Playback.swift`), less what a player turned out not to decode (`PlayableFormats.without`, from `UnplayableFormats`), and with sound mixed down if asked (`withStereoSound`).
+2. **The cap:** `ProgrammeSettings.cap(at:)`. A fix for the programme, else the fixed quality, else Auto's cap after connection trouble, else none. Commercials never have one.
+3. **The request:** `JellyfinClient.playbackSource`. It asks `PlaybackInfo` for each player in `MediaStream.Player.order`. For a conversion, it may ask once more with a sound track the conversion copies (`withASoundTrackToCopy`). `PlaybackSource.delivery` reads Jellyfin's `TranscodeReasons` into the four kinds (`MediaStream.Delivery`), and marks the heaviest re-encodes (`isHeavyReencode`).
+4. **Playing it:**
+   - The decks: `TVDeck`, with a `VLCItem` per item for VLC, and `VideoDeck`, with hls.js or the browser's own HLS.
+   - A conversion buffers further ahead (`convertedForwardBuffer`).
+   - A re-encode starts past live (`Timings.transcodeHeadStart`, twice that for the heaviest).
+   - The next programme is asked for ahead of time (`prepareNextLead`; `convertedNextLead` for one the server converts).
+5. **Trouble:** `ChannelPlayer.fail`, by `ErrorKind`:
+   - signed out: sign in again;
+   - can't decode: rule out a format (`UnplayableFormats`), or, for the safest formats, retry (`safestFormatRetries`) and then say it can't play;
+   - a conversion that can't keep up: ask for less (`ProgrammeSettings.askForLessReencoding`, `askForLessSoundWork`);
+   - connection trouble in Auto: measure (`SpeedTest`) and cap that programme.
+
+   Buffering limits: `stallTimeout`, `convertedBufferingLimit`, `stepDownAfterBuffering` and `maxDriftBehindLive`.
+6. **The words:** `PlayerText` (diagnostics, the stream line, why a programme stopped), `SettingsText`, `FriendlyError`.
+
+Subtitles are off at every layer (§7).
+
+**Still open (2026-10-26):**
+- **Not yet checked on a real Apple TV or a real Jellyfin server,** only in tests and against the demo server:
+  - FLAC and 7.1 on Apple's player, before they're declared (so for now the server converts them);
+  - TrueHD in VLC;
+  - a DTS film's sound conversion;
+  - VLC's 3 s network buffer;
+  - the second request with a chosen sound track (`IsSecondaryAudio`);
+  - the heaviest re-encodes' reasons.
+- **A doubled ffmpeg start, suspected** when joining a conversion part-way. It needs the server's log to confirm.
+- **VLC reports no buffered seconds,** so the head start and resume rules don't see its buffer. That's harmless while VLC never plays a conversion.
+- **Web commercials stuttering, reported but unconfirmed:** reported with any quality but Maximum. The likely cause, the next programme's re-encode buffering during the break, needs a server that converts to check.
+
 ## 8. UI (SwiftUI on tvOS)
 
 - **Launch:** first run shows the login screen. After that, it goes straight to the last-watched channel, stored as a number in `AppPreferences`. If that channel no longer exists or is empty, it falls back to the lowest-numbered channel that has content.
