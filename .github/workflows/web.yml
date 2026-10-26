@@ -1,20 +1,26 @@
 # The web version: build, check and test it, and deploy it to gregular.tv
-# (WEB_PLAN.md). Only main: each push to it is built, tested and deployed
-# (or run by hand). Other branches and pull requests are tested
-# locally (scripts/test-web.sh). Deploying needs the CLOUDFLARE_API_TOKEN
-# and CLOUDFLARE_ACCOUNT_ID secrets (README, *The web version*); without
-# them, everything else still runs.
+# (WEB_PLAN.md). Each push to main is built, tested and deployed (or run by
+# hand). Each pull request is built and tested the same way, and
+# its deploy is rehearsed without publishing (`deploy-check`), so a change
+# that fails is caught before it's merged (AUDIT.md, P3). Deploying needs
+# the CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID secrets (README, *The
+# web version*); without them, everything else still runs.
 #
-# Two jobs, so nothing that builds the site ever sees the deploy token:
-# `build` builds and tests it with no secrets at all, and `deploy` only
-# publishes what `build` made, with Wrangler as Web/package-lock.json pins
-# it. Every tool is pinned: actions by commit, the WebAssembly SDK and
-# binaryen by checksum, the toolchain installer by its signature.
+# Nothing that builds the site, or runs for a pull request, ever sees the
+# deploy token: `build` and `deploy-check` have no secrets at all and no
+# environment, and only `deploy`, on main, publishes what `build` made,
+# with Wrangler as Web/package-lock.json pins it. Every tool is pinned:
+# actions by commit, the WebAssembly SDK and binaryen by checksum, the
+# toolchain installer by its signature.
 name: Web
 
 on:
   push:
     branches: [main]
+  # Any pull request, into main or into another (a stack of them): not
+  # pull_request_target, so its run gets no secrets and only read access,
+  # whoever opened it.
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -34,12 +40,12 @@ env:
 jobs:
   build:
     # A run started by hand from another branch does nothing.
-    if: github.ref == 'refs/heads/main'
+    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
     # macOS, like development: the same toolchain installer and browsers.
     runs-on: macos-15
     timeout-minutes: 60
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
@@ -86,7 +92,7 @@ jobs:
         run: scripts/test-web.sh walkthrough release
 
       - name: Keep the site for the deploy
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: site
           path: Web/dist
@@ -106,19 +112,22 @@ jobs:
       # Whether deploying is set up. Only the deploy step sees the token itself.
       CAN_DEPLOY: ${{ secrets.CLOUDFLARE_API_TOKEN != '' }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
           sparse-checkout: Web
 
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: site
           path: Web/dist
 
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
+          # No dependency cache in the job that holds the token: a cache is
+          # shared with other runs, so it could be poisoned.
+          package-manager-cache: false
 
       - name: Install Wrangler, as the lockfile pins it
         if: env.CAN_DEPLOY == 'true'
@@ -134,3 +143,37 @@ jobs:
           # No usage reports to Cloudflare from the deploy.
           WRANGLER_SEND_METRICS: "false"
         run: npx --no-install wrangler deploy
+
+  # A pull request's deploy, rehearsed with no secrets and no environment:
+  # the same steps as `deploy`, ending in Wrangler's dry run, which checks
+  # what would be published without publishing it.
+  deploy-check:
+    needs: build
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: Web
+
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: site
+          path: Web/dist
+
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+          package-manager-cache: false
+
+      - name: Install Wrangler, as the lockfile pins it
+        working-directory: Web
+        run: npm ci --no-fund --no-audit
+
+      - name: Rehearse the deploy
+        working-directory: Web
+        env:
+          WRANGLER_SEND_METRICS: "false"
+        run: npx --no-install wrangler deploy --dry-run

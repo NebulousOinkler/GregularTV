@@ -22,6 +22,9 @@ public enum ErrorKind: Equatable, Sendable {
     case needsHTTPS
     /// The server answered with an error, or with something the app didn't understand.
     case server
+    /// A player couldn't decode what it was sent (`UnplayableMedia`): only
+    /// something else, from it or another player, can play.
+    case unplayable
     case unknown
 
     public init(_ error: (any Error)?) {
@@ -30,6 +33,8 @@ public enum ErrorKind: Equatable, Sendable {
             self = failure.isSessionExpired ? .signedOut : .server
         case is any ConnectionFailure:
             self = .connection
+        case is any UnplayableMedia:
+            self = .unplayable
         case let url as URLError:
             self = Self.kind(of: url.code)
         case is DecodingError:

@@ -55,26 +55,40 @@ import Observation
 ///   VLC* on Apple TV).
 /// - **Stalls:** if video hasn't moved for 30 s (for example, the server
 ///   can't transcode fast enough), it's treated as a failure and retried.
+///   On a stream the server converts, buffering for `convertedBufferingLimit`
+///   already takes its ladder's next step (below), sooner than a stall.
 /// - **Head start for re-encoding:** tuning into a programme the server has to
 ///   re-encode, the player asks for it from a little ahead of live
 ///   (`transcodeHeadStart`), lets it buffer paused while the screen is blank,
 ///   and starts playing when live reaches that point, once `startCushion` is
 ///   buffered (waiting up to `maxCushionWait` more for it, a little behind
 ///   live). Each stall on the channel doubles the head start, up to
-///   `maxTranscodeHeadStart`. Files that play as-is or are only repackaged
-///   start at once.
+///   `maxTranscodeHeadStart`. A stream whose sound the server converts gets
+///   one too once it couldn't keep up without (below). Files that play as-is
+///   or are only repackaged start at once. Every stream the server converts
+///   buffers up to `convertedForwardBuffer` ahead.
+/// - **A file the player can't decode** (`ErrorKind.unplayable`): the
+///   format it carried is ruled out for that player for the session
+///   (`UnplayableFormats`), and the programme is asked for again at once, for
+///   something else. With nothing left to rule out, it's `cantPlay` until
+///   its slot ends.
 /// - **Sound conversion that can't keep up:** when a programme whose sound
-///   the server converts (the video copied as it is) fails, stalls or falls
-///   a minute behind live, the retry asks for stereo sound, which is less to
-///   make (`ProgrammeSettings.askForLessSoundWork`). Never a lower bitrate,
-///   which would make the server re-encode the video too, so Auto doesn't
-///   measure. (The add-on player can't help: it was asked before the server
-///   converted anything.) After stereo, the trouble may be the connection's.
+///   the server converts (the video copied as it is) fails, stalls, buffers
+///   too long or falls a minute behind live, the retry asks for less sound
+///   work (`ProgrammeSettings.askForLessSoundWork`): stereo, which is less
+///   to make, where there's surround to mix down; then a head start. Never a
+///   lower bitrate, which would make the server re-encode the video too, so
+///   Auto doesn't measure. (The add-on player can't help: it was asked
+///   before the server converted anything.) A browser has no surround to
+///   mix down, so its first step is the head start. After both, the trouble
+///   may be the connection's.
 /// - **Re-encoding that can't keep up:** when a programme the server re-encodes
-///   fails, stalls or falls a minute behind live, the retry asks for less
-///   work: 720p, then a step lower each further time, for that programme
-///   only (shown in Settings as its fix). The server's processor is the limit, not the connection, so
-///   Auto doesn't re-measure first.
+///   fails, stalls, buffers too long or falls a minute behind live, the retry
+///   asks for less work: 720p, then a step lower each further time, for that
+///   programme only (shown in Settings as its fix). The server's processor
+///   is the limit, not the connection, so Auto doesn't re-measure first. At
+///   the lowest, there's nothing less to ask for: then it may be the
+///   connection's.
 /// - **Too little left to re-encode:** a programme the server would re-encode
 ///   isn't started with under `minReencodedTimeLeft` to go, since starting a
 ///   transcode costs the server a lot for a minute of video. The screen is
@@ -122,6 +136,9 @@ public final class ChannelPlayer {
         /// Buffering ahead of live while the server re-encodes; plays at `at`.
         case startingSoon(at: Date)
         case failed(message: String, retryAt: Date)
+        /// Nothing this device plays can show what's on (`UnplayableFormats`):
+        /// blank, saying so, until it ends, with no more retries for it.
+        case cantPlay(until: Date)
 
         public var isPaused: Bool { if case .paused = self { true } else { false } }
     }
@@ -149,11 +166,14 @@ public final class ChannelPlayer {
     public static let startCushion: TimeInterval = 15
     /// How much longer than the head start to wait for that cushion.
     public static let maxCushionWait: TimeInterval = 30
-    /// How far ahead a re-encoded programme keeps buffering, so it builds a
-    /// reserve whenever the server gets ahead.
-    public static let reencodedForwardBuffer: TimeInterval = 60
+    /// How far ahead a stream the server converts (its video or its sound)
+    /// keeps buffering, so it builds a reserve whenever the server gets ahead.
+    public static let convertedForwardBuffer: TimeInterval = 60
     /// With "Step down quality", buffering this long steps down again.
     public static let stepDownAfterBuffering: TimeInterval = 4
+    /// Buffering this long on a stream the server converts takes its
+    /// ladder's next step (`askForLessWork`), without waiting for a stall.
+    public static let convertedBufferingLimit: TimeInterval = 10
     /// A re-encoded programme with less than this left isn't started.
     public static let minReencodedTimeLeft: TimeInterval = 180
     /// How often the server hears the player still wants its streams: well
@@ -217,6 +237,9 @@ public final class ChannelPlayer {
     /// What applies to the programme on now only: fixes, the choice of
     /// player, Auto's cap (`ProgrammeSettings`). Nil until one is set.
     private var programmeSettings: ProgrammeSettings?
+    /// What this device's players turned out not to decode, for as long as
+    /// this player lasts (the watching session), across channels.
+    private var unplayable = UnplayableFormats()
     /// When the current fixed programme started buffering, for stepping down again.
     private var bufferingSince: Date?
     /// The programme after the current commercial break, buffering in
@@ -253,6 +276,8 @@ public final class ChannelPlayer {
         let player: MediaStream.Player
         /// How the server sends it (`MediaStream.Delivery`).
         let delivery: MediaStream.Delivery
+        /// What it carries, for learning what the player can't decode.
+        let contents: StreamContents
         /// The server re-encodes it, so tuning in mid-programme gets a head start.
         var reencodes: Bool { delivery == .reencoded }
         /// Why the server converts it, if it does (for diagnostics).
@@ -436,7 +461,7 @@ public final class ChannelPlayer {
         guard let current, player.currentItem === current.item, !current.item.hasFailed,
               !tuning.isInPadding, tuning.airing == current.airing,
               current.airing.end.timeIntervalSince(now) > Self.prepareNextLead else { return false }
-        if current.reencodes, secondsBehindLive(in: current.airing, at: now) > current.item.bufferedAhead { return false }
+        if needsHeadStart(current), secondsBehindLive(in: current.airing, at: now) > current.item.bufferedAhead { return false }
         seek(to: now.timeIntervalSince(current.airing.start), in: current.airing)
         lastProgress = nil   // the stall watchdog starts afresh: the pause wasn't a stall
         player.play()
@@ -461,6 +486,11 @@ public final class ChannelPlayer {
             status = .betweenProgrammes(until: tuning.airing.slotEnd)
             return
         }
+        // Nothing here plays this programme (any part of it): don't ask again.
+        if !tuning.airing.isFiller, settings(for: tuning.airing).cantPlay {
+            status = .cantPlay(until: tuning.airing.slotEnd)
+            return
+        }
 
         tuneTask = Task {
             do {
@@ -480,7 +510,7 @@ public final class ChannelPlayer {
                 current = loaded
                 streamDescription = loaded.description
                 player.append(loaded.item)
-                if loaded.reencodes, let start = headStartTarget(in: tuning.airing) {
+                if needsHeadStart(loaded), let start = headStartTarget(in: tuning.airing) {
                     // Let the server get ahead: buffer from `start`, paused, then play on time.
                     seek(to: start.timeIntervalSince(tuning.airing.start), in: tuning.airing)
                     status = .startingSoon(at: start)
@@ -522,7 +552,7 @@ public final class ChannelPlayer {
         case .betweenProgrammes(let until):
             if now >= until, !startHeldNext() { tune() }
             return
-        case .failed(_, let until):
+        case .failed(_, let until), .cantPlay(let until):
             if now >= until { tune() }
             return
         case .playing:
@@ -587,12 +617,20 @@ public final class ChannelPlayer {
         }
         isBuffering = player.state == .waiting
 
-        // "Step down quality": buffering for a few seconds steps down again.
-        if isBuffering, settings(for: current.airing).fix?.kind == .stepDown {
+        // Buffering: with "Step down quality", a few seconds steps down again;
+        // on a stream the server converts, a little longer takes its ladder's
+        // next step (a lower re-encode, stereo, a head start), not waiting
+        // for a stall or falling a minute behind.
+        if isBuffering {
             let since = bufferingSince ?? now
             bufferingSince = since
-            if now.timeIntervalSince(since) > Self.stepDownAfterBuffering,
+            let buffered = now.timeIntervalSince(since)
+            if settings(for: current.airing).fix?.kind == .stepDown, buffered > Self.stepDownAfterBuffering,
                programmeSettings?.stepDownAgain() == true {
+                tune()
+                return
+            }
+            if buffered > Self.convertedBufferingLimit, askForLessWork(on: current) {
                 tune()
                 return
             }
@@ -768,6 +806,13 @@ public final class ChannelPlayer {
         #endif
     }
 
+    /// The server has to get ahead of `loaded` before it plays: a re-encode,
+    /// or a sound conversion that couldn't keep up without a head start
+    /// (`ProgrammeSettings.soundHeadStart`).
+    private func needsHeadStart(_ loaded: LoadedAiring) -> Bool {
+        loaded.reencodes || (loaded.delivery == .soundConverted && settings(for: loaded.airing).soundHeadStart)
+    }
+
     /// Where to start a re-encoded programme: a head start past live that
     /// doubles with each failure on this channel. Nil if the programme ends
     /// too soon for it to be worth it.
@@ -798,7 +843,7 @@ public final class ChannelPlayer {
         // last part stopped, even when it's queued and starts by itself.
         let item = player.makeItem(url: source.url, on: source.player,
                                    from: airing.mediaOffset, to: airing.mediaOffset + airing.length,
-                                   bufferAhead: source.reencodes ? Self.reencodedForwardBuffer : nil)
+                                   bufferAhead: source.delivery.isConverted ? Self.convertedForwardBuffer : nil)
         return LoadedAiring(airing: airing,
                             item: item,
                             unreleased: source,
@@ -806,6 +851,7 @@ public final class ChannelPlayer {
                             cap: cap,
                             player: source.player,
                             delivery: source.delivery,
+                            contents: source.contents,
                             conversionReasons: reasons)
     }
 
@@ -815,7 +861,8 @@ public final class ChannelPlayer {
         let settings = settings(for: airing)
         if quality == .auto, settings.needsRemeasuring(at: .now) { measureInBackground(for: airing) }
         let cap = settings.cap(at: quality)
-        let request = StreamRequest(maxBitrate: cap, players: players, stereoSound: settings.stereoSound)
+        let request = StreamRequest(maxBitrate: cap, players: players, stereoSound: settings.stereoSound,
+                                    unplayable: unplayable.byPlayer)
         return (try await streams.stream(for: airing.item.id, request), cap)
     }
 
@@ -825,7 +872,7 @@ public final class ChannelPlayer {
     /// is converted by the server, as a programme is.
     private func commercialSource(for item: MediaItem, players: [MediaStream.Player]) async throws -> (MediaStream, cap: Int) {
         let cap = StreamingQuality.maximumBitrate
-        return (try await streams.stream(for: item.id, StreamRequest(maxBitrate: cap, players: players)), cap)
+        return (try await streams.stream(for: item.id, StreamRequest(maxBitrate: cap, players: players, unplayable: unplayable.byPlayer)), cap)
     }
 
     /// The players to ask about for `airing`, in order: the device's own
@@ -918,6 +965,15 @@ public final class ChannelPlayer {
         let failed = current.flatMap { $0.airing == airing ? $0 : nil }
         unloadEverything()
         self.airing = airing
+        // The player couldn't decode it: rule out what it carried and ask
+        // again at once, for something else (no backoff: the server isn't
+        // at fault). With nothing left to rule out, it can't be played here.
+        if kind == .unplayable, let failed {
+            if unplayable.learn(from: failed.contents, on: failed.player, safest: streams.safestFormats) { return tune() }
+            if !airing.isFiller { updateSettings(for: airing) { $0.cantPlay = true } }
+            status = .cantPlay(until: airing.slotEnd)
+            return
+        }
         let delay = min(Self.maxRetryDelay, 5 * pow(2, Double(consecutiveFailures)))
         consecutiveFailures += 1
         if let failed, askForLessWork(on: failed) {
@@ -932,7 +988,7 @@ public final class ChannelPlayer {
     /// The server converting `loaded` couldn't keep up: ask it for less
     /// work, for this programme only. A re-encode asks for a lower quality
     /// (`ProgrammeSettings.askForLessReencoding`); a sound conversion asks
-    /// for stereo (`askForLessSoundWork`). False if
+    /// for stereo, then a head start (`askForLessSoundWork`). False if
     /// the server isn't converting it (the original, or only repackaged), it's
     /// a commercial, or there's nothing less to ask for: then the trouble may
     /// be the connection's.
@@ -941,8 +997,7 @@ public final class ChannelPlayer {
         var asked = false
         switch loaded.delivery {
         case .reencoded:
-            updateSettings(for: loaded.airing) { $0.askForLessReencoding(from: loaded.cap) }
-            asked = true
+            updateSettings(for: loaded.airing) { asked = $0.askForLessReencoding(from: loaded.cap) }
         case .soundConverted:
             updateSettings(for: loaded.airing) { asked = $0.askForLessSoundWork(offersStereo: offersStereoSound) }
         case .original, .repackaged:

@@ -32,7 +32,7 @@ public enum FriendlyError {
             "Couldn't make a secure connection to your \(AppModel.serverName) server."
         case .needsHTTPS:
             "This server needs a secure (https) address."
-        case .signedOut, .server, .unknown:
+        case .signedOut, .server, .unplayable, .unknown:
             "Couldn't talk to your \(AppModel.serverName) server."
         }
     }

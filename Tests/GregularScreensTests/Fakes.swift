@@ -12,15 +12,18 @@ import Testing
         let player: MediaStream.Player
         let start: TimeInterval
         let end: TimeInterval
+        /// How far ahead the player was asked to buffer, or nil for its default.
+        let bufferAhead: TimeInterval?
         var hasFailed = false
         var failure: (any Error)?
         var bufferedAhead: TimeInterval = 60
         var bufferedInAll: TimeInterval = 60
-        init(url: URL, player: MediaStream.Player, start: TimeInterval, end: TimeInterval) {
+        init(url: URL, player: MediaStream.Player, start: TimeInterval, end: TimeInterval, bufferAhead: TimeInterval?) {
             self.url = url
             self.player = player
             self.start = start
             self.end = end
+            self.bufferAhead = bufferAhead
         }
     }
 
@@ -35,7 +38,7 @@ import Testing
 
     func makeItem(url: URL, on player: MediaStream.Player, from start: TimeInterval, to end: TimeInterval,
                   bufferAhead: TimeInterval?) -> any PlayerItem {
-        Item(url: url, player: player, start: start, end: end)
+        Item(url: url, player: player, start: start, end: end, bufferAhead: bufferAhead)
     }
 
     var currentItem: (any PlayerItem)? { queue.first }
@@ -50,6 +53,8 @@ import Testing
         if pausesAtItemEnd { state = .paused } else { advance() }
     }
     func pause() { state = .paused }
+    /// Runs out of video while playing, until it's played or paused again.
+    func startBuffering() { state = .waiting }
     func seek(to seconds: TimeInterval) {
         seeks.append(seconds)
         position = seconds
@@ -71,7 +76,10 @@ import Testing
 /// - `soundConverting`: only the add-on player plays them as they are; it
 ///   converts their sound for any other;
 /// - with `streaming`, it repackages everything the built-in player would
-///   otherwise play as it is.
+///   otherwise play as it is;
+/// - `files`: what each item's file carries. A format the request rules out
+///   for the built-in player (`StreamRequest.unplayable`) is converted:
+///   the sound to AAC, the video to H.264.
 ///
 /// Each stream it serves itself is in a session of its own. The first stream
 /// asked for fails with `failingFirst`, if given. A stream converted for the
@@ -85,6 +93,7 @@ final class FakeStreams: StreamSource, @unchecked Sendable {
     private let streaming: Bool
     private let addOnOnly: Set<String>
     private let soundConverting: Set<String>
+    private let files: [String: StreamContents]
     private var failingFirst: (any Error)?
     let players: [MediaStream.Player]
     let mostSoundChannels: Int
@@ -95,7 +104,8 @@ final class FakeStreams: StreamSource, @unchecked Sendable {
 
     init(measured: Int = 50_000_000, converting: Set<String> = [], streaming: Bool = false,
          players: [MediaStream.Player] = [.builtIn], addOnOnly: Set<String> = [], soundConverting: Set<String> = [],
-         mostSoundChannels: Int = 6, failingFirst: (any Error)? = nil) {
+         mostSoundChannels: Int = 6, files: [String: StreamContents] = [:], failingFirst: (any Error)? = nil) {
+        self.files = files
         self.measured = measured
         self.converting = converting
         self.streaming = streaming
@@ -112,7 +122,10 @@ final class FakeStreams: StreamSource, @unchecked Sendable {
     var playersAsked: [[MediaStream.Player]] { lock.withLock { requests.map(\.players) } }
     /// For each stream asked for, whether it was with stereo sound.
     var stereoAsked: [Bool] { lock.withLock { requests.map(\.stereoSound) } }
+    /// For each stream asked for, what it ruled out for the built-in player.
+    var ruledOut: [Set<MediaFormat>] { lock.withLock { requests.map { $0.unplayable[.builtIn] ?? [] } } }
     var speedTests: Int { lock.withLock { tests } }
+    let safestFormats: Set<MediaFormat> = [MediaFormat(.video, "h264"), MediaFormat(.sound, "aac")]
     /// What it was asked, in order: "speed test", or "<item ID> at <cap>".
     var events: [String] { lock.withLock { log } }
     /// The sessions kept going, in order.
@@ -125,6 +138,14 @@ final class FakeStreams: StreamSource, @unchecked Sendable {
         }
         if let failure = lock.withLock({ () -> (any Error)? in defer { failingFirst = nil }; return failingFirst }) { throw failure }
         let url = URL(string: "https://tv.invalid/\(itemID)")!
+        if let file = files[itemID] {
+            let ruledOut = request.unplayable[.builtIn] ?? []
+            let video = file.video.map { ruledOut.contains($0) ? MediaFormat(.video, "h264") : $0 }
+            let sound = file.sound.map { ruledOut.contains($0) ? MediaFormat(.sound, "aac") : $0 }
+            let delivery: MediaStream.Delivery = video != file.video ? .reencoded : sound != file.sound ? .soundConverted : .original
+            return MediaStream(url: url, delivery: delivery, sessionID: delivery != .original ? "session-\(itemID)" : nil,
+                               contents: StreamContents(video: video, sound: sound))
+        }
         let addOnOnly = addOnOnly.contains(itemID) || soundConverting.contains(itemID)
         let asItIs = request.players.first { $0 == .addOn || !addOnOnly }
         let delivery: MediaStream.Delivery =
@@ -132,8 +153,9 @@ final class FakeStreams: StreamSource, @unchecked Sendable {
             : asItIs == nil ? (soundConverting.contains(itemID) ? .soundConverted : .repackaged)
             : streaming && asItIs == .builtIn ? .repackaged
             : .original
-        return MediaStream(url: url, delivery: delivery, player: delivery.isStreamed ? .builtIn : asItIs ?? .builtIn,
-                           sessionID: delivery.isStreamed ? "session-\(itemID)" : nil)
+        let streamed = delivery != .original
+        return MediaStream(url: url, delivery: delivery, player: streamed ? .builtIn : asItIs ?? .builtIn,
+                           sessionID: streamed ? "session-\(itemID)" : nil)
     }
     func release(_ stream: MediaStream) async {}
     func keepAlive(_ stream: MediaStream) async {

@@ -21,18 +21,55 @@ struct SoundTroubleTests {
         deck.seek(to: 0)
     }
 
-    /// Stereo first; after that, it may be the connection: Auto measures.
-    @Test func thenStereoThenTheConnection() async throws {
+    /// Stereo first, then a head start, so the server gets ahead; no speed test.
+    @Test func stereoThenAHeadStart() async throws {
         let streams = FakeStreams(soundConverting: ["m1", "m2"])
         let player = try player(streams)
         player.start()
+        #expect(try await Fixture.playingDeck(player).queue.first?.bufferAhead == ChannelPlayer.convertedForwardBuffer,
+                "A sound conversion buffers further ahead")
         try await fallBehind(player)
         try await waitUntil(3) { streams.stereoAsked.count == 2 }
         #expect(streams.stereoAsked == [false, true] && streams.speedTests == 0)
         #expect(player.stereoSound, "Settings shows it on")
         try await fallBehind(player)
-        try await waitUntil(3) { streams.stereoAsked.count == 3 }
-        #expect(streams.stereoAsked.last == true && streams.speedTests == 1)
+        try await waitUntil(3) { if case .startingSoon = player.status { true } else { false } }
+        #expect(streams.stereoAsked.count == 3 && streams.speedTests == 0)
+        player.stop()
+    }
+
+    /// On the web there's no surround to mix down, and no add-on player: the
+    /// head start comes first, at once, and still no speed test.
+    @Test func inABrowserTheHeadStartComesFirst() async throws {
+        let streams = FakeStreams(soundConverting: ["m1", "m2"], mostSoundChannels: 2)
+        let player = try player(streams)
+        player.start()
+        try await fallBehind(player)
+        try await waitUntil(3) { if case .startingSoon = player.status { true } else { false } }
+        #expect(streams.stereoAsked == [false, false] && streams.speedTests == 0)
+        player.stop()
+    }
+
+    /// Buffering on a conversion takes the next step after about 10 seconds,
+    /// without waiting for a stall or falling a minute behind.
+    @Test func bufferingTakesTheNextStep() async throws {
+        let streams = FakeStreams(soundConverting: ["m1", "m2"])
+        let player = try player(streams)
+        player.start()
+        try await Fixture.playingDeck(player).startBuffering()
+        try await waitUntil(ChannelPlayer.convertedBufferingLimit + 3) { streams.stereoAsked.count == 2 }
+        #expect(streams.stereoAsked.last == true && streams.speedTests == 0)
+        player.stop()
+    }
+
+    /// A file played as it is keeps the usual rules: buffering alone takes no step.
+    @Test func bufferingOnTheOriginalWaits() async throws {
+        let streams = FakeStreams()
+        let player = try player(streams)
+        player.start()
+        try await Fixture.playingDeck(player).startBuffering()
+        try await Task.sleep(for: .seconds(ChannelPlayer.convertedBufferingLimit + 2))
+        #expect(streams.caps.count == 1 && player.isBuffering)
         player.stop()
     }
 

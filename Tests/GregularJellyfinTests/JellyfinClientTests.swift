@@ -207,7 +207,7 @@ struct JellyfinPlaybackTests {
         }
         let client = JellyfinClient(credentials: Credentials(serverURL: URL(string: server)!, userID: "user-1", accessToken: "t",
                                                              deviceID: "d"),
-                                    identity: JellyfinFixtures.identity, formats: .browser(playsHEVC: false), transport: mock)
+                                    identity: JellyfinFixtures.identity, formats: .browser(alsoPlays: []), transport: mock)
         _ = try await client.playbackSource(for: "abc")
     }
 
@@ -346,6 +346,43 @@ struct JellyfinPlaybackTests {
         _ = try await client.playbackSource(for: "abc", stereoSound: true)
         #expect(channels == ["6", "2"])
         #expect(client.mostSoundChannels == 6)
+    }
+
+    /// What a stream carries: the file's own, or a conversion's output, as
+    /// Jellyfin describes it.
+    @Test func aStreamSaysWhatItCarries() async throws {
+        let streams = #"""
+            "MediaStreams": [{ "Type": "Video", "Codec": "hevc", "Profile": "Main 10" },
+                             { "Type": "Audio", "Codec": "dts", "IsDefault": false }, { "Type": "Audio", "Codec": "eac3", "IsDefault": true }]
+            """#
+        mock.on("POST", "/Items/file/PlaybackInfo", json: #"{ "MediaSources": [{ "Id": "file", "Container": "mp4", "SupportsDirectPlay": true, \#(streams) }] }"#)
+        mock.on("POST", "/Items/sound/PlaybackInfo", json: #"{ "MediaSources": [{ "Id": "sound", "SupportsDirectPlay": false, "TranscodingUrl": "/videos/sound/master.m3u8?VideoCodec=h264,hevc&AudioCodec=aac,ac3&TranscodeReasons=AudioCodecNotSupported", \#(streams) }] }"#)
+        mock.on("POST", "/Items/video/PlaybackInfo", json: #"{ "MediaSources": [{ "Id": "video", "SupportsDirectPlay": false, "TranscodingUrl": "/videos/video/master.m3u8?VideoCodec=h264,hevc&AudioCodec=aac,ac3&TranscodeReasons=VideoProfileNotSupported", \#(streams) }] }"#)
+        let client = JellyfinFixtures.client(mock)
+        let hevc10 = MediaFormat(.video, "hevc", profile: "main 10"), eac3 = MediaFormat(.sound, "eac3")
+        #expect(try await client.playbackSource(for: "file").mediaStream.contents == StreamContents(video: hevc10, sound: eac3))
+        #expect(try await client.playbackSource(for: "sound").mediaStream.contents
+                == StreamContents(video: hevc10, sound: MediaFormat(.sound, "aac")), "The video copied, the sound converted")
+        #expect(try await client.playbackSource(for: "video").mediaStream.contents
+                == StreamContents(video: MediaFormat(.video, "h264"), sound: eac3), "The video re-encoded, the sound copied")
+        #expect(client.safestFormats == [MediaFormat(.video, "h264"), MediaFormat(.sound, "aac")])
+    }
+
+    /// What a player turned out not to decode is left out of what Jellyfin hears it plays.
+    @Test func whatsRuledOutIsLeftOutOfTheProfile() async throws {
+        mock.on("POST", "/Items/abc/PlaybackInfo") { request in
+            let profile = request.jsonBody["DeviceProfile"] as? [String: Any]
+            let direct = (profile?["DirectPlayProfiles"] as? [[String: Any]])?.first
+            #expect((direct?["AudioCodec"] as? String)?.contains("eac3") == false)
+            let codecs = profile?["CodecProfiles"] as? [[String: Any]] ?? []
+            let hevc = codecs.first { $0["Codec"] as? String == "hevc" }
+            let conditions = (hevc?["Conditions"] as? [[String: Any]])?.map { "\($0["Property"]!)=\($0["Value"]!)" }
+            #expect(conditions?.contains("VideoProfile=main") == true)
+            return (200, #"{ "MediaSources": [{ "Id": "s", "SupportsDirectPlay": true }] }"#)
+        }
+        _ = try await JellyfinFixtures.client(mock).playbackSource(
+            for: "abc", unplayable: [.builtIn: [MediaFormat(.sound, "eac3"), MediaFormat(.video, "hevc", profile: "main 10")]])
+        #expect(mock.requests.count == 1)
     }
 
     @Test func stopTranscodingTargetsThisDeviceAndSession() async throws {
