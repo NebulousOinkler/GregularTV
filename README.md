@@ -126,13 +126,13 @@ Nineteen channels ship in `channels.json`, laid out like a cable line-up from be
 | 12 | Punchline | comedy | 1998 on | 35% |
 | 13 | Sci-Fi Syndicate | sci-fi and fantasy | 1966–1999 | 40% |
 | 14 | Other Worlds | sci-fi and fantasy | 1997 on | 40% |
-| 15 | Viewers Like You | public television: documentaries, nature, history, science, music and arts, and drama from British networks and film companies | 1960 on | 25% |
+| 15 | Viewers Like You | public television: documentaries, nature, history, science, music and arts, and from British networks and film companies, drama, comedy, mystery, history, and baking and other reality shows | 1960 on | 25% |
 | 16 | Workshop | how-to: cooking, home and garden, travel | 1960 on | TV only |
 | 17 | Silver Screen | classic films, back to back | 1930–1966 | films only |
 | 18 | Video Store | films | 1980–1999 | films only |
 | 19 | Premiere | films, back to back | 1998 on | films only |
 
-It's for every age. The kids' channels take only what's tagged Kids, Family or Children, so a cartoon for grown-ups airs with the comedies. The network, comedy, family and classic-TV channels leave out Kids, Children and Horror, so preschool shows and horror films stay off them. These go by your library's genres, as tagged. Viewers Like You finds its drama by studio: the networks and companies Jellyfin lists for a series or film, such as BBC One, ITV or Merchant Ivory. Silver Screen and Premiere have no half-hour slots, so their films follow each other with no breaks, except for the one at the day boundary (below).
+It's for every age. The kids' channels take only what's tagged Kids, Family or Children, so a cartoon for grown-ups airs with the comedies. The network, comedy, family and classic-TV channels leave out Kids, Children and Horror, so preschool shows and horror films stay off them. These go by your library's genres, as tagged. Viewers Like You finds its British programmes by studio: the networks and companies Jellyfin lists for a series or film, such as BBC One, ITV or Merchant Ivory. Silver Screen and Premiere have no half-hour slots, so their films follow each other with no breaks, except for the one at the day boundary (below).
 
 The line-up changed on 2026-10-26, from genres to eras: only Gregular (1) and Movies (10) kept their themes. Set times saved on another bundled channel stay on its number, under its new theme, and don't air while that channel is hidden.
 

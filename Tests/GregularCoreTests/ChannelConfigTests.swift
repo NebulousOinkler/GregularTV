@@ -73,13 +73,22 @@ struct ChannelConfigTests {
         #expect(try channels(airing: Fixtures.movie("Alien", year: 1979, genres: ["Horror", "Science Fiction"])) == ["Late Show", "Sci-Fi Syndicate"])
     }
 
-    /// The public-television channel has documentaries, and drama from
-    /// British networks and film companies (its Masterpiece side), by studio.
-    @Test func publicTelevisionHasBritishDramaByStudio() throws {
-        func drama(_ studio: String) -> MediaItem {
+    /// The public-television channel has documentaries, and from British
+    /// networks and film companies (by studio) what PBS aired of theirs:
+    /// drama (its Masterpiece side), comedy, mystery, history, and baking
+    /// and other reality shows.
+    @Test func publicTelevisionHasBritishProgrammesByStudio() throws {
+        func show(_ studio: String, _ genres: [String] = ["Drama"], year: Int = 2012) -> MediaItem {
             MediaItem(id: studio, kind: .episode, name: "E", duration: 3000, seriesID: studio, seriesName: studio,
-                      productionYear: 2012, genres: ["Drama"], studios: [studio])
+                      productionYear: year, genres: genres, studios: [studio])
         }
+        func drama(_ studio: String) -> MediaItem { show(studio) }
+        #expect(try channels(airing: show("BBC One", ["Comedy"], year: 1985)).contains("Viewers Like You"), "A Britcom")
+        #expect(try channels(airing: show("ITV", ["Crime", "Mystery"], year: 1989)).contains("Viewers Like You"), "A mystery")
+        #expect(try channels(airing: show("Channel 5", ["Drama", "History"], year: 2020)).contains("Viewers Like You"))
+        #expect(try !channels(airing: show("NBC", ["Comedy"], year: 1985)).contains("Viewers Like You"))
+        #expect(try channels(airing: show("BBC Two", ["Reality"], year: 2012)).contains("Viewers Like You"), "A bake-off")
+        #expect(try !channels(airing: show("ITV2", ["Reality"], year: 2018)).contains("Viewers Like You"), "Not a network PBS took from")
         #expect(try channels(airing: drama("BBC One")) == ["Next Episode", "Viewers Like You"])
         #expect(try channels(airing: drama("bbc one")) == ["Next Episode", "Viewers Like You"], "Studios match ignoring case")
         #expect(try channels(airing: drama("NBC")) == ["Next Episode"])
