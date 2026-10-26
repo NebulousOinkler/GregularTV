@@ -42,6 +42,12 @@ struct SettingsView: View {
             if let programme = player.fixableProgramme?.item.displayTitle {
                 SettingsRows.section(SettingsText.trouble(with: programme), footer: [SettingsText.troubleNote]) {
                     ForEach(SettingsText.fixes, id: \.title) { fixRow($0.fix, $0.title, detail: $0.detail) }
+                    if player.offersStereoSound {
+                        SettingsRows.row(SettingsText.stereoSound, detail: SettingsText.stereoSoundDetail(isOn: player.stereoSound),
+                                         value: SettingsText.onOff(player.stereoSound)) {
+                            if player.setStereoSound(!player.stereoSound) { dismiss() }
+                        }
+                    }
                     if player.hasAddOnPlayer {
                         let isOn = player.programmeIsOnAddOn
                         SettingsRows.row(SettingsText.playInVLC,

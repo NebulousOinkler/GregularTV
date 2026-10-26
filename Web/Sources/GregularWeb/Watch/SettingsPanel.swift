@@ -74,6 +74,14 @@ import JavaScriptKit
                     self.dismiss()
                 }
             }))
+            if player.offersStereoSound {
+                sections.append(Parts.section(nil, rows: [
+                    Parts.toggle(SettingsText.stereoSound, detail: SettingsText.stereoSoundDetail(isOn: player.stereoSound),
+                                 on: player.stereoSound) {
+                        if player.setStereoSound(!player.stereoSound) { self.dismiss() }
+                    },
+                ]))
+            }
         }
 
         sections.append(Parts.section(SettingsText.scheduleCode, footer: [codeError, SettingsText.scheduleCodeNote], rows: [

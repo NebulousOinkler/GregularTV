@@ -37,7 +37,7 @@ These are refactors only. The tvOS app keeps the same behaviour, and the tests m
 | Change | Why |
 |---|---|
 | Replace `URLRequest`/`HTTPURLResponse` in `HTTPTransport` with small request and reply types of our own. `URLSessionTransport` converts to them, and moves behind a check so it only builds on Apple platforms. | URLSession's networking library (FoundationNetworking) likely isn't available on WebAssembly, and the protocol uses its types. |
-| Make `DeviceProfile` in `Playback.swift` take a parameter for the platform. tvOS keeps its current profile. The browser profile: direct play of mp4 with H.264 and AAC; HLS that converts to H.264 first; AAC audio only; HEVC only if `MediaSource.isTypeSupported` says the browser can play it. | Browsers can't play AC-3/E-AC-3 audio or MKV files. The subtitle rules (`External`, `SubtitleStreamIndex=-1`) stay as they are. |
+| Make `DeviceProfile` in `Playback.swift` take a parameter for the platform. tvOS keeps its current profile. The browser profile: direct play of mp4 with H.264 and AAC; HLS that converts to H.264 first; AAC audio, plus whatever `MediaSource.isTypeSupported` says the browser decodes of HEVC (Main, Main 10), AV1, AC-3, E-AC-3, Opus and FLAC (`PlayableFormats.browserMayPlay`, since 2026-10-25; HEVC alone before). | Browsers can't play AC-3/E-AC-3 audio or MKV files. The subtitle rules (`External`, `SubtitleStreamIndex=-1`) stay as they are. |
 | Add a small key-value storage protocol under `AppPreferences`: `UserDefaults` on Apple, `localStorage` on the web. | It is Core's only use of `UserDefaults`. |
 | Build `channels.json` into the code with SwiftPM's `.embedInCode` instead of `Bundle.module`. | A browser has no bundle to read files from. |
 | Pass launch options (`DemoCredentials`, `DebugOptions`) in from outside instead of reading `ProcessInfo.arguments`. | The web reads them from the page URL. |
@@ -117,7 +117,7 @@ Steps marked **(you)** need the owner's accounts, payment or tokens. **(Claude)*
 5. **(Claude, in phase 5) Deployment files.**
    - A `wrangler.jsonc` with `assets: { directory: "Web/dist", not_found_handling: "single-page-application" }`, no worker script, and observability off.
    - A GitHub Actions workflow that runs on every push to main, in two jobs. `build`, with no secrets, installs the swift.org toolchain (its installer's signature checked) and the WebAssembly SDK and binaryen (checksums checked), builds the site and runs the tests. `deploy` publishes what `build` made with Wrangler, at the version `Web/package-lock.json` pins, and only it sees the token. Actions are pinned to commits.
-   - Only main runs it: other branches and pull requests are tested locally (`scripts/test-web.sh`), with no previews.
+   - Pull requests (into main, or into another, for a stack) run `build` too, and `deploy-check`, which rehearses the deploy with Wrangler's dry run; neither has any secrets, and there are no previews (since 2026-10-25, AUDIT.md P3; before, only main ran it). Other branches are tested locally (`scripts/test-web.sh`).
 6. **(you) Connect the domain.**
    - `Web/wrangler.jsonc` names `gregular.tv` as the Worker's custom domain, so each deploy keeps it; the workers.dev address and preview URLs are off. `www.gregular.tv` stays a DNS record of its own, which only the redirect rule below uses (a custom domain can't be added where a DNS record exists).
    - Under Rules, add a 301 redirect from `www.gregular.tv/*` to `https://gregular.tv/${1}`.

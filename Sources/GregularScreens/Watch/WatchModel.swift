@@ -344,7 +344,7 @@ public final class WatchModel {
     /// head start buffers: no frame held on screen.
     public var hidesVideo: Bool {
         switch player.status {
-        case .betweenProgrammes, .startingSoon: true
+        case .betweenProgrammes, .startingSoon, .cantPlay: true
         default: false
         }
     }
@@ -372,6 +372,11 @@ public final class WatchModel {
                            when: "\(resumes ? "Back at" : "Starts at") \(start.clockTime)")
         case .failed(let message, let retryAt):
             return .failed(message: message, retryAt: retryAt)
+        case .cantPlay(let until):
+            let next = player.schedule.airings(from: until, to: until.addingTimeInterval(1)).first
+            let what = player.airing?.isFiller == true ? "This commercial" : "This programme"
+            return .cantPlay(message: "\(what) can't be played on this device.",
+                             next: next.map { "Up next: \($0.item.displayTitle)" }, when: "At \(until.clockTime)")
         default:
             return nil
         }
@@ -571,4 +576,6 @@ public enum StatusCardContent: Sendable, Equatable {
     case upNext(heading: String, title: String?, when: String)
     /// What went wrong, and when it'll try again.
     case failed(message: String, retryAt: Date)
+    /// Nothing this device plays can show what's on: what's next, and when.
+    case cantPlay(message: String, next: String?, when: String)
 }
