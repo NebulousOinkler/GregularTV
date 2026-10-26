@@ -16,13 +16,62 @@ struct ChannelConfigTests {
     }
 
     /// The fixture library is tiny: only the two catch-all channels, which
-    /// never need variety, are on. Every themed channel needs it.
+    /// never need variety, are on. Every themed channel needs it, so one too
+    /// thin for the library isn't shown.
     @Test func bundledLineupHidesChannelsWithoutEnoughVariety() throws {
         let lineup = try ChannelLineup.bundled()
         let schedules = lineup.schedules(for: Fixtures.library)
         #expect(schedules.map(\.channel.name) == ["Gregular", "Movies"])
         #expect(lineup.channels.filter { !$0.needsVariety }.map(\.number) == [1, 10])
         #expect(lineup.channels.contains { $0.filmShare == nil && $0.itemTypes == [.movie] }, "Some channels are films only")
+    }
+
+    /// Every themed channel keeps to an era, so a channel never jumps
+    /// decades from one programme to the next: the years it takes are one
+    /// unbroken run, no longer than Silver Screen's talkies-to-1966 (counted
+    /// to 2026 for a channel that runs on to now).
+    @Test func everyThemedChannelKeepsToAnEra() throws {
+        let probes = [["Comedy"], ["Drama"], ["Animation", "Family"], ["Science Fiction"], ["Documentary"], ["Game Show"], []]
+        for channel in try ChannelLineup.bundled().channels where channel.needsVariety {
+            let kind: MediaItem.Kind = channel.itemTypes.contains(.episode) ? .episode : .movie
+            let years = (1900...2026).filter { year in
+                probes.contains { genres in
+                    channel.accepts(MediaItem(id: "\(year)", kind: kind, name: "\(year)", duration: 1800, seriesID: "s", seriesName: "S",
+                                              productionYear: year, genres: genres))
+                }
+            }
+            let first = try #require(years.first, "\(channel.name) takes no year")
+            #expect(years == Array(first...years.last!), "\(channel.name) takes years with a gap")
+            #expect(years.count <= 37, "\(channel.name) spans \(years.count) years")
+        }
+    }
+
+    /// The themed channels a programme airs on.
+    private func channels(airing item: MediaItem) throws -> [String] {
+        try ChannelLineup.bundled().channels.filter { $0.needsVariety && $0.accepts(item) }.map(\.name)
+    }
+
+    /// A long-running comedy airs on the channels of each episode's own era.
+    @Test func anEpisodeAirsOnTheChannelsOfItsEra() throws {
+        func comedy(_ year: Int) -> MediaItem { Fixtures.episode("Springfield", s: 1, e: 1, genres: ["Comedy"], year: year) }
+        #expect(try channels(airing: comedy(1962)) == ["Rabbit Ears"])
+        #expect(try channels(airing: comedy(1992)) == ["Primetime Gold", "Laugh Track"])
+        #expect(try channels(airing: comedy(2015)) == ["Next Episode", "Punchline"])
+    }
+
+    /// The line-up is for every age: kids' channels take only what's tagged
+    /// for kids or families, so a cartoon for grown-ups airs with the
+    /// comedies; and horror airs only on the late, sci-fi and film channels.
+    @Test func everyAgeHasItsChannels() throws {
+        let adultCartoon = Fixtures.episode("Quahog", s: 1, e: 1, genres: ["Animation", "Comedy"], year: 2004)
+        let cartoon = Fixtures.episode("Bedrock", s: 1, e: 1, genres: ["Animation", "Family"], year: 1985)
+        let preschool = Fixtures.episode("Blocks", s: 1, e: 1, genres: ["Kids"], year: 2001)
+        #expect(try channels(airing: adultCartoon) == ["Sweeps Week", "Punchline"])
+        #expect(try channels(airing: cartoon) == ["Primetime Gold", "Saturday Morning", "Late Show"])
+        #expect(try channels(airing: preschool) == ["After School"])
+        #expect(try channels(airing: Fixtures.movie("Creature", year: 1975, genres: ["Horror"])) == ["Late Show"])
+        #expect(try channels(airing: Fixtures.movie("Slasher", year: 1985, genres: ["Horror"])) == ["Late Show", "Video Store"])
+        #expect(try channels(airing: Fixtures.movie("Alien", year: 1979, genres: ["Horror", "Science Fiction"])) == ["Late Show", "Sci-Fi Syndicate"])
     }
 
     /// "Comedy or the series Bravo, but nothing tagged Christmas", nested.

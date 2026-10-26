@@ -40,7 +40,8 @@ public struct Channel: Sendable {
     /// The library can move it (`ChannelVariety.filmShare(wanted:)`).
     public let filmShare: Double?
     /// Hidden unless the library has enough different programmes to fill a
-    /// day without repeats coming round too soon (`ChannelVariety.fillsADay`).
+    /// day without repeats coming round too soon, and a mixed channel enough
+    /// series to stay a TV channel (`ChannelVariety.fillsAThemedChannel`).
     public let needsVariety: Bool
 
     public init(

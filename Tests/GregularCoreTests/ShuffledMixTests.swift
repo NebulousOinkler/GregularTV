@@ -90,6 +90,16 @@ struct ChannelVarietyTests {
         #expect(variety(series: 50, films: 0).filmShare(wanted: 0.35) == 0)
     }
 
+    @Test func aMixedChannelStaysATVChannel() {
+        // Asking for 35% films leaves 15.6 hours of TV; the series must carry half, 7.8 hours.
+        #expect(!variety(series: 12, films: 100).fillsAThemedChannel(askingForFilms: 0.35), "6 hours of series")
+        #expect(variety(series: 16, films: 100).fillsAThemedChannel(askingForFilms: 0.35), "8 hours of series")
+        #expect(variety(series: 12, films: 100).fillsADay, "Films alone would fill the day")
+        // Channels that don't mix only need to fill a day.
+        #expect(variety(series: 0, films: 36).fillsAThemedChannel(askingForFilms: nil))
+        #expect(!variety(series: 0, films: 35).fillsAThemedChannel(askingForFilms: nil))
+    }
+
     @Test func filmsTakeFewerSlotsThanTheirAirtime() {
         // 2-hour films with a third of the airtime: one slot in 9 (1:8 against 30-minute slots).
         #expect(abs(variety(series: 100, films: 100).filmSlotShare(forAirtime: 1.0 / 3) - 1.0 / 9) < 1e-9)

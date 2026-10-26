@@ -108,10 +108,36 @@ Every channel's running order comes from one 10-character **schedule code** (lik
 
 ## The channels
 
-Sixteen channels ship in `channels.json`. Channels 1–9 are themes that mix TV and films: Gregular (everything), Comedy, Drama, Animation, Sci-Fi & Fantasy, Kids & Family, Real Life (documentaries, reality, cooking, travel and the like), Crime & Mystery, and Action & Adventure. Channels 10–16 are films only: Movies, Action, Comedy, Horror & Thriller, Classics (before 1980), Sci-Fi & Fantasy, and Drama & Romance.
+Nineteen channels ship in `channels.json`, laid out like a cable line-up from before streaming: broadcast networks, an independent station and kids' channels on the low numbers, cable channels above. Each keeps to an era, so a channel doesn't jump decades from one programme to the next; an era starts a few years early, for reruns that are recent rather than decades old. An episode counts by the year it aired, so a long-running show's early seasons and late ones air on different channels.
+
+| # | Channel | Plays | Years | Films |
+|---|---|---|---|---|
+| 1 | Gregular | everything | any | 35% |
+| 2 | Rabbit Ears | classic TV | 1950–1979 | 10% |
+| 3 | Primetime Gold | broad prime time: comedy, drama, crime, sci-fi, reality… | 1978–1996 | 15% |
+| 4 | Sweeps Week | the same | 1994–2010 | 15% |
+| 5 | Next Episode | the same | 2008 on | 15% |
+| 6 | Saturday Morning | kids' and family cartoons | 1960–1993 | 20% |
+| 7 | After School | kids' and family shows | 1986–2006 | 30% |
+| 8 | Family Room | the same | 2005 on | 35% |
+| 9 | Late Show | reruns and movies, like an independent station | 1968–1990 | 50% |
+| 10 | Movies | every film | any | films only |
+| 11 | Laugh Track | comedy | 1978–1999 | 35% |
+| 12 | Punchline | comedy | 1998 on | 35% |
+| 13 | Sci-Fi Syndicate | sci-fi and fantasy | 1966–1999 | 40% |
+| 14 | Other Worlds | sci-fi and fantasy | 1997 on | 40% |
+| 15 | Field Trip | documentaries, nature, history, travel, sport, music | 1990 on | 25% |
+| 16 | Daytime | game shows, talk, soaps, cooking, home, reality | 1990 on | 10% |
+| 17 | Silver Screen | classic films, back to back | 1930–1966 | films only |
+| 18 | Video Store | films | 1980–1999 | films only |
+| 19 | Premiere | films, back to back | 1998 on | films only |
+
+It's for every age. The kids' channels take only what's tagged Kids, Family or Children, so a cartoon for grown-ups airs with the comedies. The network, comedy, family and classic-TV channels leave out Kids, Children and Horror, so preschool shows and horror films stay off them. These go by your library's genres, as tagged. Silver Screen and Premiere have no half-hour slots, so their films follow each other with no breaks, except for the one at the day boundary (below).
+
+The line-up changed on 2026-10-26, from genres to eras: only Gregular (1) and Movies (10) kept their themes. Set times saved on another bundled channel stay on its number, under its new theme, and don't air while that channel is hidden.
 
 The line-up adapts to the library you connect to, with nothing to set:
-- **A themed channel only appears if it has variety:** enough different programmes to fill a day with no series coming round more than about once a day, and no film more than about once every three days. A small library shows fewer channels; Gregular and Movies are always on.
+- **A themed channel only appears if it has variety:** enough different programmes to fill a day with no series coming round more than about once a day, and no film more than about once every three days. A channel that mixes TV and films also needs enough series to carry at least half the TV time it asks for, so it stays a TV channel rather than turning into a film channel. A small library shows fewer channels; Gregular and Movies are always on.
 - **Everything comes round once before anything comes round twice.** Each channel goes through its shows and films in passes, every one once a pass, in a new shuffle each pass. Every pass opens with the same half of them, in a new order, and closes with the other half, so whatever ended one pass is at least half a pass from coming back: on a film channel with 450 films, about three weeks.
 - **Each mixed channel asks for a share of airtime for films** (`"films": 0.35` is 35%), and the library can move it: a channel with few series fills the rest with films, and one with few films fills it with TV. The series and the films each keep their own shuffle. See PLAN.md §9.
 
@@ -128,11 +154,11 @@ Your own channels and set times are made on the **editing page**, in a web brows
 - **All of:** it must match every one.
 - **None of:** it's left out.
 
-So "any of Comedy and Taskmaster, none of Christmas" is comedy or Taskmaster, but nothing tagged Christmas. Half-hour slots and commercials are on by default. **Preview** shows how many programmes match and the next few hours as they'd air. Your channels join the guide like any other, and are hidden while nothing matches. Changing a channel's number takes its set times with it; deleting it deletes them.
+So "any of Comedy and Taskmaster, none of Christmas" is comedy or Taskmaster, but nothing tagged Christmas. **Years** keep a channel to an era ("all of 1990–1999"; leave out either end to make it open), by the year an episode aired or a film came out; choosing Years sets its join to "all of", so it narrows the rest instead of adding to it. Half-hour slots and commercials are on by default. **Preview** shows how many programmes match and the next few hours as they'd air. Your channels join the guide like any other, and are hidden while nothing matches. Changing a channel's number takes its set times with it; deleting it deletes them.
 
 **Sharing:** the page's **JSON** tab shows all your channels and set times as one document. Copy it, and paste it into another Apple TV's page (then **Use This JSON** and save) to have the same there: with the same schedule code, both show the same programmes.
 
-**The page only exists while its screen is open on the TV**, and closing the screen stops it. It answers only devices on your home network, at the address shown, with the code. Five wrong codes from one device shut that device out, and 20 in all lock the page, until you close and reopen the screen. The page isn't encrypted, so use it on a network you trust. It loads nothing from the internet, and it never sees your Jellyfin address, password or token: only your genre, series, tag and film names. Everything it saves is checked before it's used.
+**The page only exists while its screen is open on the TV**, and closing the screen stops it. It answers only devices on your home network, at the address shown, with the code. Five wrong codes from one device shut that device out, and 20 in all lock the page, until you close and reopen the screen. The page isn't encrypted, so use it on a network you trust. It loads nothing from the internet, and it never sees your Jellyfin address, password or token: only your genre, series, tag and film names, and the first and last year in your library (to suggest years). Everything it saves is checked before it's used.
 
 ## Programmes at set times
 

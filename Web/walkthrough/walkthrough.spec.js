@@ -395,5 +395,13 @@ test("the channel editor opens and makes a channel", async ({ page }) => {
   const editor = page.frameLocator("iframe[title='Your channels and set times']");
   await editor.getByRole("button", { name: "Add a Channel" }).click();
   await expect(editor.getByText("Not saved yet.")).toBeVisible();
+  // A year range narrows the channel ("All of"), rather than adding a decade to it.
+  await editor.getByLabel("Condition").selectOption("years");
+  await expect(editor.getByLabel("Join")).toHaveValue("allOf");
+  await editor.getByLabel("First year").fill("1990");
+  await editor.getByLabel("Last year").fill("1999");
+  await editor.getByRole("button", { name: "Add Condition" }).click();
+  await expect(editor.getByText("All of:")).toBeVisible();
+  await expect(editor.getByText("Years: 1990–1999")).toBeVisible();
   expect(problems).toEqual([]);
 });

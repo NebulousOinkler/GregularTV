@@ -93,15 +93,21 @@ function channelCard(channel, index) {
           changed(); renderChannels();
         } })))));
   }
-  const join = el("select", {}, ...Object.entries(joins).map(([value, text]) => el("option", { value, text })));
-  const kind = el("select", {}, ...Object.entries(kinds).map(([value, text]) => el("option", { value, text })));
+  const join = el("select", { "aria-label": "Join" }, ...Object.entries(joins).map(([value, text]) => el("option", { value, text })));
+  const kind = el("select", { "aria-label": "Condition" }, ...Object.entries(kinds).map(([value, text]) => el("option", { value, text })));
   const name = el("input", { placeholder: "Start typing a name", list: "list-genre" });
-  const from = el("input", { type: "number", placeholder: "From", hidden: true });
-  const to = el("input", { type: "number", placeholder: "To", hidden: true });
+  const { firstYear, lastYear } = state.library;
+  const from = el("input", { type: "number", min: 1, max: 9999, hidden: true, "aria-label": "First year",
+                             placeholder: firstYear ? "From (" + firstYear + ")" : "From" });
+  const to = el("input", { type: "number", min: 1, max: 9999, hidden: true, "aria-label": "Last year",
+                           placeholder: lastYear ? "To (" + lastYear + ")" : "To" });
   kind.addEventListener("change", () => {
     const years = kind.value === "years";
     name.hidden = years; from.hidden = !years; to.hidden = !years;
     name.setAttribute("list", "list-" + kind.value);
+    // Years narrow the rest ("Comedy, from 1990 to 1999"), rather than
+    // adding to it ("Comedy, or anything from the 1990s").
+    if (years) join.value = "allOf";
   });
   const preview = el("div", { className: "dim" });
   return el("div", { className: "card" },

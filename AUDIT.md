@@ -29,6 +29,47 @@ What held up well:
   - no `innerHTML` anywhere;
   - vendored, pinned libraries.
 
+## Fourth audit: 2026-10-26 (the era line-up)
+
+Hours after the third, before the era line-up ships. The third audit read the whole codebase; since then, the only changes are A4 (Q6) and this one:
+- the bundled line-up (`channels.json`);
+- one rule in `ChannelVariety`;
+- the editing page's years condition;
+- tests and docs.
+
+Each was read against every heading of the first audit. There's no new request, host, listener, stored value, log, dependency, parser or file format.
+
+The line-up is data for the decoder the channels already used: the same source types, nested with `all-of` and `not`. The new rule is arithmetic on numbers the engine already had, and film shares are checked to be 0 to 1 when they're read. The editing page puts its new placeholders and labels on the page as properties and attributes, never as HTML.
+
+The privacy and layer checks pass, and nothing in the changes names an address, token or password.
+
+### R1. The README understated what the editing page receives — resolved
+- **Where:** README, *Your own channels and set times*; `EditingAPI.state`.
+- **Risk:** the page has been sent the library's first and last year since it was built, and now shows them as hints in the year fields. The README said it sees "only your genre, series, tag and film names".
+- **Resolved:** the README says it also gets the first and last year, to suggest years.
+
+### R2. "For every age" rests on the library's genre tags — resolved, by wording
+- **Where:** `channels.json`; README, *The channels*.
+- **Risk:** the kids' channels take only what's tagged Kids, Family or Children. The network, comedy, family and classic-TV channels leave out Kids, Children and Horror. A wrongly tagged item lands wherever its tags say, so the line-up can't promise what a child sees.
+- **Resolved:** the README says the channels "go by your library's genres, as tagged", and makes no promise beyond that. `ChannelConfigTests.everyAgeHasItsChannels` checks where a cartoon for grown-ups, a kids' show and horror films land.
+
+### R3. Saved set times change theme with the line-up — resolved, by disclosure
+- **Where:** `channels.json`, set times on channels 2–9 and 11–19.
+- **Risk:** set times belong to a channel number. A household's set times on a bundled channel now air on that number's new theme, and not at all while that channel is too thin to be shown.
+- **Resolved:** the README says so. Nothing is lost: the set times are still saved, and editable on the editing page.
+
+### The clean-up pass
+- **Coupling:** none; the layer check passes.
+- **One place each:**
+  - whether a themed channel is shown (`ChannelVariety.fillsAThemedChannel`, which the engine asks);
+  - its words (`PLAN §9` and README).
+- **No exceptions:** every channel has the same shuffled commercials. Silver Screen and Premiere only leave out `padTo`, the same option as a custom channel's half-hour slots switch.
+- **Out of date and gone:** the 2026-10-01 line-up's table, in PLAN and README.
+
+### Not checked
+- A real library: the audit's library is made up (PLAN §9).
+- Real hardware, as before.
+
 ## Third audit: 2026-10-26 (the rest of the quality plan, and the iPhone fix)
 
 The whole codebase again, before the rest of the quality plan ships with the fix for iPhones:
