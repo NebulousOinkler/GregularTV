@@ -101,7 +101,7 @@ The whole codebase again, before the playback rework (Auto per programme, progra
 - **Risk:** browsers keep the non-extractable key in the same profile as the data it encrypts. Anyone with the profile's files can decrypt the sign-ins, and Jellyfin tokens don't expire until revoked.
 - **Resolved:**
   - The comment and the README now say what the encryption does and doesn't do.
-  - Sign-in has a **Remember me on this browser** switch. Turned off, the sign-in is kept in memory for that visit only and never written to the browser (`BrowserCredentialStore.rememberNextSignIn`).
+  - Sign-in has a **Remember me on this browser** switch. Turned off, the sign-in is kept in memory for that visit only and never written to the browser (`BrowserCredentialStore.rememberNextSignIn`). It's off unless turned on, since 2026-10-26 (the user's decision: keeping a sign-in is opt-in); it was on until then.
   - The walkthrough checks that such a sign-in is gone after a reload.
 
 ### M4. Access tokens go in stream URLs — accepted, with mitigations

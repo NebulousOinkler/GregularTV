@@ -148,12 +148,13 @@ import JavaScriptKit
         ]
     }
 
-    /// "Remember me on this browser", on unless turned off: off, the sign-in
-    /// lasts until the page closes and is never written to the browser
-    /// (`BrowserCredentialStore`). Not in demo mode, which keeps nothing anyway.
+    /// "Remember me on this browser", off unless turned on (decided
+    /// 2026-10-26): off, the sign-in lasts until the page closes and is never
+    /// written to the browser (`BrowserCredentialStore`). Not in demo mode,
+    /// which keeps nothing anyway.
     private func rememberSwitch() -> El {
         guard let store = WebApp.signIns else { return El("div") }
-        var remember = true
+        var remember = false
         store.rememberNextSignIn(remember)
         let row = Parts.toggle(Self.rememberTitle, detail: Self.rememberDetail, on: remember) {}
         row.on("click") { _ in
@@ -165,8 +166,8 @@ import JavaScriptKit
     }
 
     static let rememberTitle = "Remember me on this browser"
-    static let rememberDetail = "Turn off on a computer others use: you'll sign in again each time you open Gregular TV, "
-        + "and your sign-in to this server isn't kept here."
+    static let rememberDetail = "Keeps your sign-in to this server in this browser, encrypted, so you needn't sign in "
+        + "each time you open Gregular TV. Leave it off on a computer others use."
 
     private func administratorStep(serverName: String) -> [El] {
         [

@@ -199,11 +199,30 @@ import Observation
             guard let self, let item = self.item else { return }
             // MEDIA_ERR_NETWORK is the connection's (`ConnectionFailure`);
             // MEDIA_ERR_DECODE and MEDIA_ERR_SRC_NOT_SUPPORTED, the format's
-            // (`UnplayableMedia`); MEDIA_ERR_ABORTED, neither.
+            // (`UnplayableMedia`); MEDIA_ERR_ABORTED, neither. But before
+            // anything has loaded, MEDIA_ERR_SRC_NOT_SUPPORTED is also what a
+            // browser says of a file it couldn't fetch at all, so the server is asked which.
             switch self.video.object.error.code.number {
             case 2: item.fail(BrowserNetwork.Unreachable())
+            case 4 where (self.video.object.readyState.number ?? 0) == 0: self.explainFailure(of: item)
             case 3, 4: item.fail(UnplayableFormat.here)
             default: item.fail(PlaybackStopped())
+            }
+        }
+    }
+
+    /// Fails `item` by what its failure was, told apart by fetching its first
+    /// byte (`reach` in hls-player.js): one the server sends is a format this
+    /// browser can't decode; one it refuses, the server's error; one with no
+    /// answer, the connection's. One small request, only after a failure.
+    private func explainFailure(of item: VideoItem) {
+        let url = item.url
+        let answer = JSObject.global.gregularHLS.object!.reach!(url.absoluteString, BrowserNetwork.isLocalHTTP(url))
+        Task { @MainActor [weak item] in
+            switch try? await answer.promised().string {
+            case "fetched": item?.fail(UnplayableFormat.here)
+            case "refused": item?.fail(PlaybackStopped())
+            default: item?.fail(BrowserNetwork.Unreachable())
             }
         }
     }

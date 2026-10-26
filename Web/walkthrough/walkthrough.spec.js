@@ -15,12 +15,14 @@ function watchForProblems(page) {
   return problems;
 }
 
-/** Signs in to the demo server with a made-up name, and waits for live TV. */
-async function signIn(page) {
+/** Signs in to the demo server with a made-up name, and waits for live TV.
+ *  With `remember`, turns on Remember me on this browser first (it's off). */
+async function signIn(page, { remember = false } = {}) {
   await page.goto("/");
   await page.getByLabel("Server address").fill(server);
   await page.getByRole("button", { name: "Connect" }).click();
   await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
+  if (remember) await page.getByRole("switch", { name: /Remember me on this browser/ }).click();
   await page.getByLabel("Username").fill("tester");
   await page.getByLabel("Password").fill("not-a-real-password");
   await page.getByRole("button", { name: "Sign In" }).click();
@@ -94,8 +96,38 @@ test("signs in and plays live TV", async ({ page }) => {
   expect(problems).toEqual([]);
 });
 
-test("keeps the sign-in encrypted, and none of it in local storage", async ({ page }) => {
+// Before anything loads, a browser reports a video it couldn't fetch at all
+// as one it can't decode (MEDIA_ERR_SRC_NOT_SUPPORTED). That's the
+// connection's trouble, so it's retried; it once said "can't be played".
+test("a video the browser couldn't fetch is retried, not called unplayable", async ({ page }) => {
+  test.setTimeout(90_000);
+  const problems = watchForProblems(page);
+  await page.addInitScript(() => {
+    new MutationObserver(() => {
+      if (/can.t be played/i.test(document.body?.innerText ?? "")) globalThis.saidUnplayable = true;
+    }).observe(document, { subtree: true, childList: true, characterData: true });
+  });
+  // The first two stream requests fail outright: the video's, and (in a
+  // browser that reports it as undecodable) the player's check of whether
+  // the server can be reached at all.
+  let refused = 0;
+  await page.route(/\/stream/, (route) => (refused++ < 2 ? route.abort("connectionrefused") : route.continue()));
   await signIn(page);
+  // Playing: a video's time moves on (it's set to the live position before it loads).
+  const moving = () => page.evaluate(async () => {
+    const times = () => [...document.querySelectorAll("video")].map((video) => (video.paused ? -1 : video.currentTime));
+    const before = times();
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    return times().some((time, index) => before[index] >= 0 && time > before[index] + 0.5);
+  });
+  await expect.poll(moving, { timeout: 60_000, message: "the retry should play" }).toBe(true);
+  expect(refused).toBeGreaterThanOrEqual(3);
+  expect(await page.evaluate(() => globalThis.saidUnplayable ?? false)).toBe(false);
+  expect(problems).toEqual([]);
+});
+
+test("keeps the sign-in encrypted, and none of it in local storage", async ({ page }) => {
+  await signIn(page, { remember: true });
   await page.reload();
   await expect(page.getByRole("heading", { name: "Your servers" })).toBeVisible();
   await expect(page.getByRole("button", { name: /Watch Demo Library/ })).toBeVisible();
@@ -113,13 +145,11 @@ test("keeps the sign-in encrypted, and none of it in local storage", async ({ pa
   expect(vault.text).not.toContain("accessToken");
 });
 
-test("a sign-in not remembered lasts only until the page closes", async ({ page }) => {
+test("a sign-in isn't remembered unless asked, and lasts only until the page closes", async ({ page }) => {
   await page.goto("/");
   await page.getByLabel("Server address").fill(server);
   await page.getByRole("button", { name: "Connect" }).click();
   const remember = page.getByRole("switch", { name: /Remember me on this browser/ });
-  await expect(remember).toHaveAttribute("aria-checked", "true");
-  await remember.click();
   await expect(remember).toHaveAttribute("aria-checked", "false");
   await page.getByLabel("Username").fill("tester");
   await page.getByLabel("Password").fill("not-a-real-password");
