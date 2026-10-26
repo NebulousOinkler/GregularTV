@@ -91,7 +91,7 @@ import SwiftVLC
             try player.setAudioVolume(Volume(0))
             try player.play(media)
         } catch {
-            failure = UnplayableFormat()
+            failure = UnplayableFormat.here
         }
     }
 
@@ -121,7 +121,7 @@ import SwiftVLC
         case .paused:
             if playing, pendingSeek == nil { player.resume() }
         case .error:
-            failure = UnplayableFormat()
+            failure = UnplayableFormat.here
         case .stopped where !isAtEnd:
             failure = DroppedConnection()
         default:

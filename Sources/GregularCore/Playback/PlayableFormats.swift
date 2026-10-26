@@ -3,29 +3,29 @@
 /// a stream made of `convertedVideoCodecs` and `convertedAudioCodecs`.
 public struct PlayableFormats: Sendable, Equatable {
     /// Shown in the server's logs, such as "tvOS".
-    public let name: String
+    public private(set) var name: String
     /// What a file must be to play as it is. No containers means any.
-    public let containers: [String]
-    public let videoCodecs: [String]
-    public let audioCodecs: [String]
+    public private(set) var containers: [String]
+    public private(set) var videoCodecs: [String]
+    public private(set) var audioCodecs: [String]
     /// What `videoCodecs` must be beyond their names, where the player is
     /// fussier than the codec: a file outside these is converted.
-    public let codecLimits: [CodecLimit]
+    public private(set) var codecLimits: [CodecLimit]
     /// What a converted stream may carry, in order of preference: when the
     /// video has to be re-encoded, the server makes the first.
-    public let convertedVideoCodecs: [String]
-    public let convertedAudioCodecs: [String]
+    public private(set) var convertedVideoCodecs: [String]
+    public private(set) var convertedAudioCodecs: [String]
     /// More sound channels than this are mixed down.
-    public let mostAudioChannels: Int
+    public private(set) var mostAudioChannels: Int
     /// What a sound file (a song) must be to play as it is.
-    public let audioFileContainers: [String]
-    public let audioFileCodecs: [String]
+    public private(set) var audioFileContainers: [String]
+    public private(set) var audioFileCodecs: [String]
     /// Files play as they are only from an https server. A web page on
     /// https can't play a video file from plain http (mixed content); only
     /// requests it makes itself (HLS, through hls.js) can be let through to
     /// the home network. So from an http server everything comes as HLS:
     /// usually only the container changes, which is cheap for the server.
-    public let playsFilesOnlyOverHTTPS: Bool
+    public private(set) var playsFilesOnlyOverHTTPS: Bool
 
     /// Whether a file in `container` (as `MediaItem.container` names it) could
     /// play as it is, judged by the container alone. True when it isn't
@@ -84,11 +84,9 @@ public struct PlayableFormats: Sendable, Equatable {
     /// The same, with sound the server converts mixed down to stereo, which
     /// is less work for it to make.
     public var withStereoSound: PlayableFormats {
-        PlayableFormats(name: name, containers: containers, videoCodecs: videoCodecs, audioCodecs: audioCodecs,
-                        codecLimits: codecLimits, convertedVideoCodecs: convertedVideoCodecs,
-                        convertedAudioCodecs: convertedAudioCodecs, mostAudioChannels: min(2, mostAudioChannels),
-                        audioFileContainers: audioFileContainers, audioFileCodecs: audioFileCodecs,
-                        playsFilesOnlyOverHTTPS: playsFilesOnlyOverHTTPS)
+        var formats = self
+        formats.mostAudioChannels = min(2, mostAudioChannels)
+        return formats
     }
 
     /// The same, without `unplayable` (formats the player turned out not to
@@ -96,33 +94,24 @@ public struct PlayableFormats: Sendable, Equatable {
     /// a video profile comes off its codec's limit where it has one, or else
     /// the whole codec goes; a sound codec goes. So the server converts them.
     public func without(_ unplayable: Set<MediaFormat>) -> PlayableFormats {
-        guard !unplayable.isEmpty else { return self }
-        var videoCodecs = videoCodecs, audioCodecs = audioCodecs, codecLimits = codecLimits
-        var convertedVideoCodecs = convertedVideoCodecs, convertedAudioCodecs = convertedAudioCodecs
+        var formats = self
         for format in unplayable {
             switch format.kind {
             case .sound:
-                audioCodecs.removeAll { $0 == format.codec }
-                convertedAudioCodecs.removeAll { $0 == format.codec }
+                formats.audioCodecs.removeAll { $0 == format.codec }
+                formats.convertedAudioCodecs.removeAll { $0 == format.codec }
             case .video:
-                let limit = codecLimits.firstIndex { $0.codec == format.codec }
-                if let profile = format.profile, let limit, let profiles = codecLimits[limit].profiles {
-                    let kept = profiles.filter { $0 != profile }
-                    if !kept.isEmpty {
-                        codecLimits[limit] = CodecLimit(codec: format.codec, profiles: kept, tags: codecLimits[limit].tags)
-                        continue
-                    }
+                if let profile = format.profile, let limit = formats.codecLimits.firstIndex(where: { $0.codec == format.codec }),
+                   let kept = formats.codecLimits[limit].profiles?.filter({ $0 != profile }), !kept.isEmpty {
+                    formats.codecLimits[limit] = CodecLimit(codec: format.codec, profiles: kept, tags: formats.codecLimits[limit].tags)
+                    continue
                 }
-                videoCodecs.removeAll { $0 == format.codec }
-                convertedVideoCodecs.removeAll { $0 == format.codec }
-                codecLimits.removeAll { $0.codec == format.codec }
+                formats.videoCodecs.removeAll { $0 == format.codec }
+                formats.convertedVideoCodecs.removeAll { $0 == format.codec }
+                formats.codecLimits.removeAll { $0.codec == format.codec }
             }
         }
-        return PlayableFormats(name: name, containers: containers, videoCodecs: videoCodecs, audioCodecs: audioCodecs,
-                               codecLimits: codecLimits, convertedVideoCodecs: convertedVideoCodecs,
-                               convertedAudioCodecs: convertedAudioCodecs, mostAudioChannels: mostAudioChannels,
-                               audioFileContainers: audioFileContainers, audioFileCodecs: audioFileCodecs,
-                               playsFilesOnlyOverHTTPS: playsFilesOnlyOverHTTPS)
+        return formats
     }
 
     /// What a conversion ends up as: its first video and sound codecs, which
@@ -165,27 +154,42 @@ public struct PlayableFormats: Sendable, Equatable {
                      "vob", "flv", "ogv", "ogg", "3gp"],
         videoCodecs: ["h264", "hevc", "mpeg4", "mpeg2video", "mpeg1video", "vc1", "vp8", "vp9", "msmpeg4v3",
                       "wmv1", "wmv2", "wmv3", "mjpeg", "theora", "prores", "dv"],
-        audioCodecs: ["aac", "ac3", "eac3", "alac", "flac", "mp3", "mp2", "mp1", "dts", "opus", "vorbis",
+        audioCodecs: ["aac", "ac3", "eac3", "alac", "flac", "mp3", "mp2", "mp1", "dts", "truehd", "opus", "vorbis",
                       "wmalossless", "wmapro", "wmav1", "wmav2", "pcm_alaw", "pcm_mulaw", "pcm_bluray", "pcm_dvd",
                       "pcm_s16be", "pcm_s16le", "pcm_s24be", "pcm_s24le", "pcm_u8"],
         convertedVideoCodecs: ["h264"],
         convertedAudioCodecs: ["aac"],
         mostAudioChannels: 8)
 
+    /// The formats a browser may say it decodes beyond H.264 and AAC, which
+    /// every browser plays: HEVC by profile, AV1, and the sound formats films
+    /// carry. The app asks the browser about each (`GregularWeb`), and only
+    /// what it confirms goes into `browser(alsoPlays:)`.
+    public static let browserMayPlay: [MediaFormat] = [
+        MediaFormat(.video, "hevc", profile: "main"), MediaFormat(.video, "hevc", profile: "main 10"), MediaFormat(.video, "av1"),
+        MediaFormat(.sound, "ac3"), MediaFormat(.sound, "eac3"), MediaFormat(.sound, "opus"), MediaFormat(.sound, "flac"),
+    ]
+
     /// A web browser: H.264 and AAC in MP4 play everywhere, but not 10-bit
-    /// H.264, which no browser reliably decodes. HEVC only where the browser
-    /// says it can (`playsHEVC`). Surround sound is mixed down to stereo,
-    /// which every browser plays.
-    public static func browser(playsHEVC: Bool) -> PlayableFormats {
-        PlayableFormats(
+    /// H.264, which no browser reliably decodes. Beyond those, only what the
+    /// browser says it decodes (`alsoPlays`, from `browserMayPlay`): played
+    /// as they are, and copied into a conversion as they are rather than
+    /// converted. Converted sound has at most 6 channels where the browser
+    /// plays a surround format (AC-3, E-AC-3), so surround copies as it is;
+    /// otherwise it's mixed down to stereo, which every browser plays.
+    public static func browser(alsoPlays: Set<MediaFormat>) -> PlayableFormats {
+        let hevcProfiles = (["main", "main 10"] as [String]).filter { alsoPlays.contains(MediaFormat(.video, "hevc", profile: $0)) }
+        let video = (hevcProfiles.isEmpty ? [] : ["hevc"]) + (alsoPlays.contains(MediaFormat(.video, "av1")) ? ["av1"] : [])
+        let sound = ["ac3", "eac3", "opus", "flac"].filter { alsoPlays.contains(MediaFormat(.sound, $0)) }
+        return PlayableFormats(
             name: "Web",
             containers: ["mp4", "m4v"],
-            videoCodecs: playsHEVC ? ["h264", "hevc"] : ["h264"],
-            audioCodecs: ["aac", "mp3"],
-            codecLimits: [.eightBitH264] + (playsHEVC ? [.hevc()] : []),
-            convertedVideoCodecs: playsHEVC ? ["h264", "hevc"] : ["h264"],
-            convertedAudioCodecs: ["aac"],
-            mostAudioChannels: 2,
+            videoCodecs: ["h264"] + video,
+            audioCodecs: ["aac", "mp3"] + sound,
+            codecLimits: [.eightBitH264] + (hevcProfiles.isEmpty ? [] : [CodecLimit(codec: "hevc", profiles: hevcProfiles)]),
+            convertedVideoCodecs: ["h264"] + video,
+            convertedAudioCodecs: ["aac"] + sound,
+            mostAudioChannels: sound.contains("ac3") || sound.contains("eac3") ? 6 : 2,
             audioFileContainers: ["mp3", "m4a", "mp4", "aac", "flac", "wav"],
             audioFileCodecs: ["mp3", "aac", "flac", "pcm_s16le"],
             playsFilesOnlyOverHTTPS: true)
