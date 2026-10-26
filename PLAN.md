@@ -143,7 +143,7 @@ jellyfin_tv/
 │  ├─ Watch/WatchModel.swift        # the watch screen's rules: banner, overlays, curtain, remote actions,
 │  │                                # and the words on the banner, cards and badge
 │  ├─ Remote/RemoteControls.swift   # the button tables (one per screen) and hints
-│  └─ Text/                         # displayTitle / displaySubtitle, quality labels, break wording
+│  └─ Text/                         # displayTitle / displaySubtitle, quality labels, break wording, Settings' words, the player's (PlayerText: diagnostics, the stream line, why a programme stopped; decks report a DeckActivity, not words)
 ├─ Tests/GregularCoreTests/         # schedule, strategies, commercials, guide, privacy, layers
 ├─ Tests/GregularJellyfinTests/     # Jellyfin client and sign-in (against a mock server), privacy
 ├─ Tests/GregularScreensTests/      # player and watch screen on fake decks: no video, no Apple TV

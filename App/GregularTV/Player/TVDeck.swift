@@ -217,30 +217,25 @@ import Observation
 
     // MARK: - Diagnostics
 
-    var activity: String {
+    var activity: DeckActivity {
         if let vlc = queue.first?.vlcItem, !heldAtEnd {
-            return switch state {
-            case .playing: "Playing in VLC"
-            case .paused: "Paused"
-            case .waiting: "Buffering in VLC" + (vlc.waitingReason.map { " (\($0))" } ?? "")
-            }
+            return DeckActivity(state, onAddOn: true, waitingFor: state == .waiting ? vlc.waitingFor : nil)
         }
-        if heldAtEnd { return "Paused" }
+        if heldAtEnd { return DeckActivity(.paused) }
         return switch avPlayer.timeControlStatus {
-        case .playing: "Playing"
-        case .paused: "Paused"
-        case .waitingToPlayAtSpecifiedRate:
-            "Buffering" + (avPlayer.reasonForWaitingToPlay.map { " (\(Self.describe($0)))" } ?? "")
-        @unknown default: "Unknown"
+        case .playing: DeckActivity(.playing)
+        case .paused: DeckActivity(.paused)
+        case .waitingToPlayAtSpecifiedRate: DeckActivity(.waiting, waitingFor: avPlayer.reasonForWaitingToPlay.map(Self.wait))
+        @unknown default: DeckActivity(nil)
         }
     }
 
-    private static func describe(_ reason: AVPlayer.WaitingReason) -> String {
+    private static func wait(_ reason: AVPlayer.WaitingReason) -> DeckActivity.Wait {
         switch reason {
-        case .toMinimizeStalls: "filling buffer"
-        case .evaluatingBufferingRate: "measuring network"
-        case .noItemToPlay: "nothing loaded"
-        default: "waiting"
+        case .toMinimizeStalls: .fillingBuffer
+        case .evaluatingBufferingRate: .measuringNetwork
+        case .noItemToPlay: .nothingLoaded
+        default: .other
         }
     }
 
@@ -334,5 +329,5 @@ import Observation
 
 extension UnplayableFormat {
     /// A format Apple TV couldn't decode.
-    static let here = UnplayableFormat(on: "Apple TV")
+    static let here = UnplayableFormat(on: PlayerText.appleTV)
 }

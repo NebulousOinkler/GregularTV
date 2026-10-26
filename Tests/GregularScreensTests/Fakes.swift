@@ -59,13 +59,7 @@ import Testing
         seeks.append(seconds)
         position = seconds
     }
-    var activity: String {
-        switch state {
-        case .playing: "Playing"
-        case .paused: "Paused"
-        case .waiting: "Buffering"
-        }
-    }
+    var activity: DeckActivity { DeckActivity(state) }
 }
 
 /// A server for the player's tests. Each item's file plays as it is on every

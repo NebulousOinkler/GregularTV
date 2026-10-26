@@ -161,12 +161,12 @@ import SwiftVLC
         }
     }
 
-    /// What it's waiting for, while it waits, in a word or two.
-    var waitingReason: String? {
+    /// What it's waiting for, while it waits.
+    var waitingFor: DeckActivity.Wait? {
         switch player.state {
-        case .idle, .opening: hasSurface ? "opening" : "waiting for the screen"
-        case .buffering, .playing: "filling buffer"
-        case .paused: "starting"
+        case .idle, .opening: hasSurface ? .opening : .waitingForScreen
+        case .buffering, .playing: .fillingBuffer
+        case .paused: .starting
         default: nil
         }
     }

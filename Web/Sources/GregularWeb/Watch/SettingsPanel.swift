@@ -96,13 +96,13 @@ import JavaScriptKit
         let howToEdit = "Make and change them with Edit Channels."
         sections.append(Parts.section(SettingsText.yourChannels, footer: [
             app.customChannels.isEmpty ? SettingsText.noneYet : nil,
-            SettingsText.yourChannelsNote(kept: "in this browser"),
+            SettingsText.yourChannelsNote(kept: SettingsText.inThisBrowser),
             howToEdit,
         ], rows: app.customChannels.map { Parts.row("\($0.number)  \($0.name)", detail: $0.summary, action: nil) }
             + [Parts.row("Edit Channels") { [weak self] in self?.openEditor() }]))
         sections.append(Parts.section(SettingsText.setTimes, footer: [
             app.setTimes.isEmpty ? SettingsText.noneYet : nil,
-            SettingsText.setTimesNote(kept: "in this browser"),
+            SettingsText.setTimesNote(kept: SettingsText.inThisBrowser),
             howToEdit,
         ], rows: app.setTimesChannels.map { Parts.row($0.title, detail: $0.detail, action: nil) }))
 

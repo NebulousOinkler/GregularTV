@@ -904,15 +904,6 @@ public final class ChannelPlayer {
         let order = players(for: airing)
         let (source, cap) = airing.isFiller ? try await commercialSource(for: airing.item, players: order)
                                             : try await programmeSource(for: airing, players: order)
-        let method = switch source.delivery {
-        case .original: "direct play"
-        case .repackaged: "repackaged by the server"
-        case .soundConverted: "sound converted by the server"
-        case .reencoded: "re-encoded by the server"
-        }
-        let label = airing.isFiller ? "Commercial"
-            : settings(for: airing).fix != nil ? "This programme only"
-            : quality == .auto ? "Auto" : quality.label
         let reasons = source.conversionReasons.isEmpty ? nil : source.conversionReasons.joined(separator: ", ")
         // Stop at the scheduled length, so programmes and commercials keep to
         // the schedule even when a file runs a little longer than the server says,
@@ -925,7 +916,8 @@ public final class ChannelPlayer {
         return LoadedAiring(airing: airing,
                             item: item,
                             unreleased: source,
-                            description: "\(label) · up to \(Self.mbps(cap)) · \(method)",
+                            description: PlayerText.stream(quality: quality, fixedForProgramme: settings(for: airing).fix != nil,
+                                                           isCommercial: airing.isFiller, cap: cap, delivery: source.delivery),
                             cap: cap,
                             player: source.player,
                             delivery: source.delivery,
@@ -1011,19 +1003,12 @@ public final class ChannelPlayer {
 
     /// One line for "Show playback diagnostics": what the deck is doing, how
     /// far behind live, where it is, whether the server converts it and why,
-    /// and how much of the programme loading for after a break is buffered.
+    /// and how much of the next programme, buffering on standby, is loaded.
     /// Only playback state: no server address, token, user or file details.
     private func diagnosticsLine(for current: LoadedAiring, behindLive: TimeInterval) -> String {
-        let live = behindLive.formatted(.number.precision(.fractionLength(1)))
-        let at = Duration.seconds(player.position).formatted(.time(pattern: .hourMinuteSecond))
-        let work = current.conversionReasons.map { "transcoding: \($0)" } ?? "no transcoding"
         let preloaded = (nextIsOnStandby ? next : standbyProgramme)?.item
-        let buffered = preloaded.map { " · next programme: \(Int($0.bufferedInAll)) s buffered" } ?? ""
-        return "\(player.activity) · \(live) s behind live · at \(at) · \(work)\(buffered)"
-    }
-
-    private static func mbps(_ bitsPerSecond: Int) -> String {
-        (Double(bitsPerSecond) / 1_000_000).formatted(.number.precision(.fractionLength(0...1))) + " Mbps"
+        return PlayerText.diagnostics(activity: player.activity, secondsBehindLive: behindLive, position: player.position,
+                                      conversionReasons: current.conversionReasons, nextBuffered: preloaded?.bufferedInAll)
     }
 
     /// Seeks the player on screen to `seconds` into `airing`. For a later

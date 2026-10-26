@@ -42,9 +42,30 @@ import GregularCore
     /// Seconds into the current item.
     var position: TimeInterval { get }
 
-    /// What the deck is doing, in a word or two, for "Show playback
-    /// diagnostics": "Playing", or "Buffering" with why if the player says.
-    var activity: String { get }
+    /// What the deck is doing, for "Show playback diagnostics" (`PlayerText.activity`).
+    var activity: DeckActivity { get }
+}
+
+/// What a deck is doing, as its player says, for diagnostics. `PlayerText`
+/// words it, so every deck's read the same.
+public struct DeckActivity: Sendable, Equatable {
+    /// What a waiting player is waiting for.
+    public enum Wait: Sendable, Equatable {
+        case opening, waitingForScreen, fillingBuffer, starting, measuringNetwork, nothingLoaded, networkStalled, other
+    }
+
+    /// Nil if the player says something the deck doesn't know.
+    public let state: PlayerDeckState?
+    /// On the device's add-on player (VLC on Apple TV).
+    public let onAddOn: Bool
+    /// While waiting, what for, if the player says.
+    public let waitingFor: Wait?
+
+    public init(_ state: PlayerDeckState?, onAddOn: Bool = false, waitingFor: Wait? = nil) {
+        self.state = state
+        self.onAddOn = onAddOn
+        self.waitingFor = waitingFor
+    }
 }
 
 /// What a deck is doing.
@@ -74,14 +95,14 @@ public struct PlaybackStopped: LocalizedError {
     public init() {}
 
     public var errorDescription: String? {
-        "This programme stopped playing."
+        PlayerText.stopped
     }
 }
 
 /// A deck couldn't decode what it was sent (`UnplayableMedia`): its player
 /// couldn't read the format, so something else must be sent.
 public struct UnplayableFormat: UnplayableMedia, LocalizedError {
-    /// The device, as "a format … can't show" names it: "Apple TV", "this browser".
+    /// The device, as "a format … can't show" names it (`PlayerText.appleTV`, `PlayerText.thisBrowser`).
     let device: String
 
     public init(on device: String) {
@@ -89,6 +110,6 @@ public struct UnplayableFormat: UnplayableMedia, LocalizedError {
     }
 
     public var errorDescription: String? {
-        "This programme couldn't be played. It may be in a format \(device) can't show."
+        PlayerText.unplayable(on: device)
     }
 }

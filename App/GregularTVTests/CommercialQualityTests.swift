@@ -37,6 +37,8 @@ struct CommercialQualityTests {
         try await settle(server)
         #expect(server.requestedCaps == [StreamingQuality.maximumBitrate], "No cap, whatever the quality setting")
         #expect(server.speedTests == 0, "Even in Auto, commercials never run a speed test")
+        #expect(player.streamDescription?.hasPrefix("Commercial · original quality") == true,
+                "Diagnostics say the quality setting isn't for commercials, not \(player.streamDescription ?? "nothing")")
         player.stop()
     }
 
