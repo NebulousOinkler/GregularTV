@@ -97,6 +97,11 @@ Both checks pass.
   - A conversion that's a stream (`.m3u8`) is refused, not fetched.
 - **The cost to the server:** one sound conversion at a time, plus the next song's, as it's loaded ahead.
 
+### Q6. FLAC reaches Apple TV's own decoder — resolved, by decision
+- **Where:** `PlayableFormats.appleTV` (A4, added after this audit's first pass, the same day).
+- **Risk:** a format more reaches a decoder the app doesn't own.
+- **Resolved:** it's Apple's own decoder in AVFoundation, and FLAC is common in film libraries (as P6). A conversion keeping 7.1 sound adds no decoder: AAC and E-AC-3 were already declared. It's checked in the simulator only. If the device can't play one, it's bounded: FLAC is ruled out after one failure, and the channels are dropped to stereo for a stream in the safest formats.
+
 ### P4, confirmed
 The updated GitHub Actions passed their first run on a pull request (#69: build and deploy rehearsal), and then the deploy to gregular.tv from main.
 

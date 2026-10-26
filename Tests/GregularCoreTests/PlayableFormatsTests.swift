@@ -39,6 +39,13 @@ struct PlayableFormatsTests {
         #expect(surround.safestFormats == plain.safestFormats, "H.264 and AAC stay the safest")
     }
 
+    /// FLAC as it is in a file, and 7.1 in a conversion (checked in the
+    /// simulator: `AppleTVSoundTests`); FLAC isn't copied into a conversion.
+    @Test func appleTVPlaysFLACAnd71() {
+        #expect(PlayableFormats.appleTV.audioCodecs.contains("flac") && !PlayableFormats.appleTV.convertedAudioCodecs.contains("flac"))
+        #expect(PlayableFormats.appleTV.mostAudioChannels == 8 && PlayableFormats.appleTV.withStereoSound.mostAudioChannels == 2)
+    }
+
     @Test func vlcPlaysTrueHD() {
         #expect(PlayableFormats.vlcOnAppleTV.audioCodecs.contains("truehd"))
     }

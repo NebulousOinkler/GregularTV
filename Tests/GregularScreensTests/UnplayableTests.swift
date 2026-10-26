@@ -70,6 +70,8 @@ struct UnplayableTests {
                 #expect(streams.ruledOut.count == count + 1, "No backoff: the server isn't at fault")
             } else if attempt < ruledOut.count - 1 {
                 #expect(!isCantPlay(), "The safest formats: retried, after a wait")
+                try await waitUntil(3) { streams.ruledOut.count > count }
+                #expect(streams.stereoAsked.last == true, "With stereo sound, in case it was the channels")
             }
         }
         guard case .cantPlay(let until) = player.status else {

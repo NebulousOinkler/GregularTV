@@ -1035,6 +1035,9 @@ public final class ChannelPlayer {
         // failure (`safestFormatRetries`), and after that it can't be played here.
         if kind == .unplayable, let failed {
             if unplayable.learn(from: failed.contents, on: failed.player, safest: streams.safestFormats) { return tune() }
+            // Formats every player plays, yet it won't: perhaps more sound
+            // channels than the player takes (7.1, say). Retry with stereo.
+            if !airing.isFiller, offersStereoSound { updateSettings(for: airing) { $0.stereoSound = true } }
             if consecutiveFailures >= Self.safestFormatRetries {
                 if !airing.isFiller { updateSettings(for: airing) { $0.cantPlay = true } }
                 status = .cantPlay(until: airing.slotEnd)

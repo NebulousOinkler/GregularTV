@@ -342,8 +342,8 @@ struct JellyfinPlaybackTests {
         let client = JellyfinFixtures.client(mock)
         _ = try await client.playbackSource(for: "abc")
         _ = try await client.playbackSource(for: "abc", stereoSound: true)
-        #expect(channels == ["6", "2"])
-        #expect(client.mostSoundChannels == 6)
+        #expect(channels == ["8", "2"], "Up to 7.1 unless asked for stereo")
+        #expect(client.mostSoundChannels == 8)
     }
 
     /// What a stream carries: the file's own, or a conversion's output, as
