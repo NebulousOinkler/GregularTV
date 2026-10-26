@@ -306,7 +306,7 @@ import Observation
                 if let underlying = error.userInfo[NSUnderlyingErrorKey] as? NSError, underlying.domain == NSURLErrorDomain {
                     return URLError(URLError.Code(rawValue: underlying.code))
                 }
-                return Self.formatErrors.contains(AVError.Code(rawValue: error.code)) ? UnplayableFormat() : PlaybackStopped()
+                return Self.formatErrors.contains(AVError.Code(rawValue: error.code)) ? UnplayableFormat.here : PlaybackStopped()
             case .vlc(let item):
                 return item.failure
             }
@@ -332,10 +332,7 @@ import Observation
     }
 }
 
-/// A programme Apple TV couldn't decode (`UnplayableMedia`): AVFoundation
-/// couldn't read its format, or VLC stopped with an error.
-struct UnplayableFormat: UnplayableMedia, LocalizedError {
-    var errorDescription: String? {
-        "This programme couldn't be played. It may be in a format Apple TV can't show."
-    }
+extension UnplayableFormat {
+    /// A format Apple TV couldn't decode.
+    static let here = UnplayableFormat(on: "Apple TV")
 }

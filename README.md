@@ -100,7 +100,7 @@ The browser layer's own tests (`Web/Tests`) run in Node:
 scripts/test-web.sh browser
 ```
 
-**Deploying** is automatic: `.github/workflows/web.yml` runs only on main: each push to it is built, checked, tested and deployed to gregular.tv on Cloudflare. Other branches are tested locally with `scripts/test-web.sh`. Setting up the domain and Cloudflare is in [WEB_PLAN.md](WEB_PLAN.md), *Hosting at gregular.tv*.
+**Deploying** is automatic: `.github/workflows/web.yml` builds, checks, tests and deploys each push to main to gregular.tv on Cloudflare. Each pull request is built, checked and tested the same way, and its deploy rehearsed without publishing, with no secrets, so a change that fails is caught before it's merged. Other branches are tested locally with `scripts/test-web.sh`. Setting up the domain and Cloudflare is in [WEB_PLAN.md](WEB_PLAN.md), *Hosting at gregular.tv*.
 
 ## Schedule code
 
@@ -321,7 +321,7 @@ Gregular TV is built to know as little as possible about your Jellyfin server, a
 
 **Never stored:** your password (it's used for one sign-in request only), your library (titles, episodes, artwork; a custom channel or set time keeps only the names you picked for it), schedules, watch history, or logs. The library is fetched into memory at launch and is gone when the app quits. Schedules are recomputed from each channel's seed and the clock, so there's nothing to save.
 
-**What the app learns about this device's formats** (kept in memory only, never stored, gone when the app or page closes): when a player can't decode a stream, the app reads that stream's video and sound formats from what Jellyfin already sent (the codec and its profile, such as "HEVC Main 10" or "E-AC-3"; nothing about the programme), and stops telling Jellyfin the device plays that format, for the rest of the session. Your server sees only a shorter list of what this device plays in the next requests, as it sees that list in every request now. On the web, the browser is asked which of HEVC, AV1, AC-3, E-AC-3, Opus and FLAC it decodes, through its own interface, and the answers go only into that list, sent to your own server.
+**What the app learns about this device's formats** (kept in memory only, never stored, gone when the app or page closes): for each stream, the app reads its video and sound formats from what Jellyfin already sends (the codec and its profile, such as "HEVC Main 10" or "E-AC-3"; nothing else about the programme), and keeps them only while that stream plays. When a player can't decode one, it stops telling Jellyfin the device plays that format, for the rest of the session (at most 8 formats for each player). Your server sees only a shorter list of what this device plays in the next requests, as it sees that list in every request now. On the web, the browser is asked which of HEVC, AV1, AC-3, E-AC-3, Opus and FLAC it decodes, through its own interface, and the answers go only into that list, sent to your own server.
 
 **Deleting the app** leaves nothing that comes back: the Keychain can keep an app's items after it's deleted, so on its first launch after installing, the app forgets every sign-in it finds.
 

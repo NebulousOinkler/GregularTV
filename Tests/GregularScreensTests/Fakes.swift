@@ -143,7 +143,7 @@ final class FakeStreams: StreamSource, @unchecked Sendable {
             let video = file.video.map { ruledOut.contains($0) ? MediaFormat(.video, "h264") : $0 }
             let sound = file.sound.map { ruledOut.contains($0) ? MediaFormat(.sound, "aac") : $0 }
             let delivery: MediaStream.Delivery = video != file.video ? .reencoded : sound != file.sound ? .soundConverted : .original
-            return MediaStream(url: url, delivery: delivery, sessionID: delivery.isStreamed ? "session-\(itemID)" : nil,
+            return MediaStream(url: url, delivery: delivery, sessionID: delivery != .original ? "session-\(itemID)" : nil,
                                contents: StreamContents(video: video, sound: sound))
         }
         let addOnOnly = addOnOnly.contains(itemID) || soundConverting.contains(itemID)
@@ -153,8 +153,9 @@ final class FakeStreams: StreamSource, @unchecked Sendable {
             : asItIs == nil ? (soundConverting.contains(itemID) ? .soundConverted : .repackaged)
             : streaming && asItIs == .builtIn ? .repackaged
             : .original
-        return MediaStream(url: url, delivery: delivery, player: delivery.isStreamed ? .builtIn : asItIs ?? .builtIn,
-                           sessionID: delivery.isStreamed ? "session-\(itemID)" : nil)
+        let streamed = delivery != .original
+        return MediaStream(url: url, delivery: delivery, player: streamed ? .builtIn : asItIs ?? .builtIn,
+                           sessionID: streamed ? "session-\(itemID)" : nil)
     }
     func release(_ stream: MediaStream) async {}
     func keepAlive(_ stream: MediaStream) async {
