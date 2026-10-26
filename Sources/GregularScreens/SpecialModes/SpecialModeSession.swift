@@ -11,11 +11,11 @@ import GregularCore
     public let programmes: [MediaItem]
     /// What this device plays.
     public let formats: PlayableFormats
-    /// The server, for the mode's models: songs' lyrics, and original files to play whole.
-    let media: any LyricsSource & OriginalFiles
+    /// The server, for the mode's models: songs' lyrics, and files to play whole.
+    let media: any LyricsSource & WholeFiles
     private let onExit: @MainActor (SpecialModeSession) -> Void
 
-    init(mode: SpecialMode, programmes: [MediaItem], formats: PlayableFormats, media: any LyricsSource & OriginalFiles,
+    init(mode: SpecialMode, programmes: [MediaItem], formats: PlayableFormats, media: any LyricsSource & WholeFiles,
          onExit: @escaping @MainActor (SpecialModeSession) -> Void) {
         self.mode = mode
         self.programmes = programmes
@@ -24,14 +24,14 @@ import GregularCore
         self.onExit = onExit
     }
 
-    /// The whole of a file the mode plays (`OriginalFiles.download`), for a
+    /// The whole of a file the mode plays (`WholeFiles.download`), for a
     /// platform's player that can't fetch it whole itself.
     public func download(_ url: URL, mostBytes: Int) async throws -> Data {
         try await media.download(url, mostBytes: mostBytes)
     }
 
     /// Throws unless `url` is a file the server may send as one of its own
-    /// (`OriginalFiles.checkDownload`), for a platform's player that fetches
+    /// (`WholeFiles.checkDownload`), for a platform's player that fetches
     /// it whole some other way.
     public func checkFile(_ url: URL) throws {
         try media.checkDownload(url)

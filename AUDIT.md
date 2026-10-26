@@ -133,7 +133,7 @@ The whole codebase again, before the playback rework (Auto per programme, progra
 ### L2. The web version's song download skipped the server checks — resolved
 - **Where:** `SongPlayer.load` called `WholeFile.fetch` directly.
 - **Resolved:**
-  - `OriginalFiles.checkDownload` runs the same check as `JellyfinClient.download`: an allowed server, and the file on it.
+  - `WholeFiles.checkDownload` (`OriginalFiles` until 2026-10-26) runs the same check as `JellyfinClient.download`: an allowed server, and the file on it.
   - The web's `SongPlayer` calls it, through `SpecialModeSession.checkFile`, before fetching.
   - It's tested in `SpecialLibraryTests`.
 

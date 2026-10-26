@@ -115,17 +115,25 @@ struct DeviceProfile: Encodable {
     }
 
     struct TranscodingProfile: Encodable {
-        let container = "mp4"           // fMP4 HLS, which carries HEVC as well as H.264
-        let type = "Video"
+        var container = "mp4"           // fMP4 HLS, which carries HEVC as well as H.264
+        var type = "Video"
         /// Copied as it is when the video already is one of these; made as
         /// the first when it has to be re-encoded.
-        let videoCodec: String
+        var videoCodec: String?
         let audioCodec: String
-        let `protocol` = "hls"
-        let context = "Streaming"
+        var `protocol` = "hls"
+        var context = "Streaming"
         let maxAudioChannels: String
-        let minSegments = 2
-        let breakOnNonKeyFrames = true
+        var minSegments: Int? = 2
+        var breakOnNonKeyFrames: Bool? = true
+
+        /// A song's sound converted into one file in `codec` (in a container
+        /// of the same name, such as raw AAC), made as it's fetched, to fetch
+        /// whole (`JellyfinClient.wholeFileURL(of:)`). Stereo is plenty.
+        static func song(_ codec: String) -> TranscodingProfile {
+            TranscodingProfile(container: codec, type: "Audio", videoCodec: nil, audioCodec: codec, protocol: "http",
+                               context: "Static", maxAudioChannels: "2", minSegments: nil, breakOnNonKeyFrames: nil)
+        }
     }
 
     /// What a file must be, beyond its codecs' names, to play as it is (or
@@ -212,6 +220,7 @@ struct DeviceProfile: Encodable {
         transcodingProfiles = [TranscodingProfile(videoCodec: formats.convertedVideoCodecs.joined(separator: ","),
                                                   audioCodec: formats.convertedAudioCodecs.joined(separator: ","),
                                                   maxAudioChannels: String(formats.mostAudioChannels))]
+            + (formats.audioFileContainers.isEmpty ? [] : formats.convertedAudioCodecs.prefix(1).map(TranscodingProfile.song))
         codecProfiles = formats.codecLimits.map(CodecProfile.init) + (choosingSoundTrack ? [.firstSoundTrackOnly] : [])
     }
 }

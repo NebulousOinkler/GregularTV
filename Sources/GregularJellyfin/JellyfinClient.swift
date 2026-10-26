@@ -57,13 +57,17 @@ public struct JellyfinClient: Sendable {
         return lyrics.synced
     }
 
-    /// Where `item`'s original file is, to fetch whole, if this device plays
-    /// it as it is. Nil if Jellyfin would have to convert it.
+    /// Where `item`'s file is, to fetch whole: the original, if this device
+    /// plays it as it is; else, for a song, Jellyfin's conversion of its
+    /// sound into one file (`DeviceProfile.TranscodingProfile.song`), made as
+    /// it's fetched, so it costs the server a sound conversion. Nil for a
+    /// video Jellyfin would have to convert, or a conversion that isn't one
+    /// file (a stream can't be fetched whole).
     ///
     /// Asked as if the server were on https even when it isn't: the file is
     /// fetched by the app itself, not by a web page's player, so a browser's
     /// rule against playing files from plain http doesn't apply (`PlayableFormats.playsFilesOnlyOverHTTPS`).
-    public func originalFileURL(of item: MediaItem) async throws -> URL? {
+    public func wholeFileURL(of item: MediaItem) async throws -> URL? {
         let info: PlaybackInfoResponse = try await api.post(
             "/Items/\(JellyfinAPI.segment(item.id))/PlaybackInfo",
             query: [
@@ -73,8 +77,13 @@ public struct JellyfinClient: Sendable {
             ],
             body: PlaybackInfoRequest(itemID: item.id, userId: credentials.userID, formats: formats,
                                       maxBitrate: StreamingQuality.maximumBitrate, secure: true))
-        guard let source = info.mediaSources.first, source.supportsDirectPlay else { return nil }
-        return directPlayURL(itemID: item.id, source: source, playSessionID: nil, isSong: item.kind == .song)
+        guard let source = info.mediaSources.first else { return nil }
+        if source.supportsDirectPlay {
+            return directPlayURL(itemID: item.id, source: source, playSessionID: nil, isSong: item.kind == .song)
+        }
+        guard item.kind == .song, let url = source.transcodingUrl.flatMap(serverRelativeURL),
+              url.pathExtension.lowercased() != "m3u8" else { return nil }
+        return url
     }
 
     /// The device's players: its own, and the add-on if it has one.
@@ -294,9 +303,9 @@ extension JellyfinClient: LyricsSource {
     }
 }
 
-extension JellyfinClient: OriginalFiles {
-    public func originalFile(of item: MediaItem) async throws -> URL? {
-        try await originalFileURL(of: item)
+extension JellyfinClient: WholeFiles {
+    public func wholeFile(of item: MediaItem) async throws -> URL? {
+        try await wholeFileURL(of: item)
     }
 
     /// Only from this server, through its transport and rules.

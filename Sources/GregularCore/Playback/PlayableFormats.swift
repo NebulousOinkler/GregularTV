@@ -30,7 +30,7 @@ public struct PlayableFormats: Sendable, Equatable {
     /// Whether a file in `container` (as `MediaItem.container` names it) could
     /// play as it is, judged by the container alone. True when it isn't
     /// known, or the player takes any container: only the server can say
-    /// for sure (`OriginalFiles`).
+    /// for sure (`WholeFiles`).
     public func mightPlayAsIs(_ kind: MediaItem.Kind, container: String?) -> Bool {
         let playable = kind == .song ? audioFileContainers : containers
         guard let container, !playable.isEmpty else { return true }

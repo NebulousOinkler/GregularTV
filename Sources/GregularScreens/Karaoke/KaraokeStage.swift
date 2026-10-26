@@ -9,8 +9,11 @@ import Observation
 ///   usually there's no wait at all. Only one is fetched at a time.
 /// - **Title card:** a loaded song waits, with its title and the queue, for
 ///   Play.
-/// - A song that can't be loaded (the server would have to convert it, or
-///   the fetch fails) is skipped with a notice, and leaves the songbook.
+/// - A song whose sound the device doesn't play comes converted by the
+///   server, fetched whole as any other; the wait is that much longer
+///   (`WholeFiles.wholeFile(of:)`).
+/// - A song that can't be loaded (a video the server would have to
+///   convert, or the fetch fails) is skipped with a notice, and leaves the songbook.
 @MainActor @Observable
 public final class KaraokeStage {
     public enum State: Equatable, Sendable {
@@ -54,7 +57,7 @@ public final class KaraokeStage {
     public var position: TimeInterval { deck.position }
 
     private let deck: any SongDeck
-    private let media: any LyricsSource & OriginalFiles
+    private let media: any LyricsSource & WholeFiles
     /// The song on stage, held in memory.
     private var onStage: Loaded?
     /// The song on stage being fetched ("Get ready!").
@@ -67,7 +70,7 @@ public final class KaraokeStage {
         let lyrics: LyricsTimeline?
     }
 
-    init(deck: any SongDeck, media: any LyricsSource & OriginalFiles) {
+    init(deck: any SongDeck, media: any LyricsSource & WholeFiles) {
         self.deck = deck
         self.media = media
         deck.onFinish = { [weak self] in
@@ -202,7 +205,7 @@ public final class KaraokeStage {
     private func load(_ song: Songbook.Song) -> Task<Loaded?, Never> {
         let (deck, media) = (deck, media)
         return Task {
-            guard let url = try? await media.originalFile(of: song.item) else { return nil }
+            guard let url = try? await media.wholeFile(of: song.item) else { return nil }
             async let lyrics = song.isVideo || !song.item.hasLyrics ? nil : try? await media.lyrics(for: song.id)
             guard let file = try? await deck.load(url, mostBytes: Self.mostBytes), !Task.isCancelled else { return nil }
             return Loaded(file: file, lyrics: await lyrics.map(LyricsTimeline.init))

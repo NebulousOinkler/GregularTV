@@ -23,14 +23,16 @@ public protocol LyricsSource: Sendable {
     func lyrics(for itemID: String) async throws -> SyncedLyrics?
 }
 
-/// Items' original files, for playing whole: fetched completely before they
-/// play, so nothing can stall partway (unlike a `StreamSource`'s streams).
-public protocol OriginalFiles: Sendable {
-    /// Where `item`'s original file is, if this device plays it as it is.
-    /// Nil if the server would have to convert it.
-    func originalFile(of item: MediaItem) async throws -> URL?
+/// Items' files, for playing whole: fetched completely before they play,
+/// so nothing can stall partway (unlike a `StreamSource`'s streams).
+public protocol WholeFiles: Sendable {
+    /// Where `item`'s file is, to fetch whole: the original, if this device
+    /// plays it as it is; else, for a song, the server's conversion of it to
+    /// a sound format the device plays, made as it's fetched. Nil for
+    /// anything else the server would have to convert (a video).
+    func wholeFile(of item: MediaItem) async throws -> URL?
 
-    /// The whole of an `originalFile(of:)`, in memory (never on disk), for
+    /// The whole of a `wholeFile(of:)`, in memory (never on disk), for
     /// a platform whose player can't fetch it whole itself. Throws if it's
     /// larger than `mostBytes`, or if `checkDownload(_:)` would.
     func download(_ url: URL, mostBytes: Int) async throws -> Data
