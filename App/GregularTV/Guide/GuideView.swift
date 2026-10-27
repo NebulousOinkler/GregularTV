@@ -20,6 +20,8 @@ struct GuideView: View {
 
     let channels: [ChannelSchedule]
     let currentNumber: Int
+    /// A feed has an update: a dot on the Settings button.
+    var settingsHasNews = false
     let onSelect: (Int) -> Void
     /// Buttons from `RemoteControls.guide`, the Settings button, and `.close` when idle.
     let onRemote: (RemoteAction) -> Void
@@ -192,6 +194,12 @@ struct GuideView: View {
                     .focused($focusedID, equals: Self.resumeFocusID)
                     Button { onRemote(.openSettings) } label: {
                         Label("Settings", systemImage: "gearshape")
+                    }
+                    .overlay(alignment: .topTrailing) {
+                        if settingsHasNews {
+                            Circle().fill(Color.accentColor).frame(width: 16, height: 16).offset(x: 4, y: -4)
+                                .accessibilityLabel(FeedText.updatesWaiting)
+                        }
                     }
                     .focused($focusedID, equals: Self.settingsFocusID)
                 }

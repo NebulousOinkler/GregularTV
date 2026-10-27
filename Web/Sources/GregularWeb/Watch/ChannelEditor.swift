@@ -28,6 +28,13 @@ import JavaScriptKit
                 return .object(reply)
             }
         })
+        // Share as a feed's file, saved by this page rather than the frame:
+        // browsers count a download from a frame as loading it there, which
+        // frame-src (Web/public/_headers) allows only for this site's pages.
+        host["saveFile"] = .object(JSClosure { arguments in
+            Self.save(arguments[1].string ?? "", as: arguments[0].string ?? "feed.json")
+            return .undefined
+        })
         JSObject.global.gregularEditor = .object(host)
 
         frame.attribute("src", "editor.html").attribute("title", "Your channels and set times")
@@ -50,6 +57,19 @@ import JavaScriptKit
         JSObject.global.gregularEditor = .undefined
         Keys.release(KeyTrap.shared)
         onClose()
+    }
+
+    /// The last file saved, until the next replaces it.
+    private static var savedURL: JSValue?
+
+    /// Hands `text` to the browser to save as a file called `name`.
+    private static func save(_ text: String, as name: String) {
+        let options = JSObject()
+        options["type"] = .string("application/json")
+        let url = JSObject.global.URL.function!.createObjectURL!(JSObject.global.Blob.function!.new([text], options))
+        if let savedURL { _ = JSObject.global.URL.function!.revokeObjectURL!(savedURL) }
+        savedURL = url
+        _ = El("a").attribute("href", url.string ?? "").attribute("download", name).object.click!()
     }
 
     /// A promise for `work`'s result, for the page in the frame.

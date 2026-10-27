@@ -73,6 +73,8 @@ struct SettingsView: View {
 
             yourChannels
 
+            feeds
+
             SettingsRows.section(SettingsText.commercials, footer: [SettingsText.commercialsNote]) {
                 SettingsRows.row(SettingsText.playCommercials, value: SettingsText.onOff(app.playsCommercials)) {
                     app.setPlaysCommercials(!app.playsCommercials)
@@ -165,6 +167,29 @@ struct SettingsView: View {
             }
             if app.allowsEditingPage {
                 SettingsRows.row(SettingsText.openEditingPage) { editingPage = true }
+            }
+        }
+    }
+
+    /// The feeds followed: each with where it stands, its update, and Unfollow.
+    @ViewBuilder private var feeds: some View {
+        SettingsRows.section(FeedText.title, footer: [
+            app.feeds.isEmpty ? FeedText.none : nil,
+            FeedText.note,
+            SettingsText.howToEdit(pageAllowed: app.allowsEditingPage),
+        ]) {
+            ForEach(app.feeds) { feed in
+                SettingsRows.row(feed.title, detail: "\(FeedText.block(feed.firstNumber)) · \(feed.status)", action: {}) {
+                    FeedArt(feed: feed)
+                }
+                if feed.waiting != nil {
+                    SettingsRows.row(FeedText.getUpdate, detail: feed.whatsNew.joined(separator: "\n")) {
+                        app.getUpdate(feed.link)
+                    }
+                }
+                SettingsRows.confirmedRow(.unfollow(feed.title, channels: feed.lineup.channels.count)) {
+                    app.unfollow(feed.link)
+                }
             }
         }
     }

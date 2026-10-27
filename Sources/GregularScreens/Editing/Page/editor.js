@@ -46,6 +46,7 @@ function use(newState) {
 function render() {
   renderChannels();
   renderSetTimes();
+  renderFeeds();
   $("json").value = JSON.stringify(doc, null, 2);
 }
 
@@ -60,9 +61,11 @@ function describe(match) {
   return match[kind];
 }
 
+/** The first free number for a channel of yours: not taken, and not in a feed's block. */
 function freeNumber() {
   const taken = new Set([...state.channels.map((c) => c.number), ...doc.channels.map((c) => c.number)]);
-  for (let n = state.customNumbers.from; n <= state.customNumbers.to; n++) if (!taken.has(n)) return n;
+  const inFeed = (n) => (doc.feeds || []).some((f) => n >= f.firstNumber && n <= f.firstNumber + 9);
+  for (let n = state.customNumbers.from; n <= state.customNumbers.to; n++) if (!taken.has(n) && !inFeed(n)) return n;
   return state.customNumbers.from;
 }
 
@@ -242,6 +245,156 @@ function programmeRow(group, programme, i) {
       } })));
 }
 
+// Feeds
+
+/** A feed's picture, or its badge: initials on a colour. */
+function feedArt(feed) {
+  if (feed.details && feed.details.image) {
+    return el("img", { className: "feed-art", alt: "", src: "data:image/png;base64," + feed.details.image });
+  }
+  const badge = el("div", { className: "feed-art feed-badge", text: feed.badge.initials, "aria-hidden": "true" });
+  badge.style.backgroundColor = "hsl(" + feed.badge.hue + " 45% 38%)";
+  return badge;
+}
+
+function feedHead(feed, ...lines) {
+  return el("div", { className: "feed-head" }, feedArt(feed),
+    el("div", {}, el("h2", { text: feed.title }), ...lines.filter(Boolean).map((text) => el("div", { className: "dim", text }))));
+}
+
+/** "70–79". */
+const block = (first) => first + "–" + (first + 9);
+
+/** Saves the document now: following and unfollowing take effect at once. */
+async function saveNow(done) {
+  try {
+    use(await api("/api/save", doc));
+    say(done, true);
+  } catch (error) { say(error.message); render(); }
+}
+
+/** Blocks a new feed could take, given what's on the page now, not just what's saved. */
+function freeBlocks(blocks) {
+  const used = [...doc.channels.map((c) => c.number), ...doc.setTimes.map((s) => s.channel)];
+  return blocks.filter((b) => !used.some((n) => n >= b && n <= b + 9) && !(doc.feeds || []).some((f) => f.firstNumber === b));
+}
+
+function renderFeeds() {
+  const tab = $("tab-feeds");
+  const link = el("input", { type: "url", placeholder: "The link to the feed", "aria-label": "Feed link", autocomplete: "off", spellcheck: false });
+  const look = el("div");
+  const follow = el("form", { className: "card" },
+    el("h2", { text: "Follow a feed" }),
+    el("p", { className: "dim", text: "Paste the link to someone's feed: their channels, and set times on them, in a block of ten numbers you pick. When they change it, you get the update when you choose." }),
+    el("div", { className: "row" }, link, el("button", { className: "primary", text: "Look" })),
+    look);
+  follow.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    look.replaceChildren(el("p", { className: "dim", text: "Getting it…" }));
+    try {
+      look.replaceChildren(feedPreview(await api("/api/feeds/look", { link: link.value })));
+      say("");
+    } catch (error) { look.replaceChildren(); say(error.message); }
+  });
+  tab.replaceChildren(follow,
+    ...(state.feeds.length ? state.feeds.map(feedCard) : [el("p", { className: "dim", text: "You don't follow any feeds." })]),
+    shareCard());
+}
+
+/** A feed looked at, before following it: like a podcast's page. */
+function feedPreview(found) {
+  const blocks = freeBlocks(found.freeBlocks);
+  const where = el("select", { "aria-label": "Channel numbers" },
+    ...blocks.map((first) => el("option", { value: first, text: "Channels " + block(first) })));
+  return el("div", {},
+    feedHead(found, found.details.publisher && "From " + found.details.publisher, found.details.description, found.details.times),
+    el("ul", { className: "lines" }, ...found.channels.map((c) => el("li", { text: c.name + ": " + c.summary }))),
+    blocks.length
+      ? el("div", { className: "row" }, where,
+          el("button", { type: "button", className: "primary", text: "Follow", onclick: () => {
+            doc.feeds = [...(doc.feeds || []), { link: found.link, firstNumber: Number(where.value) }];
+            saveNow("Following " + found.title + ".");
+          } }),
+          el("span", { className: "dim", text: dirty ? "Following also saves your other changes." : "" }))
+      : el("p", { className: "dim", text: "There's no free block of ten numbers for it. Unfollow a feed, or move some of your channels." }));
+}
+
+/** A feed followed: where it stands, its update, its channels to copy, and unfollowing. */
+function feedCard(feed) {
+  const unsaved = () => dirty && (say("Save or undo your changes first."), true);
+  return el("div", { className: "card" },
+    feedHead(feed, "Channels " + block(feed.firstNumber) + (feed.details && feed.details.publisher ? " · From " + feed.details.publisher : ""),
+             feed.details && feed.details.description, feed.status),
+    feed.hasUpdate ? el("div", {},
+      el("ul", { className: "lines" }, ...feed.whatsNew.map((line) => el("li", { text: line }))),
+      el("div", { className: "row" }, el("button", { type: "button", className: "primary", text: "Get Update", onclick: async () => {
+        if (unsaved()) return;
+        try { use(await api("/api/feeds/update", { link: feed.link })); say(feed.title + " is up to date.", true); } catch (error) { say(error.message); }
+      } }))) : null,
+    el("ul", { className: "lines" }, ...feed.channels.map((line) => el("li", {},
+      el("span", { text: line.number + "  " + line.name + ": " + line.summary + " " }),
+      el("button", { type: "button", text: "Make a Copy", title: "Copy it to your own channels, where you can change it", onclick: () => {
+        const number = freeNumber();
+        doc.channels.push({ ...JSON.parse(JSON.stringify(line.channel)), number });
+        if (line.setTimes) doc.setTimes.push({ ...JSON.parse(JSON.stringify(line.setTimes)), channel: number });
+        changed(); render();
+        say("Copied to your channel " + number + ". Save to keep it.", true);
+      } })))),
+    el("div", { className: "row" }, el("button", { type: "button", className: "danger", text: "Unfollow", onclick: () => {
+      if (unsaved()) return;
+      if (!confirm("Unfollow " + feed.title + "? Its channels and set times will be removed. To keep one, make a copy of it first.")) return;
+      doc.feeds = (doc.feeds || []).filter((f) => f.link !== feed.link);
+      saveNow("Unfollowed " + feed.title + ".");
+    } })));
+}
+
+/** Share as a feed: a block of your channels, as a file to put on any https host. */
+function shareCard() {
+  const yours = [...new Set(state.document.channels.map((c) => Math.floor(c.number / 10) * 10))].sort((a, b) => a - b);
+  const card = el("form", { className: "card" }, el("h2", { text: "Share as a feed" }),
+    el("p", { className: "dim", text: "Saves a block of ten of your channels, and their set times, as a file. Put it on any https host that lets web apps read it, such as GitHub Pages or a GitHub gist, and share the link. When you change the channels, share again and replace the file: followers get it as an update." }));
+  if (!yours.length) return card.append(el("p", { className: "dim", text: "Make some channels of your own first." })), card;
+  const which = el("select", { "aria-label": "Channels to share" }, ...yours.map((first) => el("option", { value: first, text: "Your channels " + block(first) })));
+  const title = el("input", { placeholder: "Feed name, like Dad's Network", maxLength: 60, required: true, "aria-label": "Feed name" });
+  const publisher = el("input", { placeholder: "From (optional), like Dad", maxLength: 60, "aria-label": "Publisher" });
+  const about = el("input", { placeholder: "A line about it (optional)", maxLength: 300, "aria-label": "Description" });
+  const local = el("input", { type: "radio", name: "share-zone", checked: true });
+  const named = el("input", { type: "radio", name: "share-zone" });
+  const zone = el("input", { value: state.timeZone, "aria-label": "Time zone", onfocus: () => { named.checked = true; } });
+  const picture = el("input", { type: "file", accept: "image/png", "aria-label": "Picture" });
+  const result = el("div");
+  card.append(
+    el("div", { className: "row" }, which, title),
+    el("div", { className: "row" }, publisher, about),
+    el("div", { className: "row" }, el("label", {}, local, "Set times in each follower's own time"),
+      el("label", {}, named, "Set times in"), zone),
+    el("div", { className: "row" }, el("label", { text: "Picture (optional): a PNG, at most 32 KB and 256 × 256 " }, picture)),
+    el("div", { className: "row" }, el("button", { className: "primary", text: "Save Feed File" })),
+    result);
+  card.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    if (dirty) return say("Save your changes first: the feed is made from what's saved.");
+    let image;
+    const file = picture.files[0];
+    if (file) {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      image = btoa(Array.from(bytes, (b) => String.fromCharCode(b)).join(""));
+    }
+    try {
+      const made = await api("/api/feeds/share", { block: Number(which.value), title: title.value, publisher: publisher.value,
+        description: about.value, timeZone: local.checked ? "local" : zone.value.trim(), image });
+      const url = URL.createObjectURL(new Blob([made.file], { type: "application/json" }));
+      // Inside the web version, the page around this one saves it: a download from a frame counts as loading it there.
+      const save = el("a", { href: url, download: made.fileName, text: "Save " + made.fileName,
+        ...(host && { onclick: (event) => { event.preventDefault(); host.saveFile(made.fileName, made.file); } }) });
+      result.replaceChildren(el("p", {}, save), el("textarea", { readOnly: true, value: made.file, "aria-label": "The feed file" }));
+      save.click();
+      say("Made " + made.fileName + ". Upload it, and share its link.", true);
+    } catch (error) { say(error.message); }
+  });
+  return card;
+}
+
 // Tabs, JSON and saving
 
 for (const button of document.querySelectorAll("[data-tab]")) {
@@ -257,8 +410,9 @@ $("use-json").addEventListener("click", () => {
   try {
     const parsed = JSON.parse($("json").value);
     if (!Array.isArray(parsed.channels) || !Array.isArray(parsed.setTimes)) throw new Error("It needs “channels” and “setTimes” lists.");
+    if (parsed.feeds !== undefined && !Array.isArray(parsed.feeds)) throw new Error("“feeds” is a list.");
     doc = parsed; dirty = true; $("dirty").textContent = "Not saved yet.";
-    renderChannels(); renderSetTimes();
+    render();
     say(host ? "Using the JSON. Save to use it." : "Using the JSON. Save to send it to the Apple TV.", true);
   } catch (error) { say("That JSON can't be used: " + error.message); }
 });

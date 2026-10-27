@@ -13,10 +13,12 @@ extension UserDefaults: PreferenceStorage {}
 /// The app's only use of `UserDefaults` (or the platform's
 /// `PreferenceStorage`). It holds client preferences (last
 /// channel, streaming quality, schedule code, the diagnostics, commercials,
-/// editing-page and frame-rate switches, and the viewer's custom channels and set times) and **never**
-/// anything fetched from the server (PLAN.md §3). Custom channels and set
+/// editing-page and frame-rate switches, the viewer's custom channels and set times, and the feeds they
+/// follow) and **never** anything fetched from the media server (PLAN.md §3). Custom channels and set
 /// times are kept as their codes: what the viewer typed or picked (names,
 /// numbers, times, and perhaps a genre, series or tag name), nothing more.
+/// A feed is kept as its link, the numbers the viewer gave it, and the
+/// version of it they accepted (`SavedFeed`).
 public struct AppPreferences: @unchecked Sendable {
     private enum Key {
         static let lastChannelNumber = "lastChannelNumber"
@@ -28,6 +30,7 @@ public struct AppPreferences: @unchecked Sendable {
         static let setTimes = "setTimes"
         static let allowsEditingPage = "allowsEditingPage"
         static let matchesFrameRate = "matchesFrameRate"
+        static let feeds = "feeds"
     }
 
     private let defaults: any PreferenceStorage
@@ -85,6 +88,17 @@ public struct AppPreferences: @unchecked Sendable {
         nonmutating set { defaults.set(newValue.map(\.code), forKey: Key.setTimes) }
     }
 
+    /// The feeds followed, in the order they were added. Each is kept as
+    /// JSON text; one that can't be read is left out.
+    public var feeds: [SavedFeed] {
+        get { codes(Key.feeds) { try? JSONDecoder().decode(SavedFeed.self, from: Data($0.utf8)) } }
+        nonmutating set {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = .sortedKeys
+            defaults.set(newValue.compactMap { (try? encoder.encode($0)).flatMap { String(data: $0, encoding: .utf8) } }, forKey: Key.feeds)
+        }
+    }
+
     /// "Match frame rate" in Settings (Apple TV): whether the TV switches to
     /// what's on screen's frame rate and dynamic range. Off by default.
     public var matchesFrameRate: Bool {
@@ -103,5 +117,30 @@ public struct AppPreferences: @unchecked Sendable {
     public var scheduleCode: ScheduleCode? {
         get { (value(Key.scheduleCode) as String?).flatMap(ScheduleCode.init) }
         nonmutating set { defaults.set(newValue?.description, forKey: Key.scheduleCode) }
+    }
+}
+
+/// A feed the viewer follows, as it's kept: what they chose (the link and
+/// the first of its ten channel numbers), the version of the feed they
+/// accepted (the file as it came, which only a newer version they accept
+/// replaces), and whether it was reachable when last checked. Nothing about
+/// the media server, and nothing the feed's host sent but the file.
+public struct SavedFeed: Codable, Sendable, Equatable {
+    public var link: URL
+    /// 20, 30, … 90: the feed's channels take this number and the nine after it.
+    public var firstNumber: Int
+    /// The accepted version, or nil until the first one arrives.
+    public var file: Data?
+    /// When the link last gave a usable answer.
+    public var lastReached: Date?
+    /// The link's host said the file is gone, or what's there isn't a feed.
+    public var expired: Bool
+
+    public init(link: URL, firstNumber: Int, file: Data? = nil, lastReached: Date? = nil, expired: Bool = false) {
+        self.link = link
+        self.firstNumber = firstNumber
+        self.file = file
+        self.lastReached = lastReached
+        self.expired = expired
     }
 }

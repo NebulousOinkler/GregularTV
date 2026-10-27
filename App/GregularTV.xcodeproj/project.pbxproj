@@ -31,10 +31,10 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		5161A1C0C0F16000000000A1 /* Signing.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Signing.xcconfig; sourceTree = "<group>"; };
 		81918909E83595C8F4212CCC /* GregularTV.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = GregularTV.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		858E33F033846B57054E0712 /* GregularTVTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = GregularTVTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		C0FFEE000000000000000002 /* GregularTVUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = GregularTVUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		5161A1C0C0F16000000000A1 /* Signing.xcconfig */ = {isa = PBXFileReference; lastKnownFileType = text.xcconfig; path = Signing.xcconfig; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */

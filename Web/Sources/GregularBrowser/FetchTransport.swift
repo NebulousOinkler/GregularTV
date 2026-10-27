@@ -22,6 +22,9 @@ import JavaScriptKit
 public struct FetchTransport: HTTPTransport {
     public init() {}
 
+    /// A page can read another site's file only if that site allows it (CORS).
+    public var needsHostsPermission: Bool { true }
+
     public func send(_ request: ServerRequest) async throws -> ServerReply {
         try await Self.fetch(request)
     }
@@ -70,7 +73,10 @@ public struct FetchTransport: HTTPTransport {
         let options = JSObject()
         options["method"] = .string(request.method)
         let headers = JSObject()
-        for (name, value) in request.headers { headers[name] = .string(value) }
+        // Not a User-Agent: the browser sends its own, and asking for another
+        // would make a request to another site need permission first (a CORS
+        // preflight), which most hosts of a published file don't answer.
+        for (name, value) in request.headers where name.lowercased() != "user-agent" { headers[name] = .string(value) }
         options["headers"] = .object(headers)
         if let body = request.body { options["body"] = body.jsValue }
         options["redirect"] = "error"

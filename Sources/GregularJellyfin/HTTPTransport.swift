@@ -13,6 +13,13 @@ import GregularCore
 /// so a transport that gets them wrong still can't pass a reply on.
 public protocol HTTPTransport: Sendable {
     func send(_ request: ServerRequest) async throws -> ServerReply
+    /// Whether another site's file can only be read if its host allows it
+    /// (CORS, in a browser), so silence may mean it doesn't.
+    var needsHostsPermission: Bool { get }
+}
+
+extension HTTPTransport {
+    public var needsHostsPermission: Bool { false }
 }
 
 /// One request to a server. The app's own type rather than URLSession's

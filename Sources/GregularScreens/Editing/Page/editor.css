@@ -26,3 +26,8 @@ button.danger { color: var(--bad); }
 .bar { position: sticky; bottom: 0; background: var(--bg); padding: 10px 0; border-top: 1px solid var(--line); display: flex; gap: 8px; align-items: center; }
 ul.preview { margin: 6px 0 0; padding-left: 18px; }
 [hidden] { display: none !important; }
+.feed-head { display: flex; gap: 12px; align-items: center; }
+.feed-art { width: 64px; height: 64px; border-radius: 10px; flex: none; object-fit: cover; }
+.feed-badge { display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; font-size: 1.4rem; }
+.feed-head h2 { margin: 0; }
+ul.lines { margin: 6px 0; padding-left: 18px; }

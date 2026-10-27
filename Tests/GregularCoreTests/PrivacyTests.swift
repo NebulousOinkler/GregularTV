@@ -38,8 +38,14 @@ struct PrivacyTests {
         prefs.setTimes = [setTimes]
         #expect(AppPreferences(defaults: defaults).setTimes == [setTimes])
         #expect(defaults.stringArray(forKey: "setTimes") == [setTimes.code])
+        #expect(prefs.feeds.isEmpty)
+        let feed = SavedFeed(link: URL(string: "https://feeds.example/dad.json")!, firstNumber: 70, file: Data("{}".utf8),
+                             lastReached: Date(timeIntervalSince1970: 1_800_000_000))
+        prefs.feeds = [feed]
+        #expect(AppPreferences(defaults: defaults).feeds == [feed])
         #expect(defaults.persistentDomain(forName: suite)?.keys.sorted()
-                == ["customChannels", "lastChannelNumber", "playsCommercials", "scheduleCode", "setTimes", "showsDiagnostics", "streamingQuality"])
+                == ["customChannels", "feeds", "lastChannelNumber", "playsCommercials", "scheduleCode", "setTimes", "showsDiagnostics",
+                    "streamingQuality"])
     }
     #endif
 

@@ -15,14 +15,26 @@ import GregularCore
 ///       "halfHourSlots": true, "commercials": true } ],
 ///   "setTimes": [
 ///     { "channel": 1, "timeZone": "America/Los_Angeles",
-///       "programmes": [{ "series": "The Simpsons", "at": ["18:00", "18:30"], "days": ["Mon", "Tue"] }] } ] }
+///       "programmes": [{ "series": "The Simpsons", "at": ["18:00", "18:30"], "days": ["Mon", "Tue"] }] } ],
+///   "feeds": [{ "link": "https://example.github.io/dad.json", "firstNumber": 70 }] }
 /// ```
+///
+/// `feeds` are the feeds followed, as their links and numbers (README,
+/// *Feeds*): pasting a document on another device follows them there. Left
+/// out, the feeds followed stay as they are.
 ///
 /// Everything in it is checked as the codes are (`ChannelLineup.adding`), so
 /// a document can't do more than the editors on the Apple TV can.
 public struct EditingDocument: Codable, Sendable, Equatable {
     public var channels: [ChannelEntry]
     public var setTimes: [SetTimesEntry]
+    public var feeds: [FeedEntry]?
+
+    /// A feed followed: its link, and the first of the ten numbers its channels take.
+    public struct FeedEntry: Codable, Sendable, Equatable {
+        public var link: String
+        public var firstNumber: Int
+    }
 
     public struct ChannelEntry: Codable, Sendable, Equatable {
         public var number: Int
@@ -76,9 +88,10 @@ public struct EditingDocument: Codable, Sendable, Equatable {
         public let description: String
     }
 
-    public init(channels: [CustomChannel], setTimes: [SetTimes]) {
+    public init(channels: [CustomChannel], setTimes: [SetTimes], feeds: [SavedFeed] = []) {
         self.channels = channels.map(ChannelEntry.init)
         self.setTimes = setTimes.map(SetTimesEntry.init)
+        self.feeds = feeds.map { FeedEntry(link: $0.link.absoluteString, firstNumber: $0.firstNumber) }
     }
 
     /// The channels and set times it describes. Throws a `Problem` naming

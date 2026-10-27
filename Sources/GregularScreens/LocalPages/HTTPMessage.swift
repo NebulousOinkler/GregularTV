@@ -100,7 +100,7 @@ public struct HTTPResponse: Sendable, Equatable {
             "Referrer-Policy: no-referrer",
             "X-Content-Type-Options: nosniff",
             "X-Frame-Options: DENY",
-            "Content-Security-Policy: default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; form-action 'none'; frame-ancestors 'none'; base-uri 'none'",
+            "Content-Security-Policy: default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data:; connect-src 'self'; form-action 'none'; frame-ancestors 'none'; base-uri 'none'",
         ].joined(separator: "\r\n")
         return Data((head + "\r\n\r\n").utf8) + body
     }

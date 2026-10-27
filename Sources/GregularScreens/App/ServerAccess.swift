@@ -28,8 +28,37 @@ struct ServerAccess: Sendable {
                        transport: transport)
     }
 
+    /// Whether `link` is one the app may fetch a published file from (`PublicFile.mayFetch`).
+    func mayFetch(_ link: URL) -> Bool {
+        PublicFile.mayFetch(link)
+    }
+
+    /// The file published at `link`, such as a feed, of at most `largest`
+    /// bytes. Throws a `LinkProblem` in plain words.
+    func publishedFile(at link: URL, largest: Int) async throws -> Data {
+        do {
+            return try await PublicFile(transport: transport).fetch(link, largest: largest)
+        } catch let failure as PublicFile.Failure {
+            throw LinkProblem(failure)
+        }
+    }
+
     /// How this device introduces itself with `credentials`: the device ID it signed in with.
     private func identity(for credentials: Credentials) -> ClientIdentity {
         ClientIdentity(credentials, deviceName: deviceName)
+    }
+}
+
+extension LinkProblem {
+    init(_ failure: PublicFile.Failure) {
+        switch failure {
+        case .notAllowed: self.init(description: FeedText.badLink, isGone: false)
+        case .gone: self.init(description: FeedText.gone, isGone: true)
+        case .refused(let status): self.init(description: FeedText.refused(status), isGone: false)
+        case .tooLarge: self.init(description: FeedText.tooLarge, isGone: true)
+        case .redirectedAway: self.init(description: FeedText.redirectedAway, isGone: false)
+        case .unreachable(let maybeNotAllowed):
+            self.init(description: maybeNotAllowed ? FeedText.unreachableInBrowser : FeedText.unreachableLink, isGone: false)
+        }
     }
 }

@@ -106,6 +106,7 @@ import JavaScriptKit
             Redraw { [weak self] in self?.drawPanels() },
             Redraw { [weak self] in self?.drawTimers() },
             Redraw { [weak self] in self?.drawLineup() },
+            Redraw { [weak self] in self?.drawFeedNews() },
         ]
         model.appeared(showsDiagnostics: app.showsDiagnostics)
         Keys.take(self)
@@ -284,7 +285,8 @@ import JavaScriptKit
         let remote: (RemoteAction) -> Void = { model.perform($0) }
         openPanel = switch key {
         case "list": ChannelListPanel(channels: surfer.channels, currentNumber: current, onSelect: select, onRemote: remote)
-        case "guide": GuidePanel(channels: surfer.channels, currentNumber: current, onSelect: select, onRemote: remote)
+        case "guide": GuidePanel(channels: surfer.channels, currentNumber: current, settingsHasNews: app.hasFeedUpdates,
+                                 onSelect: select, onRemote: remote)
         case "settings": SettingsPanel(app: app, model: model)
         default: nil
         }
@@ -293,6 +295,11 @@ import JavaScriptKit
         overlay.replaceChildren(openPanel.map { [$0.element] } ?? [])
         openPanel?.appeared()
         if openPanel != nil { hideControls() }
+    }
+
+    /// A dot on the Settings button while a feed has an update.
+    private func drawFeedNews() {
+        Parts.news(on: now.settings, app.hasFeedUpdates)
     }
 
     /// The model's timers, restarted whenever their trigger changes.
@@ -342,6 +349,8 @@ import JavaScriptKit
     private let started = El("span")
     private let time = El("span")
     private let pause: El
+    /// Settings, marked while a feed has an update (`Parts.news`).
+    let settings: El
     private let hint = El("p", "hint")
     private let diagnostics = El("div", "diagnostics")
 
@@ -350,6 +359,7 @@ import JavaScriptKit
         func control(_ title: String, _ icon: Icon, _ action: RemoteAction) -> El {
             El.button(title, icon: icon, "icon-button", labelHidden: true) { perform(action) }
         }
+        settings = control(SettingsText.title, .settings, .openSettings)
         bar.append(fill)
         element.append(
             El("div", "now-head", [El("div", "channel-chip", [number, name]), clock]),
@@ -358,7 +368,7 @@ import JavaScriptKit
                 El("div", "group", [control("Channel down", .previous, .channelDown), pause, control("Channel up", .next, .channelUp)]),
                 El("div", "group", [
                     control("Info", .info, .showInfo), control("Guide", .guide, .openGuide),
-                    control("Channel list", .list, .openChannelList), control(SettingsText.title, .settings, .openSettings),
+                    control("Channel list", .list, .openChannelList), settings,
                 ]),
             ]),
             hint, diagnostics)

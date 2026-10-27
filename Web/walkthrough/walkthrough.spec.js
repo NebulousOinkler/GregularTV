@@ -1,5 +1,6 @@
 // Walks through the web version as a viewer would, against the demo server.
 // Each test starts with an empty browser (no sign-ins, no preferences).
+import { readFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
 
 const server = "127.0.0.1:8765";
@@ -405,3 +406,95 @@ test("the channel editor opens and makes a channel", async ({ page }) => {
   await expect(editor.getByText("Years: 1990–1999")).toBeVisible();
   expect(problems).toEqual([]);
 });
+
+/** Opens the channel editor's Feeds tab, follows the feed at `link` in
+ *  channels 60–69 (after `looking` at its preview), and returns the editor's frame. */
+async function followFeed(page, link, looking = async () => {}) {
+  await page.keyboard.press("s");
+  await page.getByRole("button", { name: "Edit Channels" }).click();
+  const editor = page.frameLocator("iframe[title='Your channels and set times']");
+  await editor.getByRole("button", { name: "Feeds" }).click();
+  await editor.getByLabel("Feed link").fill(link);
+  await editor.getByRole("button", { name: "Look" }).click();
+  await looking(editor);
+  await editor.getByLabel("Channel numbers").selectOption("60");
+  await editor.getByRole("button", { name: "Follow", exact: true }).click();
+  await expect(editor.getByText("Up to date.")).toBeVisible();
+  return editor;
+}
+
+// A feed is followed from the channel editor (looked at first, like a
+// podcast's page), listed in Settings, and unfollowed there.
+test("a feed is followed, listed and unfollowed", async ({ page }) => {
+  const problems = watchForProblems(page);
+  await signIn(page);
+  const editor = await followFeed(page, `http://${server}/feeds/silent-comedy.json`, async (editor) => {
+    await expect(editor.getByRole("heading", { name: "Silent Laughs" })).toBeVisible();
+    await expect(editor.getByText("From The Demo Library")).toBeVisible();
+  });
+  await expect(editor.getByText("Following Silent Laughs.")).toBeVisible();
+  await expect(editor.getByText(/^61 {2}Silent Comedy/)).toBeVisible();
+  // In Settings, behind the editor: the feed, and Unfollow.
+  await page.getByRole("button", { name: "Close" }).last().click();
+  const settings = page.locator(".settings");
+  await expect(settings.getByText("Silent Laughs")).toBeVisible();
+  await expect(settings.getByText("Channels 60–69 · Up to date.")).toBeVisible();
+  await settings.getByRole("button", { name: "Unfollow" }).click();
+  await page.getByRole("button", { name: "Unfollow" }).last().click();
+  await expect(settings.getByText("You don't follow any feeds.")).toBeVisible();
+  expect(problems).toEqual([]);
+});
+
+// A feed that changes after it's followed (the demo server's changing feed):
+// opening the app again checks it, Settings gets its dot and the update's
+// lines, and one tap brings the update in, with the feed's picture.
+test("a feed's update comes in with one tap", async ({ page, browserName }) => {
+  const problems = watchForProblems(page);
+  await signIn(page);
+  await followFeed(page, `http://${server}/feeds/changing/${browserName}-${Date.now()}.json`);
+  await signIn(page);   // opens the app again
+  const news = page.locator(".has-news");
+  await expect(news.first()).toHaveAttribute("aria-description", "A feed has an update.");
+  await page.keyboard.press("s");
+  const settings = page.locator(".settings");
+  await expect(settings.getByText("Channels 60–69 · Update available.")).toBeVisible();
+  await expect(settings.getByText("New channel: Silent Adventures")).toBeVisible();
+  await expect(settings.locator(".feed-badge")).toHaveText("SL");
+  await settings.getByRole("button", { name: /Get Update/ }).click();
+  await expect(settings.getByText("Channels 60–69 · Up to date.")).toBeVisible();
+  const picture = settings.locator("img.feed-art");
+  await expect(picture).toBeVisible();
+  expect(await picture.evaluate((image) => image.naturalWidth)).toBe(48);
+  await expect(news).toHaveCount(0);
+  await settings.getByRole("button", { name: "Unfollow" }).click();
+  await page.getByRole("button", { name: "Unfollow" }).last().click();
+  await expect(settings.getByText("You don't follow any feeds.")).toBeVisible();
+  expect(problems).toEqual([]);
+});
+
+// A feed's channel copied to your own (with its set times), saved, and that
+// block of your channels shared as a feed file, which downloads.
+test("a feed's channel is copied, and your channels are shared as a feed", async ({ page }) => {
+  const problems = watchForProblems(page);
+  await signIn(page);
+  const editor = await followFeed(page, `http://${server}/feeds/silent-comedy.json`);
+  await editor.getByRole("button", { name: "Make a Copy" }).click();
+  await expect(editor.getByText("Copied to your channel 20. Save to keep it.")).toBeVisible();
+  await editor.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(editor.getByText("Saved. Your channels have been rebuilt.")).toBeVisible();
+
+  await editor.getByLabel("Channels to share").selectOption("20");
+  await editor.getByLabel("Feed name").fill("Copied Laughs");
+  await editor.getByLabel("Publisher").fill("A Tester");
+  const download = page.waitForEvent("download");
+  await editor.getByRole("button", { name: "Save Feed File" }).click();
+  const file = await download;
+  expect(file.suggestedFilename()).toBe("copied-laughs.json");
+  const feed = JSON.parse(await readFile(await file.path(), "utf8"));
+  expect(feed).toMatchObject({ gregularFeed: 1, title: "Copied Laughs", publisher: "A Tester", timeZone: "local" });
+  expect(feed.channels.map((channel) => [channel.number, channel.name])).toEqual([[20, "Silent Comedy"]]);
+  expect(feed.setTimes.map((times) => times.channel)).toEqual([20]);
+  await expect(editor.getByLabel("The feed file")).toHaveValue(/"Copied Laughs"/);
+  expect(problems).toEqual([]);
+});
+

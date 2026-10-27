@@ -204,7 +204,7 @@ enum Fixture {
         let preferences = AppPreferences.testing()
         if !firstLaunch { preferences.scheduleCode = .standard }
         return AppModel(deviceName: "Test Device", formats: .appleTV, transport: transport, store: store,
-                        preferences: preferences, makeDecks: FakeDeck.pair, specialModes: specialModes)
+                        preferences: preferences, makeDecks: FakeDeck.pair, specialModes: specialModes, checksFeedsEvery: nil)
     }
 
     @MainActor static func settle(_ player: ChannelPlayer) async throws {

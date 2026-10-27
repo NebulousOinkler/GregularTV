@@ -23,19 +23,53 @@ The library is public-domain films and made-up TV shows, so screenshots show
 nothing anyone else owns and nothing from a real library. Every item plays the
 same plain background video. Only the endpoints the app calls are answered.
 
+It serves a feed (README, *Feeds*) at /feeds/silent-comedy.json, and one
+that changes at /feeds/changing/<any name>.json: the first request for a
+name gets the feed, every later one an update (a new channel and a
+picture), so a walkthrough can follow it, then get the update.
+
 It also has two libraries of made-up songs, "Karaoke" (sound files, with
 made-up lyrics timed to the music) and "Karaoke Videos". The songs play the
 app's own station-card music (Web/public/station-card.m4a), 15 seconds long.
 """
 
+import base64
 import json
 import os
 import re
+import struct
 import sys
+import threading
+import zlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
 PORT = 8765
+# A feed someone might publish (README, *Feeds*), for the walkthroughs to follow.
+DEMO_FEED = {
+    "gregularFeed": 1, "title": "Silent Laughs", "publisher": "The Demo Library",
+    "description": "Silent comedies all day, and The General on Sunday nights.", "timeZone": "local",
+    "channels": [{"number": 61, "name": "Silent Comedy", "plays": "movies", "rule": {"anyOf": [{"genre": "Comedy"}]}}],
+    "setTimes": [{"channel": 61, "programmes": [{"item": "The General", "at": ["20:00"], "days": ["Sun"]}]}],
+}
+
+
+def png(width, height, rgb):
+    """A plain PNG of one colour."""
+    def chunk(kind, data):
+        return struct.pack(">I", len(data)) + kind + data + struct.pack(">I", zlib.crc32(kind + data))
+    rows = b"".join(b"\0" + bytes(rgb) * width for _ in range(height))
+    return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+            + chunk(b"IDAT", zlib.compress(rows)) + chunk(b"IEND", b""))
+
+
+# The same feed, updated: a second channel, and a picture.
+DEMO_FEED_UPDATE = dict(DEMO_FEED, image=base64.b64encode(png(48, 48, (214, 120, 40))).decode(), channels=DEMO_FEED["channels"] + [
+    {"number": 62, "name": "Silent Adventures", "plays": "movies", "rule": {"anyOf": [{"genre": "Adventure"}]}},
+])
+# How many times each changing feed has been asked for.
+changing_asked = {}
+changing_lock = threading.Lock()
 VIDEO = os.path.join(os.path.dirname(__file__), "..", ".build", "demo", "background.mp4")
 SONG = os.path.join(os.path.dirname(__file__), "..", "Web", "public", "station-card.m4a")
 TICKS_PER_MINUTE = 60 * 10_000_000
@@ -232,6 +266,13 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         url = urlparse(self.path)
         query = parse_qs(url.query)
+        if url.path == "/feeds/silent-comedy.json":
+            return self.send_json(DEMO_FEED)
+        if re.fullmatch(r"/feeds/changing/[\w-]+\.json", url.path):
+            with changing_lock:
+                asked = changing_asked.get(url.path, 0)
+                changing_asked[url.path] = asked + 1
+            return self.send_json(DEMO_FEED if asked == 0 else DEMO_FEED_UPDATE)
         if url.path == "/UserViews":
             return self.send_json({"Items": [{"Id": id, "Name": name, "Type": "CollectionFolder"} for id, name in LIBRARIES],
                                    "TotalRecordCount": len(LIBRARIES)})

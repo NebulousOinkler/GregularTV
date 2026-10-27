@@ -106,6 +106,9 @@ import JavaScriptKit
             howToEdit,
         ], rows: app.setTimesChannels.map { Parts.row($0.title, detail: $0.detail, action: nil) }))
 
+        sections.append(Parts.section(FeedText.title, footer: [app.feeds.isEmpty ? FeedText.none : nil, FeedText.note, howToEdit],
+                                      rows: app.feeds.flatMap(feedRows)))
+
         sections.append(Parts.section(SettingsText.commercials, footer: [SettingsText.commercialsNote], rows: [
             Parts.toggle(SettingsText.playCommercials, on: app.playsCommercials) { [app] in
                 app.setPlaysCommercials(!app.playsCommercials)
@@ -158,6 +161,22 @@ import JavaScriptKit
         if let focusedTitle {
             Focus.focusable(in: content).first { $0.object.querySelector?(".row-title").object?.textContent.string == focusedTitle }?.focus()
         }
+    }
+
+    /// A feed followed: where it stands, its update if there is one, and Unfollow.
+    private func feedRows(_ feed: Feed) -> [El] {
+        var rows = [Parts.row(feed.title, detail: "\(FeedText.block(feed.firstNumber)) · \(feed.status)", leading: Parts.feedArt(feed),
+                              action: nil)]
+        if feed.waiting != nil {
+            let update = Parts.row(FeedText.getUpdate, detail: feed.whatsNew.joined(separator: "\n")) { [app] in app.getUpdate(feed.link) }
+            update.classed("lines", true)
+            rows.append(update)
+        }
+        let unfollow = Confirmation.unfollow(feed.title, channels: feed.lineup.channels.count)
+        rows.append(Parts.row(unfollow.action, destructive: true) { [app] in
+            Parts.confirm(unfollow) { app.unfollow(feed.link) }
+        })
+        return rows
     }
 
     /// Type a schedule code and press Enter.

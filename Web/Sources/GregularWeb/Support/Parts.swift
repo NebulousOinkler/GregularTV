@@ -1,3 +1,4 @@
+import Foundation
 import GregularScreens
 import JavaScriptKit
 
@@ -74,10 +75,12 @@ extension Page {
         return section
     }
 
-    /// A row: a title with an optional detail line, and a value on the right.
-    static func row(_ title: String, detail: String? = nil, value: String? = nil, destructive: Bool = false,
+    /// A row: a title with an optional detail line, and a value on the
+    /// right; `leading` (such as a feed's picture) goes before the title.
+    static func row(_ title: String, detail: String? = nil, value: String? = nil, destructive: Bool = false, leading: El? = nil,
                     action: (@MainActor () -> Void)?) -> El {
-        let row = El(action == nil ? "div" : "button", "row" + (destructive ? " destructive" : ""), [text(title, detail)])
+        let row = El(action == nil ? "div" : "button", "row" + (destructive ? " destructive" : ""),
+                     [leading, text(title, detail)].compactMap { $0 })
         if let value { row.append(El("span", "row-value", text: value)) }
         if let action {
             row.attribute("type", "button")
@@ -102,6 +105,24 @@ extension Page {
         row.attribute("type", "button").attribute("role", "switch").attribute("aria-checked", on ? "true" : "false")
         row.on("click") { _ in action() }
         return row
+    }
+
+    /// A feed's picture (a small PNG it carries, checked as one), or its
+    /// badge: initials on a colour.
+    static func feedArt(_ feed: Feed) -> El {
+        if let picture = feed.picture {
+            return El("img", "feed-art").attribute("src", "data:image/png;base64," + picture.base64EncodedString()).attribute("alt", "")
+        }
+        let badge = El("span", "feed-art feed-badge", text: feed.badge.initials).attribute("aria-hidden", "true")
+        badge.style("background-color", "hsl(\(feed.badge.hue) 45% 38%)")
+        return badge
+    }
+
+    /// Marks a Settings button with a dot, and says why to screen readers,
+    /// while a feed has an update (`AppModel.hasFeedUpdates`).
+    static func news(on button: El, _ has: Bool) {
+        button.classed("has-news", has)
+        button.attribute("aria-description", has ? FeedText.updatesWaiting : nil)
     }
 
     /// A label and its value, not a button, lined up with the rows.

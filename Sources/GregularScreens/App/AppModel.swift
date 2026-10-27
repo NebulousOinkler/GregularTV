@@ -79,6 +79,16 @@ public final class AppModel {
     public private(set) var customChannels: [CustomChannel]
     /// Set times made in Settings, laid over their channels.
     public private(set) var setTimes: [SetTimes]
+    /// The feeds followed, in the order they were added: their channels and
+    /// set times join the line-up in their own numbers (see `AppModel+Feeds`).
+    public internal(set) var feeds: [Feed]
+    /// The last few feeds looked at to follow (`AppModel.mostFeedsLookedAt`),
+    /// so following one doesn't fetch it again.
+    var lookedAtFeeds: [(link: URL, file: Data)] = []
+    /// Checks the feeds now and then, while the app runs.
+    var feedChecks: Task<Void, Never>?
+    /// How often the feeds are checked again after launch; nil for only at launch.
+    let checksFeedsEvery: Duration?
     /// "Edit from a phone or computer" in Settings (off by default): whether
     /// Settings offers the editing page (`EditingPage`) on the home network.
     public private(set) var allowsEditingPage: Bool
@@ -89,9 +99,9 @@ public final class AppModel {
     /// The kind of device, as servers list it, such as "Apple TV". Each
     /// sign-in pairs it with a device ID of its own (`ClientIdentity`).
     var deviceName: String { access.deviceName }
-    private let access: ServerAccess
+    let access: ServerAccess
     private let store: any CredentialStore
-    private let preferences: AppPreferences
+    let preferences: AppPreferences
     private let makeDecks: @MainActor () -> [any PlayerDeck]
     /// The special modes this front end can open (`SpecialModeScreens.registry`).
     private let specialModes: SpecialModeRegistry
@@ -117,11 +127,16 @@ public final class AppModel {
     ///   - makeDecks: the two video decks for each channel player
     ///     (see `PlayerDeck`): AVFoundation on Apple TV.
     ///   - specialModes: the special modes the front end has screens for; none unless given.
+    ///   - checksFeedsEvery: how often the feeds are checked after launch.
+    ///     Tests give nil: a sleep left waiting keeps WasmKit's run from
+    ///     ending, even once cancelled.
     public init(deviceName: String, formats: PlayableFormats, addOnFormats: PlayableFormats? = nil,
                 transport: any HTTPTransport, store: any CredentialStore,
                 preferences: AppPreferences, makeDecks: @escaping @MainActor () -> [any PlayerDeck],
-                specialModes: SpecialModeRegistry = SpecialModeRegistry()) {
+                specialModes: SpecialModeRegistry = SpecialModeRegistry(),
+                checksFeedsEvery: Duration? = AppModel.feedCheckInterval) {
         access = ServerAccess(deviceName: deviceName, formats: formats, addOnFormats: addOnFormats, transport: transport)
+        self.checksFeedsEvery = checksFeedsEvery
         self.makeDecks = makeDecks
         self.specialModes = specialModes
         self.store = store
@@ -130,6 +145,7 @@ public final class AppModel {
         playsCommercials = preferences.playsCommercials
         customChannels = preferences.customChannels
         setTimes = preferences.setTimes
+        feeds = preferences.feeds.map { Feed($0) }
         allowsEditingPage = preferences.allowsEditingPage
         matchesFrameRate = preferences.matchesFrameRate
         if let saved = preferences.scheduleCode {
@@ -158,8 +174,10 @@ public final class AppModel {
     #endif
 
     /// The main page, or the sign-in screen if there are no servers yet.
+    /// The feeds are checked now, and every few hours after.
     public func launch() async {
         showMainPage()
+        startCheckingFeeds()
     }
 
     /// Shows the servers, the one watched last highlighted; the sign-in
@@ -398,18 +416,26 @@ public final class AppModel {
 
     // MARK: - Your channels and set times
 
-    /// Your channels and set times as one document, for the editing page.
+    /// Your channels, set times and the feeds you follow as one document, for the editing page.
     public var userChannels: EditingDocument {
-        EditingDocument(channels: customChannels, setTimes: setTimes)
+        EditingDocument(channels: customChannels, setTimes: setTimes, feeds: feeds.map(\.saved))
     }
 
-    /// Puts `document` in place of your channels and set times, and rebuilds
-    /// the channels. Returns why it couldn't, or nil.
+    /// Puts `document` in place of your channels, set times and (if it lists
+    /// them) the feeds you follow, and rebuilds the channels. A feed new to
+    /// the list is fetched now, unless it was just looked at. Returns why it
+    /// couldn't, or nil.
     @discardableResult
     public func replaceUserChannels(with document: EditingDocument) -> String? {
         do {
             let (channels, setTimes) = try document.resolved()
-            return apply(custom: channels.sorted { $0.number < $1.number }, setTimes: setTimes.sorted { $0.channelNumber < $1.channelNumber })
+            let feeds = try document.feeds.map(following) ?? self.feeds
+            let problem = apply(custom: channels.sorted { $0.number < $1.number },
+                                setTimes: setTimes.sorted { $0.channelNumber < $1.channelNumber }, feeds: feeds)
+            if problem == nil, feeds.contains(where: { $0.accepted == nil && !$0.saved.expired }) {
+                Task { await checkFeeds() }
+            }
+            return problem
         } catch {
             return "\(error)"
         }
@@ -421,9 +447,10 @@ public final class AppModel {
         LibraryChoices(library)
     }
 
-    /// Every channel set times could go on, bundled and custom, by number.
+    /// Every channel your set times could go on, bundled and your own, by
+    /// number: not a feed's, which are the feed's alone.
     public var lineupChannels: [Channel] {
-        lineup(custom: customChannels, setTimes: [])?.channels ?? []
+        (lineup(custom: customChannels, setTimes: [])?.channels ?? []).filter { feed(owning: $0.number) == nil }
     }
 
     /// How many programmes `channel` would play, and its next three hours,
@@ -470,26 +497,37 @@ public final class AppModel {
         }
     }
 
-    private func apply(custom: [CustomChannel], setTimes: [SetTimes]) -> String? {
+    /// Puts these in place of your channels, set times and feeds, if they
+    /// fit together: your own channels and set times stay out of the feeds'
+    /// numbers. Returns why they don't, or nil.
+    @discardableResult
+    func apply(custom: [CustomChannel], setTimes: [SetTimes], feeds: [Feed]) -> String? {
         do {
             _ = try ChannelLineup.bundled().adding(custom, setTimes: setTimes)
         } catch {
             return "\(error)"
         }
+        for number in custom.map(\.number) + setTimes.map(\.channelNumber) {
+            if let feed = feeds.first(where: { $0.numbers.contains(number) }) { return FeedText.inFeedBlock(number, feed: feed.title) }
+        }
         customChannels = custom
         self.setTimes = setTimes
+        self.feeds = feeds
         preferences.customChannels = custom
         preferences.setTimes = setTimes
+        preferences.feeds = feeds.map(\.saved)
         rebuildChannels()
         return nil
     }
 
-    /// The bundled channels with `custom` and `setTimes` added. One that no
-    /// longer fits (a newer app took its number) is left out, not an error.
+    /// The bundled channels with `custom` and `setTimes` added, then the
+    /// feeds' (`feedLineup`). One that no longer fits (a newer app took its
+    /// number) is left out, not an error.
     private func lineup(custom: [CustomChannel], setTimes: [SetTimes]) -> ChannelLineup? {
         guard var lineup = try? ChannelLineup.bundled() else { return nil }
-        for channel in custom { lineup = (try? lineup.adding([channel])) ?? lineup }
-        for times in setTimes { lineup = (try? lineup.adding([], setTimes: [times])) ?? lineup }
+        let feeds = feedLineup
+        for channel in custom + feeds.channels { lineup = (try? lineup.adding([channel])) ?? lineup }
+        for times in setTimes + feeds.setTimes { lineup = (try? lineup.adding([], setTimes: [times])) ?? lineup }
         return lineup
     }
 
@@ -497,7 +535,7 @@ public final class AppModel {
     /// only re-tunes if what's on it now changed (`ChannelSurfer.replaceChannels`),
     /// so changing another channel's set times never re-buffers it.
     /// Programme times only change if the code did.
-    private func rebuildChannels() {
+    func rebuildChannels() {
         guard case .watching(let surfer) = phase, let client else { return }
         if let channels = schedules(), surfer.replaceChannels(channels) { return }
         // Nothing to watch any more: start again, which says why.

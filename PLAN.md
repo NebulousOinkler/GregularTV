@@ -45,6 +45,7 @@ This design is what makes the privacy requirement cheap to meet. No schedule or 
 | Custom channels, as their channel codes (name, number, rule) | `UserDefaults`, through `AppPreferences` only | Client configuration the viewer typed or picked (decided 2026-09-28, option (a) of the old TODO): a rule's conditions may name genres, series, tags and studios, and nothing else from the library is kept |
 | The editing-page switch (off by default) | `UserDefaults`, through `AppPreferences` only | A client setting. The page itself keeps nothing: it edits the custom channels and set times above |
 | Set times, as their set-times codes (channel number, time zone, series or film names, times, days) | `UserDefaults`, through `AppPreferences` only | The same option (a): only the names the viewer picked |
+| Feeds followed (`SavedFeed`: the link, the first of its ten channel numbers, the version accepted as its file came, when it was last reached, and whether it's expired) | `UserDefaults`, through `AppPreferences` only | Configuration the viewer chose to follow, from someone else, never from the media server (decided 2026-10-26). An update found waits in **RAM only** until *Get Update* |
 | Library metadata (titles, IDs, durations, artwork) | **RAM only**, gone on app exit | Needed to build the schedule and guide |
 | A programme's tracks, as Jellyfin's `PlaybackInfo` answer describes them (codec, profile, channels, and a sound track's language and name) | **RAM only**, while the request is answered and the stream plays | Needed to know what a stream carries, and to choose a sound track the device plays as it is (decided 2026-10-26) |
 | Formats a player turned out not to decode (`UnplayableFormats`: codec and profile names only, read from the stream Jellyfin described) | **RAM only**, gone on app exit | Needed so a format that won't play isn't sent again; the only effect on the server is a shorter device profile (decided 2026-10-25: session only) |
@@ -68,6 +69,7 @@ Security (untrusted input, checked 2026-09-29):
 - **Transport rules** (`TransportRules`, which every `HTTPTransport` must follow and `TransportConformanceTests` checks): redirects are followed only on the same server (the same scheme, host and port, or `http` up to `https` on the same host), replies are stopped past `largestResponse` (16 MB) as they arrive, and nothing is stored. URLSession drops `Authorization` on a cross-host redirect by itself, but it sends the body again, so a sign-in's password would follow a 307 to another host. `JellyfinAPI` checks the redirect and size rules again on every reply, whatever the transport.
 - **Server replies:** the claimed item total is capped (`LibraryQuery.mostItems`), paging stops at an empty page, and each page counts for at most `pageSize` items, so a false total can't plan billions of pages and crash every launch. Server IDs go into URL paths, where they're percent-encoded: they can't change the host or add a query. `TranscodingUrl` keeps only its path and query. The `Authorization` header drops quotes, commas and control characters. Every string Screens hands a front end is plain text; a web front end must escape it.
 - **Credentials** are kept by a `CredentialStore` that each platform brings, on the device only and in its secure storage (`KeychainStore` in `GregularKeychain` on Apple's). The shared code has no store of its own, so it can't fall back to an insecure one.
+- **Feeds** (decided 2026-10-26; README, *Feeds*): the one request that isn't to the media server, a feed's file, goes through `PublicFile` (GregularJellyfin) on the same `HTTPTransport`: the link must pass `ServerAddress.isAllowed` and carry no user name or password; the request has only `Accept` and, on Apple TV, `User-Agent: GregularTV` (a browser keeps its own, since another would need a CORS preflight); redirects only as `TransportRules` allows; at most `FeedDocument.largestFile` (256 KB), stopped as it arrives, and checked again on the reply. The file (`FeedDocument`) is checked as an `EditingDocument` is, and more: a format version (newer fails closed), at most 10 channels in one block of ten numbers, set times only on its own channels, bounded text, and a picture only as a PNG of at most 32 KB and 256 × 256, its header read before anything decodes it. Its channels keep their last digit in the block the viewer picks, and the viewer's own channels and set times can't use that block (`AppModel.apply`). Updates wait for *Get Update*. Both pages' CSPs allow `img-src data:` for the picture, which comes inside the file.
 - **Codes** (channel and set-times) are unauthenticated: the CRC-8 only catches typos. `FixedTimesAreValid` checks set times from a code like any others: times within a day, real dates, and at most `FixedProgramme.mostPerChannel` (24) set times listing `mostTimesPerChannel` (48) times in all per channel, which keeps placing them to a few milliseconds.
 - **The editing page** (`EditingPage`, served by the app's `EditingServer`, decided 2026-10-01): off by default; when on, it runs only while its screen is open. Connections are refused unless they come from a private, link-local or loopback address (`EditingPage.isLocal`; Network's `acceptLocalOnly` refused every connection in the tvOS simulator, even from the same Mac, so the app checks the peer itself). Requests must name one of the Apple TV's own addresses in `Host` (against DNS rebinding) and any `Origin` must match it (against cross-site requests), and every data request needs the six-digit code, compared in constant time; five wrong codes from one address refuse it, and 20 in all lock the page. At most 8 connections at once (`EditingServer.mostConnections`); one request per connection, at most 8 KB of headers and 512 KB of body, within 10 seconds. What it's sent is an `EditingDocument`, resolved and checked exactly as codes are (`ChannelLineup.adding`, `Rule.mostConditions`, `FixedTimesAreValid`). The page is one inline file with a strict Content-Security-Policy (no outside requests, no framing) and puts library names on the page only through `textContent`; a test checks it never uses `innerHTML`.
 - **Device type** is trusted nowhere: the app reads no other device's name, and Jellyfin authorises by token, not by name. The device name sent is the kind of device, from the app (`AppModel.deviceName`).
@@ -112,7 +114,7 @@ jellyfin_tv/
 │  ├─ Network/LocalNetwork.swift    # which addresses are on the home network (plain http, the local pages)
 │  ├─ Playback/StreamingQuality.swift  # quality caps, Auto's bitrate rule, step-down ladder
 │  ├─ Playback/SpeedTest.swift   # Auto's speed test: downloads that grow until one is long enough to time
-│  ├─ Preferences/AppPreferences.swift # the only UserDefaults: client settings and custom channel codes
+│  ├─ Preferences/AppPreferences.swift # the only UserDefaults: client settings, custom channel codes, feeds followed
 │  └─ Resources/channels.json       # the channel line-up
 ├─ Sources/GregularJellyfin/        # 2. THE JELLYFIN CONNECTION: Foundation, GregularCore (any platform)
 │  ├─ HTTPTransport.swift           # the app's own network path (ephemeral, no cache/cookies), TransportRules
@@ -123,6 +125,7 @@ jellyfin_tv/
 │  ├─ LibraryQuery.swift            # paged /Items → [MediaItem] (Jellyfin types → MediaItem.Kind)
 │  ├─ Playback.swift                # DeviceProfile, PlaybackSource (→ MediaStream)
 │  ├─ CredentialStore.swift         # Credentials, the CredentialStore every platform brings, in-memory store
+│  ├─ PublicFile.swift              # the one request not to the media server: a published file (a feed)
 │  └─ ServerAddress.swift, ClientIdentity.swift, JellyfinJSON.swift   # ServerAddress: plain http only on the LAN
 ├─ Sources/GregularKeychain/        # APPLE ONLY: KeychainStore, the CredentialStore on Apple platforms
 ├─ Sources/GregularScreens/         # 3. WHAT THE SCREENS DO, not how they're drawn: Foundation, Observation,
@@ -140,6 +143,8 @@ jellyfin_tv/
 │  ├─ Channels/LibraryChoices.swift # the library's names to pick from, and preview lines
 │  ├─ Editing/                      # the editing page: EditingPage (requests), EditingDocument (the JSON),
 │  │                                # HTTPMessage, EditingPageHTML (the page itself)
+│  ├─ Feeds/                        # FeedDocument (a feed's file: read, checked, placed, made), Feed (one
+│  │                                # followed, its status and what's new); following and checking: AppModel+Feeds
 │  ├─ Watch/WatchModel.swift        # the watch screen's rules: banner, overlays, curtain, remote actions,
 │  │                                # and the words on the banner, cards and badge
 │  ├─ Remote/RemoteControls.swift   # the button tables (one per screen) and hints
@@ -554,6 +559,13 @@ A record of what was built and checked, in order. Details like the remote contro
 - **Custom channels** are made on the editing page (off by default) and saved as their codes: privacy option (a), allowing exactly this in `AppPreferences` (§3, §9c).
 - **Programmes at set times** are built, in `channels.json` and in Settings for any channel (§9c).
 - **Set times are an overlay** on the shared schedule, so households sharing a code stay in step outside their set times; a household's set times are shared by copying the editing page's JSON (§9c).
+
+**Decided (2026-10-26): feeds**
+- **Sharing by link, not RSS:** the editing page's own JSON, with a name, a line, a picture and a time zone, at any https link (README, *Feeds*; §3).
+- **A feed brings its own channels and set times on them, nothing else** (never the schedule code, never anything on bundled or the viewer's channels), in a block of ten numbers the viewer picks, at most 10 channels.
+- **Updates take one tap** (*Get Update*): a dot on Settings, short *what's new* lines. The first version is taken when following. Feed channels are read-only; *Make a Copy* makes one the viewer's own. Unfollowing removes everything the feed brought. A link that stops working keeps the version accepted and is marked expired.
+- **Checked when the app opens, then every 6 hours** while it runs. No proxy for the web: a host must allow CORS.
+- **Backlog:** a per-feed switch, off by default, letting a feed set times on the viewer's channels, with clash rules (TODO.md).
 
 **Prerequisites**
 - ✅ Xcode 27 with the licence accepted, the tvOS 27 SDK, and the tvOS 27 simulator runtime (verified 2026-09-23). `GregularCore` and `GregularJellyfin` tests pass on macOS and on the Apple TV 4K simulator.
