@@ -2,7 +2,7 @@
 
 For a new Claude session picking this project up. It says what the project is, where everything is written down, how the owner wants work done, what has been decided, and what's open. It points to the docs rather than repeating them: when this file and a doc disagree, the doc wins, and this file should be fixed.
 
-Last brought up to date: 2026-10-26, after PR #76 (feeds) merged.
+Last brought up to date: 2026-10-26, after PR #77 (commercials at their programme's quality) and the feed picture fix.
 
 ## What it is
 
@@ -17,7 +17,7 @@ Gregular TV turns a Jellyfin library into always-on TV channels: a schedule work
 | `README.md` | What the app does for a viewer, *Run the tests*, *The web version*, *Where to edit things*, *Privacy*, *Security* |
 | `PLAN.md` | The design: §2 the schedule as a pure function, §3 privacy rules, §4 architecture tree, §5 strategies, §7a stream quality (where each decision lives), §9–9c channels, rules and set times, §11 testing, **§12 every dated decision** |
 | `WEB_PLAN.md` | Why and how the web version reuses the Swift code; hosting |
-| `AUDIT.md` | Six security and privacy audits, newest first; every finding resolved or accepted by the owner, with dates |
+| `AUDIT.md` | Seven security and privacy audits, newest first; every finding resolved or accepted by the owner, with dates |
 | `TODO.md` | Open work, mostly checks only the owner can do on real hardware or servers |
 | `FEEDS_TODO.md` | The feeds plan; its *Details I chose* still wait for the owner's confirmation (see *Open work*) |
 | `COMPARISON.md` | How Gregular differs from Tunarr |
@@ -113,6 +113,7 @@ Don't re-propose these. Dated details are in PLAN §12 and AUDIT.
 - **Invisible to the Jellyfin dashboard:** no playback reporting, no "played" marks, no toggle for it.
 - **Nothing kept that isn't needed to play video:** no analytics, no logging, no disk cache. The web's *Remember me* is opt-in, encrypted and off by default.
 - **Stream quality:** *Auto* plays the original until there's trouble on the connection (PLAN §7a).
+- **Commercials play at their programme's quality** (2026-10-26, PR #77): its cap (the quality setting, its fix, or Auto's measurement) and its stereo sound, so a clip above the cap is re-encoded. A break has its own settings, started from its programme's (`ProgrammeSettings.forBreak`), so a clip's trouble never changes the programme's. Still never in VLC, never a speed test, and no 3-minute rule for a re-encode. Until then they were always uncapped; don't go back to that.
 - **Default channels:** remade as eras, laid out like cable before streaming (PRs #72–#74).
 - **Channels whose content changes by time of day (dayparting):** a future idea only. Don't build it unasked.
 - **Feeds** (2026-10-26, PR #76):

@@ -48,6 +48,10 @@ Since the sixth audit (the same day), the change is that a commercial break play
 - **The remaining differences** are each a documented rule: no add-on player, no speed test, no 3-minute rule, and one clip's unplayable file never blocks its break.
 - **The layer check passes.**
 
+### Later the same day: the feed picture's chooser
+- **What changed:** *Share as a feed*'s picture now has a *Remove Picture* button, and its chooser stays within a phone's width (`editor.js`, `editor.css`). Nothing is sent or kept that wasn't before; removing the picture just leaves it out of the file, as when none was chosen.
+- **Reviewed:** the button is made with the page's `el()` helper and its words go on as text; no new request, policy change or stored value. Nothing to change.
+
 ## Sixth audit: 2026-10-26 (feeds)
 
 Since the fifth audit (hours before), the change is feeds (README, *Feeds*; PLAN §3 and §12): following other people's channels by link. It adds:
