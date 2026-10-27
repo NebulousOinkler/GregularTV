@@ -472,6 +472,41 @@ test("a feed's update comes in with one tap", async ({ page, browserName }) => {
   expect(problems).toEqual([]);
 });
 
+// Share as a feed on a phone: a picture chosen (with a long file name, as a
+// phone's camera gives) keeps within the page, goes in the file, and can be
+// removed again before the file is made.
+test("a feed's picture fits a phone, and can be removed", async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 }, hasTouch: true });
+  const page = await context.newPage();
+  const problems = watchForProblems(page);
+  await signIn(page);
+  const editor = await followFeed(page, `http://${server}/feeds/silent-comedy.json`);
+  await editor.getByRole("button", { name: "Make a Copy" }).click();
+  await editor.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(editor.getByText("Saved. Your channels have been rebuilt.")).toBeVisible();
+  await editor.getByLabel("Feed name").fill("Pictured");
+  const picture = editor.getByLabel("Picture", { exact: true });
+  await picture.setInputFiles({ name: "IMG_20261026_201512_a_picture_with_a_long_name_from_a_phone.png", mimeType: "image/png",
+    buffer: Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64") });
+  const overflow = () => editor.locator("body").evaluate(() => document.scrollingElement.scrollWidth - innerWidth);
+  expect(await overflow()).toBeLessThanOrEqual(0);
+  const madeFile = async () => {
+    const download = page.waitForEvent("download");
+    await editor.getByRole("button", { name: "Save Feed File" }).click();
+    return JSON.parse(await readFile(await (await download).path(), "utf8"));
+  };
+  expect((await madeFile()).image).toBeTruthy();
+
+  const remove = editor.getByRole("button", { name: "Remove Picture" });
+  await remove.click();
+  await expect(picture).toHaveValue("");
+  await expect(remove).toBeHidden();
+  expect((await madeFile()).image).toBeUndefined();
+  expect(await overflow()).toBeLessThanOrEqual(0);
+  expect(problems).toEqual([]);
+  await context.close();
+});
+
 // A feed's channel copied to your own (with its set times), saved, and that
 // block of your channels shared as a feed file, which downloads.
 test("a feed's channel is copied, and your channels are shared as a feed", async ({ page }) => {

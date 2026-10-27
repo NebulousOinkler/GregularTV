@@ -361,14 +361,20 @@ function shareCard() {
   const local = el("input", { type: "radio", name: "share-zone", checked: true });
   const named = el("input", { type: "radio", name: "share-zone" });
   const zone = el("input", { value: state.timeZone, "aria-label": "Time zone", onfocus: () => { named.checked = true; } });
-  const picture = el("input", { type: "file", accept: "image/png", "aria-label": "Picture" });
+  const picture = el("input", { type: "file", accept: "image/png", "aria-label": "Picture",
+    onchange: () => { removePicture.hidden = !picture.files.length; } });
+  const removePicture = el("button", { type: "button", text: "Remove Picture", hidden: true, onclick: () => {
+    picture.value = "";
+    removePicture.hidden = true;
+    picture.focus();
+  } });
   const result = el("div");
   card.append(
     el("div", { className: "row" }, which, title),
     el("div", { className: "row" }, publisher, about),
     el("div", { className: "row" }, el("label", {}, local, "Set times in each follower's own time"),
       el("label", {}, named, "Set times in"), zone),
-    el("div", { className: "row" }, el("label", { text: "Picture (optional): a PNG, at most 32 KB and 256 × 256 " }, picture)),
+    el("div", { className: "row" }, el("label", { text: "Picture (optional): a PNG, at most 32 KB and 256 × 256 " }, picture), removePicture),
     el("div", { className: "row" }, el("button", { className: "primary", text: "Save Feed File" })),
     result);
   card.addEventListener("submit", async (event) => {

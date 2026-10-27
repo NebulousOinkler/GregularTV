@@ -8,10 +8,12 @@ h2 { font-size: 1.15rem; margin: 0 0 8px; }
 p.dim, .dim { color: var(--dim); font-size: 0.9rem; }
 .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 14px; margin: 12px 0; }
 .row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 6px 0; }
-label { display: inline-flex; gap: 6px; align-items: center; }
+label { display: inline-flex; flex-wrap: wrap; gap: 6px; align-items: center; max-width: 100%; }
 input, select, textarea, button { font: inherit; color: inherit; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
 input[type=text], input:not([type]) { min-width: 0; flex: 1 1 180px; }
 input[type=number] { width: 7em; }
+/* A file chooser shows the file's name, which can be long (a phone camera's): keep it within the page. */
+input[type=file] { min-width: 0; max-width: 100%; }
 textarea { width: 100%; min-height: 360px; font-family: ui-monospace, Menlo, monospace; font-size: 13px; }
 button { cursor: pointer; background: var(--card); }
 button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
