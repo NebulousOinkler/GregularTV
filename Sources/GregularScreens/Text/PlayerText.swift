@@ -31,10 +31,10 @@ public enum PlayerText {
 
     /// The stream playing: what chose its cap, the cap, and what the server
     /// does to it, such as "1080p · 10 Mbps · up to 10 Mbps · direct play".
-    /// A commercial's quality setting doesn't apply (it's always asked for
-    /// as it is), and no cap says so, rather than naming the highest there is.
-    /// - Parameter fixedForProgramme: a fix for this programme sets the cap,
-    ///   rather than `quality`.
+    /// No cap says so, rather than naming the highest there is. A commercial
+    /// says it is one: it plays at its programme's cap.
+    /// - Parameter fixedForProgramme: a fix for this programme (or its
+    ///   break) sets the cap, rather than `quality`.
     static func stream(quality: StreamingQuality, fixedForProgramme: Bool, isCommercial: Bool, cap: Int,
                        delivery: MediaStream.Delivery) -> String {
         let method = switch delivery {
@@ -43,10 +43,9 @@ public enum PlayerText {
         case .soundConverted: "sound converted by the server"
         case .reencoded: "re-encoded by the server"
         }
-        if isCommercial { return "Commercial · original quality (the quality setting applies to programmes) · \(method)" }
         let label = fixedForProgramme ? "This programme only" : quality.label
         let limit = cap >= StreamingQuality.maximumBitrate ? "no cap" : "up to \(mbps(cap))"
-        return "\(label) · \(limit) · \(method)"
+        return (isCommercial ? "Commercial · " : "") + "\(label) · \(limit) · \(method)"
     }
 
     /// The diagnostics line: what the deck is doing, how far behind live,

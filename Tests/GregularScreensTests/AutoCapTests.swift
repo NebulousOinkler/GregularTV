@@ -107,8 +107,9 @@ struct AutoCapTests {
 
 extension AutoCapTests {
     /// A retry that lands in a break measures as it starts, with nothing
-    /// loaded, not once a commercial is downloading; the commercial, and the
-    /// next showing after the break, aren't capped.
+    /// loaded, not once a commercial is downloading. The commercial plays at
+    /// the film's new cap, as the film would; the next showing after the
+    /// break, another programme, isn't capped.
     @Test func aRetryInABreakMeasuresBeforeTheCommercialLoads() async throws {
         let film = MediaItem(id: "m1", kind: .movie, name: "Film", duration: 50 * 60)
         let ads = (1...5).map { MediaItem(id: "ad\($0)", kind: .video, name: "Ad \($0)", duration: 60) }
@@ -126,7 +127,9 @@ extension AutoCapTests {
         let events = streams.events
         let measured = try #require(events.firstIndex(of: "speed test"))
         #expect(events[measured + 1].hasPrefix("ad"), "Measured before the commercial loaded: \(events)")
-        #expect(events[(measured + 1)...].allSatisfy { $0.hasSuffix("at \(StreamingQuality.maximumBitrate)") }, "\(events)")
+        let after = events[(measured + 1)...]
+        #expect(after.filter { $0.hasPrefix("ad") }.allSatisfy { $0.hasSuffix("at 7000000") }, "70% of the measurement: \(events)")
+        #expect(after.filter { $0.hasPrefix("m1") }.allSatisfy { $0.hasSuffix("at \(StreamingQuality.maximumBitrate)") }, "\(events)")
         player.stop()
     }
 }

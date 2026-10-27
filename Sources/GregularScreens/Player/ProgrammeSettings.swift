@@ -10,11 +10,17 @@ import GregularCore
 /// with none of it. A quality change clears only what's about quality
 /// (`clearQuality()`): the choice of player, and stereo sound, stay.
 ///
+/// A commercial break has its own (`forBreak(_:)`): it starts as its
+/// programme's cap and sound, so the break plays as the programme does,
+/// and its clips' trouble changes only the break's, never the programme's.
+///
 /// It decides, without a deck or a server: the cap a programme plays at,
 /// the step-down ladder, asking for less re-encoding or less sound
 /// conversion, and what a speed test makes Auto's cap.
 struct ProgrammeSettings {
     let programme: Airing
+    /// For a commercial break's settings, when the break is: its clips share them.
+    let commercialBreak: DateInterval?
     /// The fix in use (the viewer's, or one asked for after re-encoding
     /// trouble), and the cap it plays at.
     private(set) var fix: (kind: ChannelPlayer.ProgrammeFix, cap: Int)?
@@ -40,11 +46,33 @@ struct ProgrammeSettings {
 
     init(programme: Airing) {
         self.programme = programme
+        commercialBreak = nil
     }
 
-    /// They're for `airing`'s programme (any part of it).
+    private init(programme: Airing, commercialBreak: DateInterval) {
+        self.programme = programme
+        self.commercialBreak = commercialBreak
+    }
+
+    /// They're for `airing`'s programme (any part of it), or for a break's,
+    /// any clip in it.
     func apply(to airing: Airing) -> Bool {
-        programme.isSameProgramme(as: airing)
+        if let commercialBreak { return airing.isFiller && commercialBreak.contains(airing.start) }
+        return programme.isSameProgramme(as: airing)
+    }
+
+    /// The settings for `commercialBreak`, in or after this programme: its
+    /// cap (fix, or Auto's measurement) and its stereo sound, so the
+    /// commercials play as the programme does. Not its choice of player: each
+    /// clip in the add-on player (VLC) would need a player of its own. Nor
+    /// what's learned about the programme's own file, nor a speed test still
+    /// to make: a break never starts one.
+    func forBreak(_ commercialBreak: DateInterval) -> ProgrammeSettings {
+        var settings = ProgrammeSettings(programme: programme, commercialBreak: commercialBreak)
+        settings.fix = fix
+        settings.autoCap = autoCap
+        settings.stereoSound = stereoSound
+        return settings
     }
 
     /// The cap it plays at: the fix's, else the quality setting's, else, in
