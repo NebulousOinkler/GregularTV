@@ -115,4 +115,29 @@ struct ProgrammeSettingsTests {
         settings.clearQuality()
         #expect(settings.stereoSound)
     }
+
+    /// A break's settings start as its programme's cap and sound, not its
+    /// player or what's learned about its file, and apply to its clips only.
+    @Test func aBreakStartsWithItsProgrammesCapAndSound() {
+        var settings = ProgrammeSettings(programme: film)
+        settings.setFix(.hd720, from: StreamingQuality.maximumBitrate)
+        settings.measured(10_000_000, raiseOnly: false, at: start)
+        settings.stereoSound = true
+        settings.prefersAddOn = true
+        settings.cantPlay = true
+        settings.measuresFirst = true
+        settings.soundHeadStart = true
+        let time = DateInterval(start: film.end, duration: 600)
+        let forBreak = settings.forBreak(time)
+        #expect(forBreak.cap(at: .auto) == 4_000_000 && forBreak.autoCap?.bitsPerSecond == 7_000_000 && forBreak.stereoSound)
+        #expect(!forBreak.prefersAddOn && !forBreak.cantPlay && !forBreak.measuresFirst && !forBreak.soundHeadStart)
+
+        let clip = { (start: Date) in
+            Airing(item: MediaItem(id: "ad", kind: .video, name: "Ad", duration: 60),
+                   start: start, end: start.addingTimeInterval(60), slotEnd: start.addingTimeInterval(60), isFiller: true)
+        }
+        #expect(forBreak.apply(to: clip(film.end)) && forBreak.apply(to: clip(film.end.addingTimeInterval(300))))
+        #expect(!forBreak.apply(to: clip(film.end.addingTimeInterval(900))), "Another break")
+        #expect(!forBreak.apply(to: film) && !settings.apply(to: clip(film.end)), "Breaks and programmes keep their own")
+    }
 }

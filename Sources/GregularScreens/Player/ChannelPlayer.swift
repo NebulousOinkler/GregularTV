@@ -23,10 +23,12 @@ import Observation
 ///   starts where the last part stopped and ends at its cut, so a mid-roll is
 ///   an ordinary break: the part after it preloads in `standby` like any
 ///   programme after a break. A programme fix covers every part of the film.
-/// - **Commercials** are asked for with no bitrate cap, so a clip's bitrate
-///   never makes it re-encoded. One the device can't play as it is (a video
-///   codec the Apple TV can't play) is converted by the server, as a
-///   programme is.
+/// - **Commercials** play as their programme does: a break's clips are
+///   asked for at the programme's cap (the quality setting, its fix, or
+///   Auto's measurement) and with its stereo sound, so one above the cap is
+///   re-encoded, as a programme would be. Not in the add-on player, though,
+///   and never with a speed test. Their trouble asks for less within the
+///   break only (`ProgrammeSettings.forBreak`).
 /// - **Gaps:** time with nothing scheduled (a gap of a minute or less, the
 ///   end of a break, or every break with commercials off) is a blank screen
 ///   with an "Up next" card. The next item is still
@@ -222,8 +224,10 @@ public final class ChannelPlayer {
     public private(set) var airing: Airing? {
         didSet {
             // Settings are for one programme: the next one starts with none.
-            if let airing, !airing.isFiller, let programmeSettings, !programmeSettings.apply(to: airing) {
-                clearProgrammeSettings()
+            // A break's are for that break: the programme after it ends them.
+            if let airing, !airing.isFiller {
+                breakSettings = nil
+                if let programmeSettings, !programmeSettings.apply(to: airing) { clearProgrammeSettings() }
             }
         }
     }
@@ -261,6 +265,10 @@ public final class ChannelPlayer {
     /// What applies to the programme on now only: fixes, the choice of
     /// player, Auto's cap (`ProgrammeSettings`). Nil until one is set.
     private var programmeSettings: ProgrammeSettings?
+    /// What applies to the commercial break on now: its programme's, then
+    /// whatever its clips' trouble asked for. Nil until a clip's trouble
+    /// changes them.
+    private var breakSettings: ProgrammeSettings?
     /// What this device's players turned out not to decode, for as long as
     /// this player lasts (the watching session), across channels.
     private var unplayable = UnplayableFormats()
@@ -443,22 +451,30 @@ public final class ChannelPlayer {
         return true
     }
 
-    /// `airing`'s programme's settings: none set, if the ones held are another's.
+    /// `airing`'s programme's settings: none set, if the ones held are
+    /// another's. A commercial's are its break's: the ones held for it, else
+    /// its programme's as they are now (`ProgrammeSettings.forBreak`).
     private func settings(for airing: Airing) -> ProgrammeSettings {
-        programmeSettings.flatMap { $0.apply(to: airing) ? $0 : nil } ?? ProgrammeSettings(programme: airing)
+        if airing.isFiller, let commercialBreak = schedule.commercialBreak(at: airing.start) {
+            if let breakSettings, breakSettings.apply(to: airing) { return breakSettings }
+            return settings(for: schedule.programme(at: airing.start)).forBreak(commercialBreak)
+        }
+        return programmeSettings.flatMap { $0.apply(to: airing) ? $0 : nil } ?? ProgrammeSettings(programme: airing)
     }
 
-    /// Changes `programme`'s settings. The ones held for another programme go.
-    private func updateSettings(for programme: Airing, _ change: (inout ProgrammeSettings) -> Void) {
-        var updated = settings(for: programme)
+    /// Changes `airing`'s settings: its programme's, or a commercial's
+    /// break's. The ones held for another programme, or break, go.
+    private func updateSettings(for airing: Airing, _ change: (inout ProgrammeSettings) -> Void) {
+        var updated = settings(for: airing)
         change(&updated)
-        programmeSettings = updated
+        if updated.commercialBreak != nil { breakSettings = updated } else { programmeSettings = updated }
     }
 
     /// The next programme, or another channel: none of the last one's settings,
     /// and no speed test waiting for it.
     private func clearProgrammeSettings() {
         programmeSettings = nil
+        breakSettings = nil
         cancelMeasurement()
     }
 
@@ -468,8 +484,9 @@ public final class ChannelPlayer {
         guard quality != self.quality else { return }
         self.quality = quality
         // Fixes and Auto's measurement go (any speed test belongs to Auto);
-        // the choice of player stays.
+        // the choice of player stays. A break starts again from its programme's.
         programmeSettings?.clearQuality()
+        breakSettings = nil
         cancelMeasurement()
         tune()
     }
@@ -663,8 +680,11 @@ public final class ChannelPlayer {
             let since = bufferingSince ?? now
             bufferingSince = since
             let buffered = now.timeIntervalSince(since)
-            if settings(for: current.airing).fix?.kind == .stepDown, buffered > Self.stepDownAfterBuffering,
-               programmeSettings?.stepDownAgain() == true {
+            var steppedDown = false
+            if settings(for: current.airing).fix?.kind == .stepDown, buffered > Self.stepDownAfterBuffering {
+                updateSettings(for: current.airing) { steppedDown = $0.stepDownAgain() }
+            }
+            if steppedDown {
                 tune()
                 return
             }
@@ -902,8 +922,7 @@ public final class ChannelPlayer {
 
     private func load(_ airing: Airing) async throws -> LoadedAiring {
         let order = players(for: airing)
-        let (source, cap) = airing.isFiller ? try await commercialSource(for: airing.item, players: order)
-                                            : try await programmeSource(for: airing, players: order)
+        let (source, cap) = try await stream(for: airing, players: order)
         let reasons = source.conversionReasons.isEmpty ? nil : source.conversionReasons.joined(separator: ", ")
         // Stop at the scheduled length, so programmes and commercials keep to
         // the schedule even when a file runs a little longer than the server says,
@@ -926,24 +945,18 @@ public final class ChannelPlayer {
                             conversionReasons: reasons)
     }
 
-    /// Programmes use their settings' cap (`ProgrammeSettings.cap(at:)`).
-    /// While Auto's cap is old, a background speed test may raise it.
-    private func programmeSource(for airing: Airing, players: [MediaStream.Player]) async throws -> (MediaStream, cap: Int) {
+    /// `airing` at its settings' cap (`ProgrammeSettings.cap(at:)`) and
+    /// sound: a commercial's are its break's. While a programme's Auto cap is
+    /// old, a background speed test may raise it. A commercial never starts
+    /// one: it's over before one would help, and its programme's measurement
+    /// already covers the connection.
+    private func stream(for airing: Airing, players: [MediaStream.Player]) async throws -> (MediaStream, cap: Int) {
         let settings = settings(for: airing)
-        if quality == .auto, settings.needsRemeasuring(at: .now) { measureInBackground(for: airing) }
+        if quality == .auto, !airing.isFiller, settings.needsRemeasuring(at: .now) { measureInBackground(for: airing) }
         let cap = settings.cap(at: quality)
         let request = StreamRequest(maxBitrate: cap, players: players, stereoSound: settings.stereoSound,
                                     unplayable: unplayable.byPlayer)
         return (try await streams.stream(for: airing.item.id, request), cap)
-    }
-
-    /// Commercials never start a speed test, and are asked for with no
-    /// bitrate cap (the quality setting doesn't apply), so a clip is never
-    /// re-encoded just for its bitrate. One the device can't play as it is
-    /// is converted by the server, as a programme is.
-    private func commercialSource(for item: MediaItem, players: [MediaStream.Player]) async throws -> (MediaStream, cap: Int) {
-        let cap = StreamingQuality.maximumBitrate
-        return (try await streams.stream(for: item.id, StreamRequest(maxBitrate: cap, players: players, unplayable: unplayable.byPlayer)), cap)
     }
 
     /// The players to ask about for `airing`, in order: the device's own
@@ -965,7 +978,8 @@ public final class ChannelPlayer {
     }
 
     /// In Auto, a programme had trouble on the connection: measure for it
-    /// before tuning in again. Not a commercial, which has no cap.
+    /// before tuning in again. Not for a commercial, which never starts a
+    /// speed test (`stream(for:players:)`).
     private func measureBeforeRetrying(_ airing: Airing) {
         guard quality == .auto, !airing.isFiller else { return }
         updateSettings(for: airing) { $0.measuresFirst = true }
@@ -1037,7 +1051,7 @@ public final class ChannelPlayer {
             if unplayable.learn(from: failed.contents, on: failed.player, safest: streams.safestFormats) { return tune() }
             // Formats every player plays, yet it won't: perhaps more sound
             // channels than the player takes (7.1, say). Retry with stereo.
-            if !airing.isFiller, offersStereoSound { updateSettings(for: airing) { $0.stereoSound = true } }
+            if offersStereoSound { updateSettings(for: airing) { $0.stereoSound = true } }
             if consecutiveFailures >= Self.safestFormatRetries {
                 if !airing.isFiller { updateSettings(for: airing) { $0.cantPlay = true } }
                 status = .cantPlay(until: airing.slotEnd)
@@ -1058,12 +1072,11 @@ public final class ChannelPlayer {
     /// The server converting `loaded` couldn't keep up: ask it for less
     /// work, for this programme only. A re-encode asks for a lower quality
     /// (`ProgrammeSettings.askForLessReencoding`); a sound conversion asks
-    /// for stereo, then a head start (`askForLessSoundWork`). False if
-    /// the server isn't converting it (the original, or only repackaged), it's
-    /// a commercial, or there's nothing less to ask for: then the trouble may
-    /// be the connection's.
+    /// for stereo, then a head start (`askForLessSoundWork`). For a
+    /// commercial, for the rest of its break. False if the server isn't
+    /// converting it (the original, or only repackaged), or there's nothing
+    /// less to ask for: then the trouble may be the connection's.
     private func askForLessWork(on loaded: LoadedAiring) -> Bool {
-        guard !loaded.airing.isFiller else { return false }
         var asked = false
         switch loaded.delivery {
         case .reencoded:
