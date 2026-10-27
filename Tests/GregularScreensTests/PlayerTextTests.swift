@@ -5,7 +5,7 @@ import Testing
 /// The player's words, for every deck alike.
 struct PlayerTextTests {
     /// No cap says so, rather than naming the highest there is; a
-    /// commercial says the quality setting isn't for it.
+    /// commercial says it is one, at its programme's cap.
     @Test func theStreamSaysWhatSetItsCap() {
         let max = StreamingQuality.maximumBitrate
         #expect(PlayerText.stream(quality: .auto, fixedForProgramme: false, isCommercial: false, cap: max, delivery: .original)
@@ -16,8 +16,10 @@ struct PlayerTextTests {
                 == "Auto · up to 7 Mbps · re-encoded by the server")
         #expect(PlayerText.stream(quality: .hd10, fixedForProgramme: true, isCommercial: false, cap: 1_500_000, delivery: .soundConverted)
                 == "This programme only · up to 1.5 Mbps · sound converted by the server")
-        #expect(PlayerText.stream(quality: .hd720, fixedForProgramme: false, isCommercial: true, cap: max, delivery: .repackaged)
-                == "Commercial · original quality (the quality setting applies to programmes) · repackaged by the server")
+        #expect(PlayerText.stream(quality: .hd720, fixedForProgramme: false, isCommercial: true, cap: 4_000_000, delivery: .reencoded)
+                == "Commercial · 720p · 4 Mbps · up to 4 Mbps · re-encoded by the server")
+        #expect(PlayerText.stream(quality: .auto, fixedForProgramme: false, isCommercial: true, cap: max, delivery: .original)
+                == "Commercial · Auto · no cap · direct play")
     }
 
     @Test func whatADeckIsDoing() {

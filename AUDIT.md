@@ -29,6 +29,25 @@ What held up well:
   - no `innerHTML` anywhere;
   - vendored, pinned libraries.
 
+## Seventh audit: 2026-10-26 (commercials follow their programme's quality)
+
+Since the sixth audit (the same day), the change is that a commercial break plays at its programme's cap and stereo sound (PLAN §9a and §12), where commercials were always asked for with no cap. It touches `ChannelPlayer`, `ProgrammeSettings` and `PlayerText`. Everything else is unchanged since the sixth audit. The change was read for what it sends, keeps and shows, and for what it does to the server.
+
+### U1. Breaks can now make the server re-encode — accepted by the user (2026-10-26)
+- **Where:** `ChannelPlayer.stream(for:players:)`, `ProgrammeSettings.forBreak`.
+- **Risk:** availability, not security. Any clip above the cap is re-encoded, one ffmpeg start per clip, during a break when the next programme may already be loading. On a small server, breaks may stutter (see PLAN §7a, *Still open*).
+- **Accepted** by the user on 2026-10-26, after weighing it: a large clip stalling every break on a slow connection was worse. Mitigations: a clip's conversion that can't keep up asks for less for the rest of its break; the README tells library owners that clips in MP4, H.264/AAC at a modest bitrate cost the server nothing.
+
+### U2. What the server is sent and what's kept — reviewed, nothing to change
+- **Sent:** the same `PlaybackInfo` request as before, with a lower `MaxStreamingBitrate` and, where the programme has it, the stereo sound profile. No new endpoint or field. A converted commercial already existed (2026-10-06), so the keep-alive and the stop when it's left (`DELETE /Videos/ActiveEncodings`) apply as before.
+- **Kept:** a break's settings live in memory, in `ChannelPlayer`, and go when the next programme starts, the channel changes or the quality changes. Nothing is stored.
+- **Shown:** the diagnostics line names the cap, as for a programme; no address or name.
+
+### The clean-up pass
+- **One path:** `commercialSource` is gone; programmes and commercials share `stream(for:players:)` and `settings(for:)`. A break's settings are a `ProgrammeSettings`, not a second type.
+- **The remaining differences** are each a documented rule: no add-on player, no speed test, no 3-minute rule, and one clip's unplayable file never blocks its break.
+- **The layer check passes.**
+
 ## Sixth audit: 2026-10-26 (feeds)
 
 Since the fifth audit (hours before), the change is feeds (README, *Feeds*; PLAN §3 and §12): following other people's channels by link. It adds:

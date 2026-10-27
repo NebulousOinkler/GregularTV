@@ -35,7 +35,7 @@ struct ChannelPlayerDeckTests {
         let deck = try await Fixture.playingDeck(player)
         #expect(player.airing?.isFiller == true && deck.queue.first?.url.lastPathComponent.hasPrefix("ad") == true,
                 "The converted clip plays, not a blank break")
-        #expect(streams.caps.first == StreamingQuality.maximumBitrate, "Commercials keep their own cap")
+        #expect(streams.caps.first == StreamingQuality.maximumBitrate, "Auto, with no trouble: no cap, as for a programme")
         player.stop()
     }
 
