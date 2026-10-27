@@ -2,6 +2,7 @@
 # file; scripts/serve-web.py applies it locally too).
 #
 # Content-Security-Policy: scripts, styles and fonts only from this site;
+# images from this site, or inline (a feed's picture, checked as a small PNG);
 # WebAssembly allowed; connections and video to any https server, and to
 # plain http (Chrome then lets only the home network through, after asking);
 # the channel editor framed only by this site; nothing else at all.
@@ -11,7 +12,7 @@
 # gregular.tv over https, for a year (ignored over plain http, as locally).
 /*
   Strict-Transport-Security: max-age=31536000
-  Content-Security-Policy: default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self'; font-src 'self'; media-src 'self' https: http: blob:; connect-src 'self' https: http:; worker-src 'self' blob:; frame-src 'self'; frame-ancestors 'self'; base-uri 'none'; form-action 'none'; manifest-src 'self'; require-trusted-types-for 'script'; trusted-types default
+  Content-Security-Policy: default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self'; img-src 'self' data:; font-src 'self'; media-src 'self' https: http: blob:; connect-src 'self' https: http:; worker-src 'self' blob:; frame-src 'self'; frame-ancestors 'self'; base-uri 'none'; form-action 'none'; manifest-src 'self'; require-trusted-types-for 'script'; trusted-types default
   Referrer-Policy: no-referrer
   X-Content-Type-Options: nosniff
   Cross-Origin-Opener-Policy: same-origin

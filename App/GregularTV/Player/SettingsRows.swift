@@ -25,8 +25,15 @@ enum SettingsRows {
     /// A row: a title with an optional detail line, and a value or a checkmark on the right.
     static func row(_ title: String, detail: String? = nil, value: String? = nil, checked: Bool = false,
                     role: ButtonRole? = nil, action: @escaping () -> Void) -> some View {
+        row(title, detail: detail, value: value, checked: checked, role: role, action: action) { EmptyView() }
+    }
+
+    /// A row with something drawn before its title, such as a feed's picture.
+    static func row(_ title: String, detail: String? = nil, value: String? = nil, checked: Bool = false,
+                    role: ButtonRole? = nil, action: @escaping () -> Void, @ViewBuilder leading: () -> some View) -> some View {
         Button(role: role, action: action) {
-            HStack {
+            HStack(spacing: 24) {
+                leading()
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title)
                     if let detail { Text(detail).font(.caption).foregroundStyle(.secondary) }

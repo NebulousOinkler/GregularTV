@@ -110,6 +110,7 @@ struct WatchView: View {
             if model.showingGuide {
                 GuideView(channels: surfer.channels,
                           currentNumber: player.schedule.channel.number,
+                          settingsHasNews: app.hasFeedUpdates,
                           onSelect: model.select(channel:),
                           onRemote: model.perform)
                     .ignoresSafeArea()

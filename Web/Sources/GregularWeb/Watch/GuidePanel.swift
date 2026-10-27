@@ -29,13 +29,14 @@ import JavaScriptKit
     private var startCell: String?
     private let idle: IdleTimer
 
-    init(channels: [ChannelSchedule], currentNumber: Int, onSelect: @escaping (Int) -> Void,
+    init(channels: [ChannelSchedule], currentNumber: Int, settingsHasNews: Bool, onSelect: @escaping (Int) -> Void,
          onRemote: @escaping (RemoteAction) -> Void) {
         self.channels = channels
         self.onRemote = onRemote
         idle = IdleTimer(after: Self.idleTimeout) { onRemote(.close) }
         resume = El.button("Live TV", icon: .play, "button primary") { onRemote(.close) }
         settings = El.button(SettingsText.title, icon: .settings, "icon-button", labelHidden: true) { onRemote(.openSettings) }
+        Parts.news(on: settings, settingsHasNews)
         let (sheet, body) = Parts.sheet("guide", title: "Guide", actions: [resume, settings]) { onRemote(.close) }
         element = sheet
         body.append(header, grid,

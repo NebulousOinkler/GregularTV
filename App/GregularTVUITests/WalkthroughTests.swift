@@ -276,6 +276,65 @@ final class WalkthroughTests: XCTestCase {
         closeSettings()
     }
 
+    // MARK: Feeds
+
+    /// A feed followed from a phone on the editing page (the demo server's
+    /// changing feed), listed in Settings; opened again, the app finds its
+    /// update, the guide's Settings button gets its dot, and Get Update
+    /// brings it in. Then it's unfollowed. (`FeedTests` covers the rest.)
+    func test12Feeds() throws {
+        let link = "http://localhost:8765/feeds/changing/tv-\(UUID().uuidString.prefix(8)).json"
+        waitForWatching()
+        openSettings()
+        choose("Editing page")
+        choose("Open the Editing Page")
+        let code = app.staticTexts.matching(NSPredicate(format: "label MATCHES %@", "[0-9]{3} [0-9]{3}")).firstMatch
+        guard code.waitForExistence(timeout: 10) else { return XCTFail("No code for the editing page") }
+        let address = app.staticTexts.matching(NSPredicate(format: "label BEGINSWITH %@", "http://")).firstMatch.label
+        let phoneCode = code.label.replacingOccurrences(of: " ", with: "")
+        XCTAssertEqual(phoneAsks(address, "POST", "/api/feeds/look", code: phoneCode, body: #"{"link":"\#(link)"}"#), 200,
+                       "The page couldn't look at the feed")
+        let document = #"{"channels":[],"setTimes":[],"feeds":[{"link":"\#(link)","firstNumber":60}]}"#
+        XCTAssertEqual(phoneAsks(address, "POST", "/api/save", code: phoneCode, body: document), 200, "The page couldn't follow it")
+        choose("Done")
+        pause()
+        press(.up)   // the switch, back off (as in test2EditingPage)
+        if focusedLabel().hasPrefix("Editing page") { press(.select) }
+        let feed = button("Silent Laughs")
+        if reach(feed, "the feed") {
+            XCTAssertTrue(feed.label.contains("Channels 60–69 · Up to date."), "The feed's row: \(feed.label)")
+            capture("feed-followed")
+        }
+        closeSettings()
+
+        app.terminate()
+        app.launch()
+        waitForWatching()
+        openGuide()
+        toTopRow()
+        let dot = app.descendants(matching: .any).matching(NSPredicate(format: "label CONTAINS %@", "A feed has an update")).firstMatch
+        XCTAssertTrue(dot.waitForExistence(timeout: 10), "The guide's Settings button has no dot")
+        capture("feed-update-dot")
+        backToLiveTV()
+        openSettings()
+        let update = button("Get Update")
+        guard reach(update, "Get Update") else { return }
+        XCTAssertTrue(update.label.contains("New channel: Silent Adventures"), "What's new: \(update.label)")
+        capture("feed-update")
+        press(.select)
+        pause()
+        XCTAssertFalse(button("Get Update").exists, "Get Update didn't take the update")
+        if reach(feed, "the feed") {
+            XCTAssertTrue(feed.label.contains("Up to date."), "After the update: \(feed.label)")
+            capture("feed-updated-with-picture")
+        }
+        guard choose("Unfollow") else { return }
+        answerDialog("Unfollow")
+        XCTAssertFalse(button("Silent Laughs").exists, "Unfollowing didn't remove the feed")
+        XCTAssertTrue(text("You don't follow any feeds.").exists, "Settings doesn't say there are no feeds")
+        closeSettings()
+    }
+
     // MARK: The main page
 
     /// Menu, one step at a time: live TV → guide → Resume Live TV → main

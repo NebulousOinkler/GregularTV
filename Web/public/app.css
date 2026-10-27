@@ -130,6 +130,13 @@ button:disabled { opacity: 0.45; cursor: default; transform: none; }
 }
 .icon-button:hover { background: rgba(255, 255, 255, 0.1); }
 .icon-button .icon { width: 1.4rem; height: 1.4rem; }
+/* A feed has an update (Parts.news). */
+.has-news { position: relative; }
+/* A feed's picture or badge, before its title in Settings (Parts.feedArt). */
+.feed-art { flex: none; width: 2.75rem; height: 2.75rem; border-radius: 0.6rem; object-fit: cover; }
+.feed-badge { display: flex; align-items: center; justify-content: center; color: #fff; font-weight: 700; }
+.row.lines .row-detail { white-space: pre-line; }
+.has-news::after { content: ""; position: absolute; top: 0.3rem; right: 0.3rem; width: 0.55rem; height: 0.55rem; border-radius: 50%; background: var(--accent); }
 .buttons { display: flex; flex-wrap: wrap; gap: var(--space-3); }
 
 /* Notes */

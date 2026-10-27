@@ -12,7 +12,9 @@
    - **Try it against a real server:** an https Jellyfin server in Chrome, Safari and Firefox, on a phone and a computer; an http one on the home network in Chrome (allow local network access when asked). Note any programme that won't play, with *Show playback diagnostics* on. (Safari on a phone works, 2026-10-07; a company proxy can block it, see AUDIT.md.)
    - **Faster CI:** each run installs the toolchain again (about 17 minutes in all); cache `~/Library/Developer/Toolchains` if that matters.
    - **Smaller download:** 12.4 MB compressed, mostly Foundation's ICU data. Worth revisiting if the Swift WebAssembly SDK gains a way to trim it.
-7. **After each Jellyfin upgrade:** the checks in README.md, *Debug options* (*After upgrading Jellyfin*).
+7. **Feeds: set times on your own channels (backlog, decided 2026-10-26).** Feeds bring only their own channels and set times on them. A later step could add a per-feed switch, off by default, letting a feed set times on the bundled channels and your own, with clash rules: your own set times always win, then feeds in the order you list them; a set time that loses is skipped and noted in the feed list. It also has to decide how a feed's "only at these times" applies on a channel that isn't the feed's, and how the 24 set times a channel may have are shared (PLAN §12).
+8. **Feeds: what a feed's host learns (later; T1 accepted 2026-10-26).** Each check tells the host the follower's IP address and roughly when the app runs: at launch, then every 6 hours (AUDIT.md, T1). Accepted as it is for now; think about how to tell it less. Ideas, none decided: checking at launch only, or at a random time rather than on a fixed beat; checking less often, or only when Settings or the editing page is opened; a per-feed setting; asking only whether the file changed since last time (which tells the same, but sends less). A relay was already ruled out: Gregular has no backend.
+9. **After each Jellyfin upgrade:** the checks in README.md, *Debug options* (*After upgrading Jellyfin*).
 
 ## Done
 

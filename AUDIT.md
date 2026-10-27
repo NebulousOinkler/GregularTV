@@ -29,6 +29,100 @@ What held up well:
   - no `innerHTML` anywhere;
   - vendored, pinned libraries.
 
+## Sixth audit: 2026-10-26 (feeds)
+
+Since the fifth audit (hours before), the change is feeds (README, *Feeds*; PLAN §3 and §12): following other people's channels by link. It adds:
+- **a new kind of request**, the first to a host that isn't the media server (`PublicFile`);
+- **a new file format from strangers** (`FeedDocument`), including a picture;
+- **new stored data** (`SavedFeed`, in `AppPreferences`);
+- **three editing-page endpoints** (`/api/feeds/look`, `/api/feeds/update`, `/api/feeds/share`);
+- **`img-src data:`** in both pages' Content Security Policies;
+- the Settings screens on both platforms.
+
+Everything else was audited as it stands in the first to fifth audits, and is unchanged. Each part of the change was read against every heading of the first audit, as an attacker on the network, a hostile feed publisher, a hostile web page and someone on the home network with the editing page's code would see it. The privacy and layer checks pass, and nothing in the change names an address, token or password.
+
+### T1. A feed's host learns about its followers — accepted by the user (2026-10-26)
+- **Where:** `AppModel.checkFeeds()` and `lookAtFeed(_:)`, through `PublicFile`.
+- **Risk:** each check tells the feed's host the follower's IP address, roughly when the app is running (at launch, then every 6 hours), and that they follow the feed. A host could give each follower a different link to tell them apart. Nothing else goes: no sign-in, cookies, referrer, library or server.
+- **Mitigations:**
+  - It happens only for feeds the viewer chose to follow.
+  - On Apple TV the request names only "GregularTV": no device, system version or language (`PublicFile.headers`). A browser sends its own user agent and language, and the Origin gregular.tv, which can't be changed.
+  - The README's *Privacy* section says all of this in plain words.
+- **Left for the user:** this is what following a link means, so it can't be designed away. Accepting it is the user's decision.
+- **Accepted** by the user on 2026-10-26, as it is. How to reduce it is to be thought about later (TODO.md item 8).
+
+### T2. A feed's picture is decoded from a stranger's file — accepted by the user (2026-10-26)
+- **Where:** `FeedDocument.isAllowedImage`, `FeedArt` (Apple TV, `UIImage`), `Parts.feedArt` and the editing page (the browser's own decoder).
+- **Risk:** image decoders are a classic way in. A crafted image that exploits a bug in ImageIO or a browser's PNG decoder could do harm on the device showing it.
+- **Mitigations:**
+  - A picture is a PNG only, at most 32 KB and 256 × 256.
+  - Its signature and size are read from its header before anything decodes it.
+  - It's inside the feed's file, so nothing else is fetched.
+  - It's drawn only in Settings and on the editing page, never while watching.
+- **Left for the user:** the residual risk is a bug in Apple's or the browser's PNG decoder, the same one every web page's images use. The alternative is the initials badge alone.
+- **Accepted** by the user on 2026-10-26: pictures stay, with the limits above.
+
+### T3. Looking at feeds one after another could fill memory — resolved
+- **Where:** `AppModel.lookAtFeed(_:)`, `lookedAtFeeds`.
+- **Risk:** each feed looked at was kept (up to 256 KB) so following it wouldn't fetch it again, with no limit. Anyone on the home network with the editing page's code could have the Apple TV fetch thousands of them.
+- **Resolved:** only the last `AppModel.mostFeedsLookedAt` (4) are kept; an older one is fetched again when followed. `FeedTests.onlyTheLastFewFeedsLookedAtAreKept` checks it.
+
+### T4. The platform's own headers named the device and its language — resolved
+- **Where:** `PublicFile.headers`; `FetchTransport.options(for:)`.
+- **Risk:** URLSession sends a User-Agent naming the device's system and version, and the device's preferred languages, to a host that isn't the viewer's server.
+- **Resolved:**
+  - The request sets `User-Agent: GregularTV` and `Accept-Language: *`. `PublicFileTests` checks the exact headers.
+  - In a browser the User-Agent is left out (`FetchTransport`): the browser sends its own anyway, and asking for another would need a CORS preflight that most hosts refuse.
+
+### T5. The editing page can make the Apple TV fetch a link on the home network — reviewed, nothing to change
+- **Where:** `/api/feeds/look`.
+- **Risk:** someone with the page's code could ask the Apple TV to fetch any link, including plain http on the home network (`ServerAddress.isAllowed`), and learn from the answer whether something is there.
+- **Why nothing changes:**
+  - They already need the code and a device on the home network, from which they can reach the same addresses themselves.
+  - The request is a GET with no credentials.
+  - The reply is never shown unless it's a feed. Otherwise only "not a feed", "gone", or an HTTP status comes back.
+
+### T6. Pasting a document follows its feeds without the preview — resolved, by decision
+- **Where:** `AppModel.replaceUserChannels(with:)`, `following(_:)`.
+- **Risk:** a document pasted from someone else can list feed links, which are fetched and followed when it's saved, without the *Look* preview.
+- **Resolved, by decision:** the JSON tab carries feeds as links, so another device follows them too (the user's decision, 2026-10-26). Pasting and saving is the viewer's own act, and the feeds are listed in the JSON they paste. Each feed is checked like any other, can only add its own channels in the numbers given, and later updates still wait for *Get Update*.
+
+### T7. A publisher's account, taken over, could change followers' channels — resolved, by decision
+- **Where:** `Feed.waiting`, `AppModel.getUpdate(_:)`.
+- **Risk:** whoever controls a feed's file controls what it says.
+- **Resolved, by decision:**
+  - An update changes nothing until the viewer chooses *Get Update*, after seeing what's new.
+  - Even then, a feed can only add its own channels and set times on them, checked as any channel is (`FeedDocument.check()`, `ChannelLineup.adding`), in its own numbers. It can never change the schedule code, the bundled channels or the viewer's own channels.
+
+### T8. Both pages now allow inline images — resolved
+- **Where:** `Web/public/_headers` and `HTTPResponse.serialized` (`img-src data:`).
+- **Risk:** a wider Content Security Policy.
+- **Resolved:**
+  - `data:` images reach no network, so they can't track or fetch anything.
+  - Scripts, styles, frames and connections are unchanged.
+  - The only data image either page builds is a feed's picture, re-encoded by the app from a checked PNG, so its text is only base64.
+
+### T9. Share as a feed couldn't save its file in Safari or Firefox — resolved, without widening the policy
+- **Where:** the editing page's *Share as a feed* (`editor.js`), inside the web version's frame (`ChannelEditor`).
+- **Risk:** not a security risk, but a policy question. WebKit and Firefox count a download from a frame as loading it in that frame, and gregular.tv's `frame-src 'self'` refuses the `blob:` file. Found by the walkthrough added for it (2026-10-26); Chromium doesn't count it that way.
+- **Resolved:**
+  - Allowing `blob:` frames was rejected: it would widen the policy for one button.
+  - Instead, the page asks the web version around it to save the file (`gregularEditor.saveFile`, which takes only a name and the text, and saves it as JSON). The frame is the app's own page, on the same site, so this gives it nothing it couldn't already do.
+  - On the Apple TV's page (opened directly on a phone, not in a frame), downloads were never a frame load. A page with that page's exact policy downloads in all three browsers.
+
+### The clean-up pass
+- **One gateway for requests that aren't to the server:** `PublicFile`, behind `ServerAccess.publishedFile(at:largest:)`, the only Screens file allowed to import the Jellyfin layer for it. Its rules come from the same `ServerAddress.isAllowed` and `TransportRules` as the server's.
+- **Shared, not copied:**
+  - A feed's channels and set times are the editing document's own types, read by the same code (`ChannelEntry.channel()`, `SetTimesEntry.setTimes()`).
+  - The line-up adds them the way it adds custom channels (`AppModel.lineup`).
+- **One place for the words:** `FeedText`. One unused string (`noFreeBlock`) was deleted; the editing page keeps its own words, as before.
+- **The layer check passes.** Screens imports the Jellyfin layer only where it already did.
+
+### Not checked
+- Following a real feed on GitHub Pages or a gist from gregular.tv, a phone and an Apple TV: only the demo server's feed, in the walkthroughs.
+- How Settings › Feeds looks on a real TV.
+- Saving a feed file from the Apple TV's own editing page: checked only with a stand-in page with the same policy.
+
 ## Fifth audit: 2026-10-26 (studios, public television and how-to)
 
 Since the fourth audit (hours before), the only changes are:
@@ -377,7 +471,7 @@ The whole codebase again, before the playback rework (Auto per programme, progra
    - The "Couldn't reach your server" message now says a work or school network, or a VPN, may be blocking it.
 4. **Jellyfin behaviour the app relies on — resolved:**
    - README *Debug options* lists each behaviour that Jellyfin doesn't promise, and how to check it after an upgrade.
-   - TODO.md item 7 reminds to.
+   - TODO.md item 9 reminds to.
 5. **Schedule seams — accepted:** a programme can repeat or be skipped where one day's run meets the next (decided 2026-10-07: the seams aren't the problem).
 6. **Web download size — open:** 12.4 MB compressed (TODO.md item 6). It waits on the Swift WebAssembly SDK.
 7. **Tests that occasionally fail — resolved or not reproduced:**

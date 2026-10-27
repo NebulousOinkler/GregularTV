@@ -16,14 +16,16 @@
     <div class="tabs" role="tablist">
       <button type="button" data-tab="channels" aria-selected="true">Channels</button>
       <button type="button" data-tab="settimes" aria-selected="false">Set times</button>
+      <button type="button" data-tab="feeds" aria-selected="false">Feeds</button>
       <button type="button" data-tab="json" aria-selected="false">JSON</button>
     </div>
     <div id="tab-channels"></div>
     <div id="tab-settimes" hidden></div>
+    <div id="tab-feeds" hidden></div>
     <div id="tab-json" hidden>
       <div class="card">
         <h2>As JSON</h2>
-        <p class="dim">Copy this to keep or share your channels; paste a document in and choose Use This JSON, then Save.</p>
+        <p class="dim">Copy this to keep or share your channels, set times and the feeds you follow; paste a document in and choose Use This JSON, then Save.</p>
         <textarea id="json" spellcheck="false"></textarea>
         <div class="row"><button type="button" id="use-json">Use This JSON</button></div>
       </div>
